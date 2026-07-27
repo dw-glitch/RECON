@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+
+<html data-app="RECON" data-ops-ui="enabled" data-ui-architecture="scoped-components-v3" data-ui-generation="3" data-ui-version="1.26.2" data-version="1.26.2" data-functional-generation="4" lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<meta content="light dark" name="color-scheme"/>
+<meta content="#155c8a" name="theme-color"/>
+<meta content="Aplicativo corporativo de controle documental com processamento local e acessível." name="description"/>
+<title>RECON — Relações e Conformidade Documental</title>
+<link href="recon-favicon.ico" rel="icon" sizes="any"/>
+<link href="recon-icon.png" rel="icon" type="image/png"/>
+<link href="recon-icon.png" rel="apple-touch-icon"/><link href="design-system.css" rel="stylesheet"/><link href="legacy-compat.css" rel="stylesheet"/><link href="recon-ui.css" rel="stylesheet"/><link href="recon-final.css" rel="stylesheet"/>
+<meta content="1.26.2" name="application-version"/></head>
+<body>
+<a class="skip-link" href="#app-main">Ir direto para o conteúdo principal</a>
+<header class="topbar">
+<div class="brand">
+<div class="recon-brand-plate"><img alt="RECON" id="brand-logo" src="recon-logo-app.png"/></div>
+<div class="brand-copy"><h1 class="sr-only">RECON</h1><span>Relações e Conformidade Documental</span><small>Controle documental local da Qualidade</small></div>
+</div>
+<div class="runtime-actions"><quality-status class="runtime" tone="success"><i></i><span>Processamento local</span></quality-status></div>
+</header>
+<div class="recon-shell">
+<aside aria-label="Módulos do RECON" class="module-sidebar">
+<div class="sidebar-label">O que você precisa fazer?</div>
+<button class="module-link p1-home-link" id="p1-home-button" type="button">
+<svg viewbox="0 0 24 24"><path d="M4 11l8-7 8 7v9h-6v-6h-4v6H4z"></path></svg>
+<span><strong>Início</strong><small>Escolher uma tarefa</small></span>
+</button>
+<button class="module-link pending-panel-link" id="recon-pending-open" type="button">
+<svg viewbox="0 0 24 24"><path d="M12 3l9 16H3zM12 9v4M12 17h.01"></path></svg>
+<span><strong>Pendências</strong><small>Erros, alertas e sugestões</small></span><b hidden="" id="recon-pending-badge">0</b>
+</button>
+<button aria-current="page" class="module-link active" data-module="relations" type="button">
+<svg viewbox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"></path></svg>
+<span><strong>Gerar relação</strong><small>Filtrar documentos e criar Excel</small></span>
+</button><button class="module-link" data-module="allocation" type="button">
+<svg viewbox="0 0 24 24"><path d="M4 5h16v14H4zM4 9h16M8 13h3M8 16h7"></path></svg>
+<span><strong>Gerar alocação</strong><small>Criar arquivo e linhas do controle</small></span>
+</button>
+<button class="module-link" data-module="tags" type="button">
+<svg viewbox="0 0 24 24"><path d="M4 5h10l6 6-9 9-7-7zM8 9h.01M13 8l3 3"></path></svg>
+<span><strong>Conferir TAGs</strong><small>Validar antes da inclusão na LD</small></span>
+</button>
+<button class="module-link" data-module="databook" type="button">
+<svg viewbox="0 0 24 24"><path d="M4 6h6l2 2h8v11H4zM9 13h6M12 10v6"></path></svg>
+<span><strong>Revisar Databook</strong><small>Conferir caminhos sugeridos</small></span>
+</button>
+<button class="module-link" data-module="titles" type="button">
+<svg viewbox="0 0 24 24"><path d="M5 5h14M12 5v14M8 19h8"></path></svg>
+<span><strong>Corrigir títulos</strong><small>Alterar somente os aprovados</small></span>
+</button>
+<button class="module-link" data-module="renamer" type="button">
+<svg viewbox="0 0 24 24"><path d="M4 6h9l2 2h5v10H4zM9 12h7M12.5 9.5v5M6 21h12"></path></svg>
+<span><strong>Renomear PDFs</strong><small>Conferir antes e depois</small></span>
+</button>
+<button class="module-link" id="recon-preferences-open" type="button">
+<svg viewbox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19 13.5v-3l-2-.7-.7-1.7.9-1.9-2.1-2.1-1.9.9-1.7-.7L10.5 2h-3l-.7 2.3-1.7.7-1.9-.9-2.1 2.1.9 1.9-.7 1.7-2 .7v3l2 .7.7 1.7-.9 1.9 2.1 2.1 1.9-.9 1.7.7.7 2.3h3l.7-2.3 1.7-.7 1.9.9 2.1-2.1-.9-1.9.7-1.7z"></path></svg>
+<span><strong>Preferências</strong><small>Backup, filtros e manutenção</small></span>
+</button>
+<div class="sidebar-foot"><span>Os arquivos permanecem neste dispositivo.</span></div>
+</aside>
+<main aria-label="Área de trabalho do RECON" class="recon-main" id="app-main" tabindex="-1">
+<section aria-labelledby="p1-home-title" class="p1-task-home" id="p1-task-home">
+<div class="p1-home-heading"><span>RECON</span><h2 id="p1-home-title">O que você precisa fazer?</h2><p>Escolha a tarefa que deseja realizar.</p></div>
+<div class="p1-task-grid">
+<button data-p1-open="relations" type="button"><span><strong>Gerar uma relação de documentos</strong><small>Use filtros ou uma lista e baixe um Excel pronto para envio.</small><em>Precisa de uma LD</em></span></button><button data-p1-open="allocation" type="button"><span><strong>Gerar uma alocação documental</strong><small>Use a LD, o controle e a relação para criar o arquivo de alocação e as linhas da Central.</small><em>Precisa de LD e controle</em></span></button>
+<button data-p1-open="tags" type="button"><span><strong>Conferir TAGs antes da LD</strong><small>Compare o Campo 7 com o Anexo I e receba os códigos corrigidos.</small><em>Base oficial incorporada</em></span></button>
+<button data-p1-open="databook" type="button"><span><strong>Revisar caminhos do Databook</strong><small>Confira as sugestões da aba escolhida e gere um relatório.</small><em>Precisa de uma LD</em></span></button>
+<button data-p1-open="titles" type="button"><span><strong>Corrigir títulos da LD</strong><small>Compare antes e depois e altere somente os títulos aprovados.</small><em>Gera uma nova cópia da LD</em></span></button>
+<button data-p1-open="renamer" type="button"><span><strong>Renomear PDFs</strong><small>Escolha um padrão simples, confira os novos nomes e baixe o pacote.</small><em>Não precisa de LD</em></span></button>
+</div>
+<div class="p1-home-note"><strong>Seus arquivos permanecem neste dispositivo.</strong><span>O RECON não envia PDFs ou planilhas para servidores.</span></div>
+</section>
+<section class="source-card card recon-source">
+<div class="section-title"><span>LD</span><div><strong>Base documental</strong><small>Usada em Relações, Databook e Títulos</small></div></div>
+<label class="file-source primary-source">
+<input accept=".xlsx,.xls,.xlsm" id="relations-ld" type="file"/>
+<span class="file-icon">X</span>
+<span><strong>Selecionar LD</strong><small id="relations-ld-meta">Nenhum arquivo</small></span>
+</label>
+<div class="source-state"><quality-status class="state-pill neutral" id="relations-source-state">Aguardando LD</quality-status><small id="relations-source-count">—</small></div>
+<button class="link-button" hidden="" id="ld-compatibility-open" type="button">Estrutura da LD</button>
+<span hidden="" id="ld-compatibility-status"></span>
+</section>
+<section aria-live="polite" class="p1-context-bar" hidden="" id="p1-recon-context">
+<metric-chip><span>Tarefa atual</span><strong id="p1-context-task">—</strong></metric-chip>
+<metric-chip><span>Arquivo em uso</span><strong id="p1-context-ld">—</strong></metric-chip>
+<metric-chip><span>Aba selecionada</span><strong id="p1-context-sheet">—</strong></metric-chip>
+<div class="p1-context-actions"><button class="secondary-button" id="p1-change-ld" type="button">Trocar LD</button><button class="text-button" id="p1-back-home" type="button">Voltar ao início</button></div>
+</section>
+<section aria-labelledby="recon-module-title-1" class="module-view active" data-module-view="relations" id="module-relations">
+<header class="module-heading"><div><span>RELAÇÕES</span><h2 id="recon-module-title-1">Gerar relação de documentos</h2></div><p>Escolha a aba, aplique os filtros e confira a prévia antes de baixar.</p></header>
+<div class="workspace module-workspace">
+<section class="mode-card card">
+<div class="section-title"><span>ORIGEM</span><div><strong>Origem da relação</strong><small>Escolha o tipo de consulta</small></div></div>
+<div aria-label="Origem da relação" class="mode-switch" role="tablist">
+<button aria-selected="true" class="active" data-mode="filter" id="mode-filter" role="tab" type="button"><svg viewbox="0 0 24 24"><path d="M4 5h16l-6 7v5l-4 2v-7z"></path></svg><span><strong>Por filtros</strong><small>Consultar toda a LD</small></span></button>
+<button aria-selected="false" data-mode="documents" id="mode-documents" role="tab" type="button"><svg viewbox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM15 3v5h4M9 12h7M9 16h7"></path></svg><span><strong>Por documentos</strong><small>Texto, pasta ou Excel</small></span></button>
+</div>
+</section>
+<section class="configuration-card card">
+<header class="configuration-heading">
+<div class="section-title"><span>FILTROS</span><div><strong>Critérios da relação</strong><small>As preferências ficam salvas neste navegador</small></div></div>
+<label class="relation-type-field"><span>Tipo de relação</span><select id="relations-type">
+<option value="sigem">Status SIGEM</option><option value="allocation_status">Alocados e não alocados</option><option value="allocation">Documentos de uma alocação</option><option value="databook">Caminho Databook</option><option value="comments">Comentários da Fiscal</option><option value="revisions">Revisões atuais</option><option value="grdt">GRDTs relacionadas</option><option value="missing">Documentos não encontrados</option><option value="custom">Relação personalizada</option>
+</select></label>
+</header>
+<div class="mode-panel filter-panel" id="filter-mode-panel">
+<label class="sheet-scope-field"><span>1. Aba da LD <b>obrigatória</b></span><select id="filter-sheet"><option value="">Selecione uma aba</option></select><small id="filter-sheet-help">Os demais filtros mostrarão somente valores desta aba.</small></label>
+<label><span>2. Status SIGEM</span><select id="filter-status"><option value="">Todos os status desta aba</option></select></label>
+<label><span>Situação de alocação</span><select id="filter-allocation-status"><option value="">Todas as situações</option></select></label>
+<label><span>Tipo de documento</span><select id="filter-document-type"><option value="">Todos os tipos</option></select></label>
+<label><span>Revisão atual</span><select id="filter-revision"><option value="">Todas as revisões</option></select></label>
+<label><span>Comentário da Fiscal</span><select id="filter-comments"><option value="">Com ou sem comentário</option><option value="yes">Somente com comentário</option><option value="no">Somente sem comentário</option></select></label>
+<label class="wide-field"><span>Número da alocação</span><input id="filter-allocation" list="allocation-options" placeholder="Todas as alocações" type="text"/><datalist id="allocation-options"></datalist></label>
+<label class="wide-field"><span>Documento ou título contém</span><input id="filter-query" placeholder="Opcional" type="search"/></label>
+</div>
+<div class="mode-panel documents-panel" hidden="" id="documents-mode-panel">
+<div class="documents-text"><div><label for="relations-text">Documentos</label><button class="text-button danger" id="relations-clear-text" type="button">Limpar</button></div><textarea id="relations-text" placeholder="Cole um código documental ou nome de arquivo por linha" spellcheck="false"></textarea><span id="relations-text-count">0 itens</span></div>
+<div class="document-files">
+<label class="file-source"><input accept=".pdf,.doc,.docx,.xls,.xlsx,.xlsm,.dwg,.dgn,.ppt,.pptx" directory="" id="relations-folder" multiple="" type="file" webkitdirectory=""/><span class="file-icon folder"><svg viewbox="0 0 24 24"><path d="M3 6h7l2 2h9v10H3z"></path></svg></span><span><strong>Pasta documental</strong><small id="relations-folder-meta">Opcional</small></span></label>
+<label class="file-source"><input accept=".xlsx,.xls,.xlsm,.csv" id="relations-list" type="file"/><span class="file-icon">X</span><span><strong>Lista Excel</strong><small id="relations-list-meta">Opcional</small></span></label>
+<div class="file-actions"><button class="text-button danger" id="relations-clear-folder" type="button">Remover pasta</button><button class="text-button danger" id="relations-clear-list" type="button">Remover Excel</button></div>
+</div>
+</div>
+<div class="single-option" hidden="" id="allocation-relation-field"><label><span>Número da alocação da relação</span><input id="relations-allocation" placeholder="C1O-ALOC-CM-0000-2026" type="text"/></label></div>
+<div class="custom-fields" hidden="" id="custom-fields-panel"><div><strong>Colunas da relação</strong><span id="custom-fields-count">0 selecionadas</span></div><div id="custom-fields-list"></div></div>
+<div class="relations-active-filters" id="relations-active-filters" aria-live="polite"></div><div class="configuration-footer"><span id="relations-ready-name">Aguardando LD</span><div class="relations-preference-actions"><button class="secondary-button compact" id="relations-save-filters" type="button">Salvar combinação</button><button class="text-button" id="relations-reset-filters" type="button">Limpar filtros</button></div><button class="primary-button" disabled="" id="relations-analyze" type="button"><svg viewbox="0 0 24 24"><circle cx="10" cy="10" r="6"></circle><path d="M14.5 14.5L21 21"></path></svg><span>Gerar prévia</span></button></div>
+<div class="progress" hidden="" id="relations-progress"><div><i id="relations-progress-bar"></i></div><span id="relations-progress-text">Preparando…</span></div>
+</section>
+<section class="results-card card" hidden="" id="relations-results">
+<header class="section-title results-title"><span>RESULTADO</span><div><strong>Resultado</strong><small id="relations-result-subtitle">Prévia da relação</small></div></header>
+<nav aria-label="Resumo da relação" class="summary"><div><span>Universo da LD</span><strong id="count-universe">0</strong></div><div class="selected"><span>Selecionados</span><strong id="count-selected">0</strong></div><div class="found"><span>Localizados</span><strong id="count-found">0</strong></div><div class="missing"><span>Não encontrados</span><strong id="count-missing">0</strong></div></nav>
+<div class="results-toolbar"><label class="search-box"><svg viewbox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="M16 16l5 5"></path></svg><input id="relations-search" placeholder="Buscar na prévia" type="search"/></label><span id="relations-result-meta">0 linhas</span><div class="spacer"></div><button class="primary-button" disabled="" id="relations-export" type="button">Baixar relação em Excel</button></div>
+<div class="table-wrap"><table class="recon-data-table relations-table" id="relations-table"><thead id="relations-head"></thead><tbody id="relations-body"></tbody></table><div class="empty" hidden="" id="relations-empty">Nenhum resultado para os critérios selecionados.</div></div>
+</section>
+</div>
+</section><section aria-labelledby="recon-module-title-2" class="module-view allocation-module" data-module-view="allocation" hidden="" id="module-allocation">
+<header class="module-heading">
+<div><span class="module-kicker">GERAÇÃO DE ALOCAÇÃO</span><h2 id="recon-module-title-2">Gerar alocação documental</h2></div>
+<span class="allocation-ready-name" id="allocation-ready-name">Aguardando controle</span>
+</header>
+<section class="allocation-control-panel">
+<div class="allocation-source-grid">
+<label class="compact-source allocation-source">
+<input accept=".xlsx,.xls,.xlsm" id="allocation-ld-input" type="file"/>
+<span class="source-icon excel">X</span>
+<span><strong>LD controlada</strong><small id="allocation-ld-meta">Selecionar arquivo</small></span>
+</label>
+<label class="compact-source allocation-source">
+<input accept=".xlsx,.xls,.xlsm" id="allocation-control-input" type="file"/>
+<span class="source-icon excel control-icon">C</span>
+<span><strong>Controle de solicitações</strong><small id="allocation-control-meta">Selecionar arquivo</small></span>
+</label>
+<label class="compact-source allocation-source">
+<input accept=".xlsx,.xls,.xlsm,.csv" id="allocation-list-input" type="file"/>
+<span class="source-icon excel">X</span>
+<span><strong>Relação de documentos</strong><small id="allocation-list-meta">Excel ou texto</small></span>
+</label>
+<label class="allocation-field allocation-code-field">
+<span>Número da alocação</span>
+<input autocomplete="off" id="allocation-code" placeholder="C1O-ALOC-CM-0000-2026" spellcheck="false" type="text"/>
+</label>
+<label class="allocation-field allocation-date-field">
+<span>Data da alocação</span>
+<input aria-readonly="true" id="allocation-date" readonly="" type="date"/>
+</label>
+<button class="analyze-button allocation-analyze" disabled="" id="allocation-analyze" type="button">
+<svg viewbox="0 0 24 24"><circle cx="10" cy="10" r="6"></circle><path d="M14.5 14.5L21 21M7 10h6M10 7v6"></path></svg>
+<span>Analisar</span>
+</button>
+</div>
+<div class="allocation-relation-card">
+<header class="allocation-relation-heading">
+<label for="allocation-text">Entrada por texto</label>
+<div>
+<span id="allocation-text-count">0 itens</span>
+<button class="text-action danger" id="allocation-clear" type="button">Limpar</button>
+</div>
+</header>
+<textarea autocomplete="off" id="allocation-text" placeholder="Cole um código ou nome de documento por linha" spellcheck="false"></textarea>
+</div>
+<details class="allocation-evidence-panel">
+<summary>
+<span><strong>Confirmações, histórico, Databook e níveis</strong><small id="allocation-evidence-meta">Base automática</small></span>
+<svg viewbox="0 0 24 24"><path d="M7 10l5 5 5-5"></path></svg>
+</summary>
+<div class="allocation-evidence-grid">
+<label class="compact-source allocation-evidence-source confirmation-source">
+<input accept=".xlsx,.xls,.xlsm" directory="" id="allocation-confirmation-input" multiple="" type="file" webkitdirectory=""/>
+<span class="source-icon evidence-icon confirmation-icon">CF</span>
+<span><strong>Confirmações de alocação</strong><small id="allocation-confirmation-meta">Prioridade máxima · selecionar pasta</small></span>
+</label>
+<label class="compact-source allocation-evidence-source">
+<input accept=".xlsx,.xls,.xlsm" id="allocation-databook-input" type="file"/>
+<span class="source-icon evidence-icon">DB</span>
+<span><strong>Mapa Databook</strong><small id="allocation-databook-meta">Base incluída</small></span>
+</label>
+<label class="compact-source allocation-evidence-source">
+<input accept=".xlsx,.xls,.xlsm" directory="" id="allocation-history-input" multiple="" type="file" webkitdirectory=""/>
+<span class="source-icon evidence-icon history-icon">H</span>
+<span><strong>Histórico de alocações</strong><small id="allocation-history-meta">Selecionar pasta</small></span>
+</label>
+</div>
+</details>
+<div class="progress-wrap" hidden="" id="allocation-progress">
+<div class="progress-track"><div class="progress-bar" id="allocation-progress-bar"></div></div>
+<span id="allocation-progress-text">Preparando…</span>
+</div>
+</section>
+<section class="allocation-results" hidden="" id="allocation-results">
+<nav aria-label="Resumo da alocação" class="allocation-summary">
+<div><span>Total</span><strong id="allocation-count-total">0</strong></div>
+<div class="ready"><span>Prontos</span><strong id="allocation-count-ready">0</strong></div>
+<div class="skip"><span>Já alocados</span><strong id="allocation-count-skip">0</strong></div>
+<div class="review"><span>Revisar</span><strong id="allocation-count-review">0</strong></div>
+</nav>
+<section class="allocation-batch-plan" hidden="" id="allocation-batch-plan">
+<header><div><span>SEPARAÇÃO AUTOMÁTICA</span><strong>Alocações por disciplina da aba ET</strong></div><b id="allocation-batch-meta">—</b></header>
+<div id="allocation-batch-list"></div>
+<p hidden="" id="allocation-batch-warning"></p>
+</section>
+<div class="allocation-toolbar">
+<label class="search-box allocation-search">
+<svg viewbox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="M16 16l5 5"></path></svg>
+<input id="allocation-search" placeholder="Buscar documento…" type="search"/>
+</label>
+<label class="allocation-decision-filter"><span>Decisão</span><select id="allocation-decision-filter"><option value="all">Todas as decisões</option><option value="ready">Pode alocar</option><option value="reallocation">Nova alocação após recusa</option><option value="skip">Já alocado</option><option value="review">Precisa de conferência</option></select></label>
+<label class="allocation-databook-filter">
+<span>Databook</span>
+<select aria-label="Filtrar situação do Databook" id="allocation-databook-filter">
+<option value="all">Todos</option>
+<option value="missing">Sem caminho</option>
+<option value="suggested">Sugeridos</option>
+<option value="conflict">Conflitantes</option>
+</select>
+</label>
+<label class="allocation-select-all"><input id="allocation-select-all" type="checkbox"/>Selecionar prontos</label>
+<span class="selected-count" id="allocation-selected-count">0 selecionados</span>
+<button class="secondary-button compact allocation-batch-button" disabled="" id="allocation-databook-batch" type="button">Databook em lote</button>
+<button aria-pressed="false" class="allocation-density-button" id="allocation-density" title="Alternar densidade da tabela" type="button">Compactar</button>
+<button class="secondary-button compact table-filter-clear" hidden id="allocation-clear-column-filters" type="button">Limpar filtros das colunas</button>
+<div class="toolbar-spacer"></div>
+<button class="secondary-button allocation-report-button" disabled="" id="allocation-export-report" type="button">Baixar relatório da análise</button>
+<button class="secondary-button" disabled="" id="allocation-export-file" type="button">Baixar alocação</button>
+<button class="secondary-button" disabled="" id="allocation-export-control" type="button">Baixar linhas do controle</button>
+<button class="primary-button final-package-button" disabled="" id="allocation-export-package" type="button">Gerar pacote</button>
+</div>
+<div class="table-card allocation-table-card">
+<div class="table-scroll allocation-table-scroll">
+<table class="allocation-table allocation-decision-table recon-data-table" id="allocation-decision-table">
+<thead><tr>
+<th scope="col">Decisão</th>
+<th scope="col">Documento e LD</th>
+<th scope="col">Confirmação e Fiscal</th>
+<th scope="col">Postagem e revisão</th>
+<th scope="col">Databook</th>
+<th scope="col">Motivo e histórico</th>
+<th scope="col">Saída preparada</th>
+</tr></thead>
+<tbody id="allocation-results-body"></tbody>
+</table>
+<empty-state class="empty-results" hidden="" id="allocation-empty">Nenhum resultado.</empty-state>
+</div>
+</div>
+<div class="allocation-preview-limit" hidden="" id="allocation-preview-limit"></div>
+</section>
+</section>
+
+<section aria-labelledby="recon-module-title-tags" class="module-view tag-conference-module" data-module-view="tags" hidden id="module-tags">
+<header class="module-heading"><div><span>CONFERÊNCIA PRÉ-LD</span><h2 id="recon-module-title-tags">Conferir TAGs dos códigos documentais</h2></div><p>Valide o Campo 7 pela base oficial do Anexo I antes de incluir os documentos na LD.</p></header>
+<section class="tag-control-panel">
+<div class="tag-source-grid">
+<label class="compact-source tag-reference-source"><input accept=".xlsx,.xls,.xlsm" id="tag-reference-input" type="file"/><span class="source-icon evidence-icon">TG</span><span><strong>Base oficial de TAGs</strong><small id="tag-reference-meta">Base incorporada</small></span></label>
+<label class="compact-source"><input accept=".xlsx,.xls,.xlsm,.csv" id="tag-list-input" type="file"/><span class="source-icon excel">X</span><span><strong>Lista de documentos</strong><small id="tag-list-meta">Excel ou CSV opcional</small></span></label>
+<button class="analyze-button tag-analyze" disabled id="tag-analyze" type="button"><svg viewbox="0 0 24 24"><circle cx="10" cy="10" r="6"></circle><path d="M14.5 14.5L21 21M7 10h6M10 7v6"></path></svg><span>Conferir TAGs</span></button>
+</div>
+<div class="tag-input-card"><header><label for="tag-text">Códigos para conferência</label><div><span id="tag-text-count">0 itens</span><button class="text-action danger" id="tag-clear" type="button">Limpar</button></div></header><textarea autocomplete="off" id="tag-text" placeholder="Cole um código documental por linha" spellcheck="false"></textarea><p>O Campo 7 é tudo o que estiver depois do sexto underline. A base incorporada pode ser substituída por uma revisão mais recente.</p></div>
+</section>
+<div class="tag-official-evidence" id="tag-official-evidence" role="status"><strong>Base oficial incorporada</strong><span id="tag-official-evidence-text">Carregando revisão e quantidade de TAGs…</span></div>
+<section class="tag-results" hidden id="tag-results">
+<nav aria-label="Resumo da conferência de TAGs" class="tag-summary">
+<div><span>Total</span><strong id="tag-count-total">0</strong></div>
+<div class="ready"><span>TAGs confirmadas</span><strong id="tag-count-confirmed">0</strong></div>
+<div class="neutral"><span>Não tagueados corretos</span><strong id="tag-count-correct">0</strong></div>
+<div class="review"><span>Corrigir ou revisar</span><strong id="tag-count-review">0</strong></div>
+</nav>
+<div class="tag-toolbar">
+<label class="search-box"><svg viewbox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="M16 16l5 5"></path></svg><input id="tag-search" placeholder="Buscar na conferência…" type="search"/></label>
+<label><span>Situação</span><select id="tag-status-filter"><option value="all">Todas</option><option value="confirmed">TAG confirmada</option><option value="remove_nt">Remover nt-</option><option value="add_nt">Adicionar nt-</option><option value="non_tagged">Não tagueado correto</option><option value="review">Revisar</option></select></label>
+<button class="secondary-button compact" id="tag-clear-column-filters" type="button">Limpar filtros</button><div class="toolbar-spacer"></div>
+<button class="secondary-button" disabled id="tag-copy-corrected" type="button">Copiar códigos corrigidos</button>
+<button class="primary-button" disabled id="tag-export-report" type="button">Baixar relatório</button>
+</div>
+<div class="table-card tag-table-card"><div class="table-scroll tag-table-scroll"><table class="tag-table tag-evidence-table recon-data-table" id="tag-evidence-table"><thead><tr>
+<th scope="col">Situação</th><th scope="col">Código informado</th><th scope="col">Campo 7</th><th scope="col">Evidência oficial</th><th scope="col">Código corrigido</th><th scope="col">Conclusão</th><th scope="col">Confiança</th>
+</tr></thead><tbody id="tag-results-body"></tbody></table><empty-state class="empty-results" hidden id="tag-empty">Nenhum resultado.</empty-state></div></div><div class="allocation-preview-limit" hidden id="tag-preview-limit"></div>
+</section>
+</section>
+<section aria-labelledby="recon-module-title-3" class="module-view" data-module-view="databook" hidden="" id="module-databook">
+<header class="module-heading"><div><span>CONFORMIDADE</span><h2 id="recon-module-title-3">Caminho Databook</h2></div><p>Preencha lacunas com o caminho exato da confirmação de alocação e, quando necessário, do arquivo de alocação do mesmo ano.</p></header>
+<section class="audit-config card">
+<div class="audit-config-main databook-config-main"><div class="section-title"><span>01</span><div><strong>Fontes controladas da rede</strong><small id="databook-controlled-status">Selecione as pastas da rede para usar as fontes controladas</small></div></div>
+<div class="databook-source-grid">
+<label class="file-source compact-source controlled-source"><input accept=".xlsx,.xls,.xlsm" directory="" id="databook-confirmation-folder" multiple="" type="file" webkitdirectory=""/><span class="file-icon">1</span><span><strong>Pasta de confirmações de alocação</strong><small id="databook-confirmation-meta">Prioridade máxima · selecione a pasta do ano correto</small></span></label>
+<label class="file-source compact-source controlled-source"><input accept=".xlsx,.xls,.xlsm" directory="" id="databook-allocation-folder" multiple="" type="file" webkitdirectory=""/><span class="file-icon">2</span><span><strong>Pasta dos arquivos de alocação</strong><small id="databook-allocation-meta">Usada somente quando a confirmação não contém o documento</small></span></label>
+<label class="file-source compact-source optional-source"><input accept=".xlsx,.xls,.xlsm" id="databook-reference" type="file"/><span class="file-icon">B</span><span><strong>Atualizar base Databook</strong><small id="databook-reference-meta">Opcional · apenas para auditoria complementar</small></span></label>
+</div>
+<div class="controlled-source-rule"><strong>Ordem obrigatória:</strong> confirmação da mesma alocação → arquivo da mesma alocação → pendência. O RECON não cruza sequências de anos diferentes e não reescreve o texto do caminho.</div>
+<small id="databook-base-status">Carregando 158 referências validadas</small>
+</div>
+<div class="configuration-footer"><span id="databook-ready-name">Aguardando LD</span><button class="primary-button" disabled="" id="databook-analyze" type="button">Analisar e preparar preenchimento</button></div>
+<div class="progress" hidden="" id="databook-progress"><div><i id="databook-progress-bar"></i></div><span id="databook-progress-text">Preparando…</span></div>
+</section>
+<section class="audit-results card" hidden="" id="databook-results">
+<header class="audit-head"><div class="section-title"><span>02</span><div><strong>Resultado da análise</strong><small>Os caminhos encontrados em fontes controladas já ficam aprovados; você pode mantê-los ou retirar a aprovação.</small></div></div><div class="audit-head-actions"><button class="secondary-button" id="databook-export" type="button">Baixar relatório</button><button class="primary-button" disabled="" id="databook-apply-ld" type="button">Gerar LD com caminhos confirmados</button></div></header>
+<nav class="audit-summary"><div><span>Analisados</span><strong data-db-count="all">0</strong></div><div class="ok"><span>Adequados</span><strong data-db-count="ok">0</strong></div><div class="warn"><span>Sugestões para conferir</span><strong data-db-count="review">0</strong></div><div class="pending"><span>Informação insuficiente</span><strong data-db-count="unsafe">0</strong></div><div class="approved"><span>Aprovados</span><strong data-db-count="approved">0</strong></div></nav>
+<div class="audit-toolbar"><label class="audit-filter labeled-filter sheet-filter"><span>Aba analisada</span><select id="databook-sheet"><option value="">Selecione uma aba</option></select></label><label class="search-box"><svg viewbox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="M16 16l5 5"></path></svg><input id="databook-search" placeholder="Buscar somente na aba selecionada" type="search"/></label><label class="audit-filter labeled-filter"><span>Situação</span><select id="databook-issue"><option value="">Todas as situações</option><option value="missing">Caminho vazio</option><option value="divergent">Caminho completo com divergência</option><option value="unconfirmed">Sem confirmação</option><option value="conflict">Conflito na LD</option><option value="ok">Adequado</option></select></label><label class="audit-filter labeled-filter"><span>Confiança</span><select id="databook-confidence"><option value="">Todas as confianças</option><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option><option value="nenhuma">Sem sugestão</option></select></label><span id="databook-result-meta">0 linhas</span></div>
+<div class="batch-bar"><label><input id="databook-select-visible" type="checkbox"/> Selecionar visíveis</label><span id="databook-selected-count">0 selecionados</span><div class="spacer"></div><button class="secondary-button" id="databook-approve-selected" type="button">Aprovar sugestões</button><button class="secondary-button" id="databook-keep-selected" type="button">Manter atuais</button></div>
+<div class="table-wrap audit-table-wrap"><table class="audit-table recon-data-table databook-controlled-table"><thead><tr><th scope="col"></th><th scope="col">Documento</th><th scope="col">Aba</th><th scope="col">Alocação</th><th scope="col">Fonte priorizada</th><th scope="col">Título na LD</th><th scope="col">Caminho atual</th><th scope="col">Caminho exato localizado</th><th scope="col">Conclusão</th><th scope="col">Confiança</th><th scope="col">Conflito na LD</th><th scope="col">Orientação</th><th scope="col">Decisão</th></tr></thead><tbody id="databook-body"></tbody></table><div class="empty" hidden="" id="databook-empty">Nenhum item corresponde aos filtros.</div></div>
+</section>
+</section>
+<section aria-labelledby="recon-module-title-4" class="module-view" data-module-view="titles" hidden="" id="module-titles">
+<header class="module-heading"><div><span>CONFORMIDADE</span><h2 id="recon-module-title-4">Corrigir títulos da LD</h2></div><p>Interprete o código completo, compare o título atual com a devolutiva e altere somente o que você aprovar.</p></header>
+<section class="audit-config card">
+<div class="audit-config-main"><div class="section-title"><span>BASES</span><div><strong>Referência de títulos</strong><small id="title-base-status">Carregando base controlada e SCON</small></div></div>
+<div class="title-reference-sources">
+<label class="file-source compact-source controlled-source"><input accept=".xlsx,.xls,.xlsm" id="title-scon-reference" type="file"/><span class="file-icon">S</span><span><strong>Atualizar SCON - TAG SGP</strong><small id="title-scon-reference-meta">Base incorporada · usa o 3º campo da DESCRIÇÃO</small></span></label>
+<label class="file-source compact-source optional-source"><input accept=".xlsx,.xls,.xlsm,.csv" id="title-reference" type="file"/><span class="file-icon">X</span><span><strong>Adicionar outra base de tags e descrições</strong><small id="title-reference-meta">Opcional · complementa a base controlada</small></span></label>
+</div>
+</div>
+<section aria-labelledby="title-scope-heading" class="title-scope-card">
+<header><div><span>ESCOPO</span><div><strong id="title-scope-heading">Quais códigos devem ser avaliados?</strong><small>Analise toda a LD ou carregue somente os códigos que deseja corrigir.</small></div></div></header>
+<div class="title-scope-mode" role="radiogroup" aria-label="Escopo da revisão de títulos">
+<label><input checked="" name="title-scope-mode" type="radio" value="all"/><span><strong>Toda a LD</strong><small>Avalia todos os documentos das abas técnicas.</small></span></label>
+<label><input name="title-scope-mode" type="radio" value="specific"/><span><strong>Códigos específicos</strong><small>Todos os códigos carregados receberão uma devolutiva: título sugerido ou motivo objetivo para conferência manual.</small></span></label>
+</div>
+<div class="title-code-loader" hidden="" id="title-code-loader">
+<div class="title-code-loader-grid">
+<label class="title-code-text"><span>Colar códigos</span><textarea id="title-code-text" placeholder="Cole um código documental por linha" spellcheck="false"></textarea></label>
+<label class="file-source compact-source title-code-file"><input accept=".xlsx,.xls,.xlsm,.csv,.txt" id="title-code-file" type="file"/><span class="file-icon">X</span><span><strong>Carregar relação de códigos</strong><small id="title-code-file-meta">Excel, CSV ou TXT</small></span></label>
+</div>
+<div class="title-code-actions"><span id="title-code-meta">Nenhum código preparado</span><button class="text-button danger" id="title-code-clear" type="button">Limpar códigos</button><button class="secondary-button" id="title-code-prepare" type="button">Preparar códigos</button></div>
+</div>
+</section>
+<div class="tag-policy-note"><strong>Regra de TAG</strong><span>O Campo 7 começa depois do sexto underline. Sem nt-, ele é tratado como TAG. Com nt-, o RECON interpreta O QUÊ + ONDE/QUANDO usando os prefixos do guia de documentação e o histórico controlado; o identificador nt- nunca é inserido como TAG.</span></div>
+<div class="configuration-footer"><span id="title-ready-name">Aguardando LD</span><button class="primary-button" disabled="" id="title-analyze" type="button">Analisar e gerar devolutiva</button></div>
+<div class="progress" hidden="" id="title-progress"><div><i id="title-progress-bar"></i></div><span id="title-progress-text">Preparando…</span></div>
+</section>
+<section class="audit-results card" hidden="" id="title-results">
+<header class="audit-head"><div class="section-title"><span>REVISÃO</span><div><strong>Resultado da análise</strong><small>Somente títulos aprovados podem ser aplicados à cópia da LD</small></div></div><div class="audit-head-actions"><button class="secondary-button" id="title-export" type="button">Baixar relatório da revisão</button><button class="primary-button" disabled="" id="title-apply-ld" type="button">Baixar cópia da LD revisada</button></div></header>
+<nav class="audit-summary"><div><span>Analisados</span><strong data-title-count="all">0</strong></div><div class="ok"><span>Adequados</span><strong data-title-count="ok">0</strong></div><div class="warn"><span>Sugestões para conferir</span><strong data-title-count="review">0</strong></div><div class="pending"><span>Informação insuficiente</span><strong data-title-count="unsafe">0</strong></div><div class="approved"><span>Aprovados</span><strong data-title-count="approved">0</strong></div></nav>
+<div class="audit-toolbar title-review-toolbar"><label class="audit-filter labeled-filter sheet-filter"><span>Aba analisada</span><select id="title-sheet"><option value="">Selecione uma aba</option></select></label><label class="search-box"><svg viewbox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="M16 16l5 5"></path></svg><input id="title-search" placeholder="Buscar documento, título ou evidência" type="search"/></label><label class="audit-filter labeled-filter"><span>Situação</span><select id="title-issue"><option value="">Todas as situações</option><option value="empty">Título vazio</option><option value="generic">Pouco específico</option><option value="description_mismatch">Descrição divergente</option><option value="missing_tag">TAG comprovada ausente</option><option value="possible_identifier">Possível identificador</option><option value="format">Padronização</option><option value="conflict">Conflito na LD</option><option value="ok">Adequado</option></select></label><label class="audit-filter labeled-filter"><span>Origem da evidência</span><select id="title-source-filter"><option value="">Todas as origens</option><option value="scon_exact">SCON exato</option><option value="scon_normalized">SCON normalizado</option><option value="scon_ambiguous">SCON ambíguo</option><option value="controlled">Outra base controlada</option><option value="without_evidence">Sem correspondência</option><option value="already_correct">Já correto</option></select></label><label class="audit-filter labeled-filter"><span>Confiança</span><select id="title-confidence"><option value="">Todas as confianças</option><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option><option value="nenhuma">Sem sugestão</option></select></label><span id="title-result-meta">0 linhas</span></div>
+<div class="batch-bar"><label><input id="title-select-visible" type="checkbox"/> Selecionar visíveis</label><span id="title-selected-count">0 selecionados</span><div class="spacer"></div><button class="secondary-button" id="title-approve-selected" type="button">Aprovar evidências idênticas</button><button class="secondary-button" id="title-keep-selected" type="button">Manter atuais</button></div>
+<div class="title-review-list" id="title-body" role="list" aria-label="Comparação de títulos"></div><div class="empty" hidden="" id="title-empty">Nenhum item corresponde aos filtros.</div>
+</section>
+</section>
+<section aria-labelledby="recon-module-title-5" class="module-view renamer-module" data-module-view="renamer" hidden="" id="module-renamer">
+<header class="module-heading"><div><span>ARQUIVOS</span><h2 id="recon-module-title-5">Renomeador de PDFs</h2></div><div aria-label="Atalhos do Renomeador" class="ops-renamer-shortcuts">Alt + ← anterior · Alt + → próximo · Alt + Enter confirmar</div></header>
+<div aria-label="Como usar o renomeador" class="renamer-howto">
+<div><b>1</b><span><strong>Escolha os PDFs</strong><small>Selecione arquivos ou uma pasta.</small></span></div>
+<div><b>2</b><span><strong>Escolha o nome desejado</strong><small>Use uma opção pronta ou abra os ajustes avançados.</small></span></div>
+<div><b>3</b><span><strong>Confira e baixe</strong><small>Revise o antes e depois e gere o pacote.</small></span></div>
+</div>
+<section class="renamer-input card">
+<header class="renamer-input-head">
+<div class="section-title"><span>01</span><div><strong>Quais PDFs você quer renomear?</strong><small id="renamer-file-meta">Nenhum PDF selecionado</small></div></div>
+<div class="renamer-file-actions">
+<label class="secondary-button file-button"><input accept=".pdf,application/pdf" id="renamer-files" multiple="" type="file"/>Escolher PDFs</label>
+<label class="secondary-button file-button"><input accept=".pdf,application/pdf" directory="" id="renamer-folder" multiple="" type="file" webkitdirectory=""/>Escolher uma pasta</label>
+<button class="text-button danger" disabled="" id="renamer-clear" type="button">Remover seleção</button>
+</div>
+</header>
+<div aria-label="Adicionar PDFs" class="renamer-dropzone" id="renamer-dropzone" role="button" tabindex="0">
+<svg viewbox="0 0 24 24"><path d="M4 6h7l2 2h7v10H4zM12 11v5M9.5 13.5L12 11l2.5 2.5"></path></svg>
+<span><strong>Ou arraste os PDFs para esta área</strong><small>O RECON cria cópias com novos nomes. Seus arquivos originais permanecem intactos.</small></span>
+</div>
+</section>
+<section class="renamer-config card">
+<div class="section-title"><span>02</span><div><strong>Como o novo nome deve ficar?</strong><small>Escolha a opção que mais se parece com o resultado que você precisa.</small></div></div>
+<div class="renamer-choice-row">
+<label class="renamer-main-choice"><span>Resultado desejado</span><select id="renamer-preset"><option value="certificate">Usar somente o número encontrado no PDF</option><option value="original-certificate">Manter o nome atual e acrescentar o número</option><option value="sequence">Criar nomes em sequência: CERTIFICADO_001, 002...</option><option value="custom">Montar outro formato</option></select><small id="renamer-choice-help">Exemplo: 123456.pdf</small></label>
+<div aria-live="polite" class="renamer-live-example"><span>Exemplo do resultado</span><strong id="renamer-example-name">123456.pdf</strong><small>Esta é apenas uma demonstração. A prévia real aparece depois da análise.</small></div>
+</div>
+<details class="renamer-advanced" id="renamer-advanced">
+<summary>Ajustes avançados <small>Abra somente quando precisar de uma regra diferente</small></summary>
+<div class="renamer-config-grid">
+<label class="renamer-template-field"><span>Como montar o nome</span><input id="renamer-template" spellcheck="false" type="text" value="{certificado}"/><small>Partes disponíveis: nome atual, certificado, sequência, data e página.</small></label>
+<label><span>Qual arquivo vem primeiro?</span><select id="renamer-sort"><option value="original">Ordem alfabética do nome atual</option><option value="certificate">Ordem do número encontrado</option><option value="selection">Mesma ordem em que os arquivos foram escolhidos</option></select></label>
+<label><span>Primeiro número da sequência</span><input id="renamer-start" min="0" step="1" type="number" value="1"/><small>Ex.: comece em 1, 10 ou 500.</small></label>
+<label><span>Quantidade de algarismos</span><input id="renamer-padding" max="8" min="1" step="1" type="number" value="3"/><small>3 algarismos gera 001, 002, 003.</small></label>
+<label><span>Onde procurar o número no PDF?</span><select id="renamer-pages"><option value="1">Somente na primeira página</option><option value="2">Nas 2 primeiras páginas</option><option selected="" value="3">Nas 3 primeiras páginas</option><option value="5">Nas 5 primeiras páginas</option><option value="0">Em todas as páginas</option></select></label>
+<label class="renamer-label-field"><span>Texto que aparece perto do número (opcional)</span><input id="renamer-label" placeholder="Ex.: Nº do certificado" type="text"/><small>Ajuda o sistema a escolher o número correto quando há vários no PDF.</small></label>
+</div>
+<div class="renamer-token-help"><strong>Para montar outro formato</strong><span><code>{original}</code> nome atual</span><span><code>{certificado}</code> número encontrado</span><span><code>{sequencia}</code> sequência 001, 002...</span><span><code>{data}</code> data atual</span><span><code>{pagina}</code> página onde o número foi localizado</span></div>
+<div class="renamer-preset-save"><label><span>Salvar estes ajustes para usar novamente</span><input id="renamer-preset-name" maxlength="40" placeholder="Ex.: Certificados da inspeção" type="text"/></label><button aria-label="Salvar estes ajustes" class="secondary-button" id="renamer-save-preset" type="button">Salvar meus ajustes</button><button class="text-button danger" hidden="" id="renamer-delete-preset" type="button">Excluir ajustes salvos</button></div>
+</details>
+<div class="renamer-pattern" hidden="" id="renamer-pattern"><div><strong>Encontramos um padrão nos nomes atuais</strong><span id="renamer-pattern-text"></span></div><button class="secondary-button" id="renamer-use-pattern" type="button">Usar este padrão</button></div>
+<div class="configuration-footer"><span id="renamer-ready">Escolha os PDFs para continuar</span><button class="primary-button" disabled="" id="renamer-analyze" type="button">Ler PDFs e mostrar os novos nomes</button></div>
+<div class="progress" hidden="" id="renamer-progress"><div><i id="renamer-progress-bar"></i></div><span id="renamer-progress-text">Preparando…</span></div>
+</section>
+<section class="renamer-results card" hidden="" id="renamer-results">
+<header class="renamer-results-head">
+<div class="section-title"><span>03</span><div><strong>Confira o antes e depois</strong><small id="renamer-result-meta">0 arquivos</small></div></div>
+<button class="primary-button" disabled="" id="renamer-download" type="button">Baixar pacote com novos nomes</button>
+</header>
+<nav class="audit-summary renamer-summary"><div><span>Arquivos</span><strong data-renamer-count="all">0</strong></div><div class="ok"><span>Prontos</span><strong data-renamer-count="ready">0</strong></div><div class="warn"><span>Conferir</span><strong data-renamer-count="review">0</strong></div><div class="pending"><span>Com erro</span><strong data-renamer-count="blocked">0</strong></div><div class="approved"><span>No pacote</span><strong data-renamer-count="selected">0</strong></div></nav>
+<div class="renamer-workbench">
+<aside class="renamer-queue">
+<header><strong>Lista de arquivos</strong><div><button class="secondary-button compact" disabled id="renamer-confirm-ready" type="button">Confirmar números localizados</button><label><input checked="" id="renamer-select-all" type="checkbox"/> Incluir todos</label></div></header>
+<div class="ops-renamer-tools"><input aria-label="Filtrar fila de PDFs" id="ops-renamer-search" placeholder="Filtrar arquivos" type="search"/><select aria-label="Filtrar situação da fila" id="ops-renamer-status"><option value="all">Todas</option><option value="ready">Prontos</option><option value="review">Revisar</option><option value="blocked">Com erro</option><option value="selected">No pacote</option></select><button class="text-button" id="renamer-clear-filters" type="button">Limpar filtros</button><span class="ops-renamer-filter-count" id="ops-renamer-filter-count">Nenhum arquivo</span></div>
+<div id="renamer-queue-list"></div>
+</aside>
+<section class="renamer-preview">
+<header><button aria-label="Página anterior" class="icon-button" id="renamer-prev-page" type="button">‹</button><span id="renamer-page-meta">Página —</span><button aria-label="Próxima página" class="icon-button" id="renamer-next-page" type="button">›</button></header>
+<div id="renamer-canvas-wrap"><canvas id="renamer-canvas"></canvas><empty-state class="renamer-preview-empty" id="renamer-preview-empty">Selecione um arquivo</empty-state></div>
+</section>
+<aside class="renamer-inspector">
+<div class="renamer-current"><span>Nome atual do arquivo</span><strong id="renamer-current-name">—</strong></div>
+<label><span>Número encontrado no PDF</span><input id="renamer-certificate" placeholder="Digite ou escolha uma sugestão abaixo" spellcheck="false" type="text"/><small>Corrija este campo somente quando o sistema escolher o número errado.</small></label>
+<div class="renamer-candidates" id="renamer-candidates"></div>
+<label><span>Número desta posição na sequência</span><input id="renamer-sequence" min="0" step="1" type="number"/><small>Usado apenas quando o formato contém uma sequência.</small></label>
+<label><span>Novo nome que será criado</span><input id="renamer-final-name" spellcheck="false" type="text"/><small>Você pode corrigir manualmente antes de baixar.</small></label>
+<div class="renamer-item-state neutral" id="renamer-item-state"><strong>Aguardando</strong><span>—</span></div>
+<label class="renamer-package-check"><input checked="" id="renamer-item-selected" type="checkbox"/> Incluir no pacote</label>
+<button class="secondary-button" id="renamer-confirm" type="button">Confirmar este número</button>
+<div class="renamer-nav"><button class="secondary-button" id="renamer-prev" type="button">Arquivo anterior</button><button class="secondary-button" id="renamer-next" type="button">Próximo arquivo</button></div>
+</aside>
+</div>
+<div class="renamer-package-summary" hidden id="renamer-package-summary" role="status"><strong>Último pacote gerado</strong><span id="renamer-package-summary-text">—</span></div>
+</section>
+</section>
+</main>
+<footer class="app-footer"><span>RECON 1.26.2 · Relações e Conformidade Documental</span><span>Processamento local · sem envio automático de arquivos</span></footer></div>
+<div class="drawer-overlay" hidden="" id="databook-assistant-overlay"></div><aside aria-hidden="true" aria-labelledby="databook-assistant-title" class="databook-assistant-drawer" hidden inert id="databook-assistant-drawer">
+<header class="drawer-header">
+<div><h2 id="databook-assistant-title">Assistente de Databook</h2><span id="databook-assistant-subtitle">Revisão nesta análise</span></div>
+<button aria-label="Fechar" class="icon-button" id="databook-assistant-close" type="button"><svg viewbox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"></path></svg></button>
+</header>
+<div class="databook-assistant-section-label">Revisão do caminho e dos níveis</div>
+<div class="databook-assistant-body">
+<section class="databook-assistant-panel" id="databook-review-panel">
+<div class="databook-review-summary">
+<div><span>Documento</span><strong id="databook-review-document">—</strong></div>
+<div><span>Origem atual</span><strong id="databook-review-source">—</strong></div>
+<div><span>Confiança</span><strong id="databook-review-confidence">—</strong></div>
+</div>
+<section aria-label="Comparação do caminho Databook" class="databook-comparison" id="databook-comparison">
+<div class="current"><span>Atual na LD ou controle</span><strong id="databook-comparison-current">—</strong></div>
+<svg aria-hidden="true" viewbox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"></path></svg>
+<div class="proposed"><span>Caminho proposto</span><strong id="databook-comparison-proposed">—</strong></div>
+</section>
+<label class="assistant-field" id="databook-review-title-field">Título para esta análise<input autocomplete="off" id="databook-review-title" spellcheck="false" type="text"/></label>
+<div class="title-quality-panel" id="databook-review-title-quality"></div>
+<label class="assistant-field">Caminho Data Book<input autocomplete="off" id="databook-review-path" list="databook-path-options" spellcheck="false" type="text"/></label>
+<datalist id="databook-path-options"></datalist>
+<div class="databook-level-grid" id="databook-review-levels"></div>
+<div class="databook-review-message" hidden="" id="databook-review-message"></div>
+</section>
+</div>
+<footer class="drawer-footer databook-review-footer">
+<button class="secondary-button" id="databook-assistant-cancel" type="button">Cancelar</button>
+<button class="secondary-button" id="databook-assistant-apply" type="button">Aplicar nesta análise</button>
+</footer>
+</aside><div class="drawer-overlay" hidden="" id="ld-compatibility-overlay"></div>
+<aside aria-hidden="true" aria-labelledby="ld-compatibility-title" class="compatibility-drawer" hidden inert id="ld-compatibility-drawer"><header><div><h2 id="ld-compatibility-title">Estrutura da LD</h2><span id="ld-compatibility-summary">Analisando estrutura</span></div><button aria-label="Fechar" class="icon-button" id="ld-compatibility-close" type="button"><svg viewbox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"></path></svg></button></header><div class="compatibility-body" id="ld-compatibility-body"></div><div class="compatibility-message" hidden="" id="ld-compatibility-message"></div><footer><button class="secondary-button" id="ld-compatibility-cancel" type="button">Cancelar</button><button class="primary-button" id="ld-compatibility-confirm" type="button">Confirmar associações</button></footer></aside>
+<div class="p1-confirm-overlay" hidden="" id="p1-confirm-overlay"></div>
+<section aria-labelledby="p1-confirm-title" aria-modal="true" class="p1-confirm-dialog" hidden="" id="p1-confirm-dialog" role="dialog">
+<div aria-hidden="true" class="p1-confirm-icon">✓</div>
+<div><h2 id="p1-confirm-title">Confirmar saída</h2><p id="p1-confirm-message"></p></div>
+<ul id="p1-confirm-facts"></ul>
+<section class="p1-output-audit" hidden="" id="p1-output-audit">
+<div class="p1-output-audit-head"><span>Conferência final</span><strong id="p1-output-audit-summary">—</strong></div>
+<div class="p1-output-audit-state" id="p1-output-audit-state">—</div>
+<div class="p1-output-audit-list" id="p1-output-audit-list"></div>
+<small id="p1-output-audit-more"></small>
+</section>
+<div class="p1-confirm-actions"><button class="secondary-button" id="p1-confirm-cancel" type="button">Voltar e conferir</button><button class="primary-button" id="p1-confirm-ok" type="button">Confirmar</button></div>
+</section>
+<div class="recon-preferences-overlay" hidden id="recon-preferences-overlay"></div>
+<section aria-hidden="true" aria-labelledby="recon-preferences-title" aria-modal="true" class="recon-preferences-dialog" hidden id="recon-preferences-dialog" role="dialog">
+<header><div><span>CONFIGURAÇÕES LOCAIS</span><h2 id="recon-preferences-title">Preferências e manutenção do RECON</h2><p>Exporte filtros, restaure configurações e limpe somente o que for necessário.</p></div><button aria-label="Fechar preferências" class="icon-button" id="recon-preferences-close" type="button">×</button></header>
+<div class="recon-preferences-body macro6-productivity-card">
+<div class="macro6-storage-status" id="recon-preferences-storage" aria-live="polite">Calculando armazenamento local…</div>
+<div class="macro6-productivity-grid">
+<section class="macro6-productivity-section"><header><strong>Filtros e preferências</strong><small>Relações, Alocação, TAGs, Títulos, Renomeador e último módulo acessado.</small></header><div class="macro6-action-row"><button class="secondary-button compact" data-macro6-action id="recon-preferences-export" type="button">Exportar preferências</button><button class="secondary-button compact" data-macro6-action id="recon-preferences-import-button" type="button">Importar preferências</button><input accept="application/json,.json" hidden id="recon-preferences-import" type="file"/></div></section>
+<section class="macro6-productivity-section"><header><strong>Backup operacional</strong><small>Inclui preferências persistentes, predefinições e rascunhos da sessão.</small></header><div class="macro6-action-row"><button class="primary-button compact" data-macro6-action id="recon-full-export" type="button">Criar backup</button><button class="secondary-button compact" data-macro6-action id="recon-full-import-button" type="button">Restaurar backup</button><input accept="application/json,.json" hidden id="recon-full-import" type="file"/></div></section>
+<section class="macro6-productivity-section"><header><strong>Resumo da sessão</strong><small>Reúne os indicadores disponíveis nos módulos já processados.</small></header><div class="macro6-action-row"><button class="secondary-button compact" data-macro6-action id="recon-session-report" type="button">Baixar resumo em CSV</button></div><small>A aprovação em lote de títulos continua limitada a evidências idênticas.</small></section>
+<section class="macro6-productivity-section macro6-warning-section"><header><strong>Limpeza controlada</strong><small>As bases incorporadas e as regras documentais não são afetadas.</small></header><div class="macro6-action-row"><button class="secondary-button compact" data-macro6-action id="recon-reset-preferences" type="button">Restaurar preferências padrão</button><button class="danger-button compact" data-macro6-action id="recon-clear-operational" type="button">Limpar rascunhos da sessão</button></div></section>
+</div>
+<div class="recon-preferences-status" id="recon-preferences-status" aria-live="polite">Aguardando ação.</div>
+</div>
+</section>
+<app-toast aria-live="polite" class="toast" id="toast" role="status"></app-toast>
+<div class="pending-panel-overlay" hidden="" id="recon-pending-overlay"></div>
+<aside aria-hidden="true" aria-labelledby="recon-pending-title" class="pending-panel-drawer" hidden="" id="recon-pending-drawer">
+<header><div><span>CONTROLE CENTRAL</span><h2 id="recon-pending-title">Pendências da sessão</h2><p>Erros, alertas e sugestões reunidos em um só lugar.</p></div><button aria-label="Fechar pendências" id="recon-pending-close" type="button">×</button></header>
+<div class="pending-panel-summary" id="recon-pending-summary"></div>
+<div aria-label="Filtrar por nível de risco" class="pending-panel-filters" role="group"><button aria-pressed="true" class="active" data-pending-risk="all" type="button">Todas</button><button aria-pressed="false" data-pending-risk="error" type="button">Erros</button><button aria-pressed="false" data-pending-risk="warning" type="button">Alertas</button><button aria-pressed="false" data-pending-risk="suggestion" type="button">Sugestões</button></div>
+<div class="pending-panel-list" id="recon-pending-list"></div><empty-state class="pending-panel-empty" hidden="" id="recon-pending-empty"><strong>Nenhuma pendência neste filtro</strong><span>Os resultados já conferidos não aparecem aqui.</span></empty-state>
+</aside>
+<script defer src="output_audit.js"></script>
+<script defer src="pending_core.js"></script>
+<script defer src="recon-brand.js"></script>
+<script defer src="recon_contracts.js"></script>
+<script defer src="task_center.js"></script>
+<script defer src="recon_module_loader.js"></script>
+<script defer src="recon_compute_client.js"></script>
+<script defer src="recon_pager.js"></script>
+<script defer src="recon_app.js"></script>
+<script defer src="pending_panel.js"></script>
+<script defer src="p1_ux.js"></script>
+<script defer src="app-ui.js"></script>
+<script defer src="ui-v3.js"></script>
+<script defer src="productivity_center.js"></script>
+</body>
+</html>

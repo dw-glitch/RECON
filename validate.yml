@@ -1,0 +1,21 @@
+name: Validate static app
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: |
+          find . -maxdepth 1 -name "*.js" -print0 | xargs -0 -n1 node --check
+      - name: Check required entry point
+        run: test -f index.html
+      - name: Check duplicate HTML ids and local references
+        run: python3 .github/scripts/validate_static.py
