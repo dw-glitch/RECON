@@ -39,6 +39,7 @@
     busy: false,
     loadingLd: false,
     loadToken: 0,
+    compatibilityBypassedForTitles: false,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -125,6 +126,16 @@
 
   function yieldFrame() {
     return new Promise((resolve) => window.setTimeout(resolve, 0));
+  }
+
+  function activeModuleName() {
+    const activeLink = document.querySelector('.module-link[data-module].active');
+    if (activeLink && activeLink.dataset.module) return activeLink.dataset.module;
+    try { return window.sessionStorage.getItem('recon.active.module.v1') || 'relations'; } catch (_) { return 'relations'; }
+  }
+
+  function titleAnalysisMode() {
+    return activeModuleName() === 'titles';
   }
 
   function readDraft() {
@@ -333,6 +344,7 @@
 
   async function loadLd(file, interactive) {
     if (!file) return false;
+    const bypassTitleAssociations = titleAnalysisMode();
     const token = ++state.loadToken;
     state.loadingLd = true;
     state.ldFile = file;
@@ -345,7 +357,7 @@
     updateControls();
     setProgress(7, "Reconhecendo a estrutura da LD…");
     try {
-      if (L) {
+      if (L && !bypassTitleAssociations) {
         await L.prepare(file, { interactive: Boolean(interactive) });
         if (token !== state.loadToken) return false;
         els.compatibilityOpen.hidden = false;
@@ -355,6 +367,9 @@
           updateControls();
           return false;
         }
+      } else if (bypassTitleAssociations) {
+        if (L) L.close();
+        els.compatibilityOpen.hidden = true;
       }
       setProgress(34, "Lendo documentos e histórico fora da interface…");
       let parsed; let index;
@@ -362,27 +377,47 @@
         const result = await window.RECONWorkbookWorker.readLd(file, {
           sourceName: file.name,
           sourceTimestamp: file.lastModified || 0,
-          compatibilityProfile: L && L.profileFor(file),
+          compatibilityProfile: bypassTitleAssociations ? null : (L && L.profileFor(file)),
           buildIndex: true,
         });
         parsed = result.parsed; index = result.index;
       } else {
-        const workbook = L && L.workbookFor(file) || await readWorkbook(file);
-        parsed = C.parseWorkbook(workbook, file.name, file.lastModified || 0, L && L.profileFor(file));
+        const workbook = !bypassTitleAssociations && L && L.workbookFor(file) || await readWorkbook(file);
+        parsed = C.parseWorkbook(workbook, file.name, file.lastModified || 0, bypassTitleAssociations ? null : (L && L.profileFor(file)));
         index = C.buildIndex(parsed.records, parsed.history);
       }
       if (token !== state.loadToken) return false;
       if (!parsed.records.length) throw new Error("Nenhum documento técnico foi encontrado na LD.");
       state.parsed = parsed;
       state.index = index;
+      state.compatibilityBypassedForTitles = bypassTitleAssociations;
       setProgress(54, `${state.index.documents.length} documentos localizados…`);
       state.catalogRows = await buildCatalog(token);
       if (token !== state.loadToken) return false;
-      const draft = readDraft();
+      window.addEventListener("recon:module", (event) => {
+    const module = event.detail && event.detail.module;
+    if (module === "titles") {
+      if (L) L.close();
+      els.compatibilityOpen.hidden = true;
+      if (state.ldFile && !state.index && !state.loadingLd) loadLd(state.ldFile, false);
+      return;
+    }
+    if (state.ldFile && L && L.inspectionFor(state.ldFile)) els.compatibilityOpen.hidden = false;
+    if ((module === "relations" || module === "databook") && state.compatibilityBypassedForTitles && state.ldFile && !state.loadingLd) {
+      state.parsed = null;
+      state.index = null;
+      state.catalogRows = [];
+      state.compatibilityBypassedForTitles = false;
+      window.dispatchEvent(new CustomEvent("recon:ld-cleared", { detail: { file: state.ldFile, reason: "compatibility-required" } }));
+      loadLd(state.ldFile, true);
+    }
+  });
+
+  const draft = readDraft();
       populateFilters(draft);
       renderFieldOptions(draft);
       setProgress(100, "LD pronta para consulta");
-      setSourceState("LD pronta", "ready", `${state.catalogRows.length.toLocaleString("pt-BR")} documentos · ${parsed.history.length.toLocaleString("pt-BR")} registros SIGEM`);
+      setSourceState(bypassTitleAssociations ? "LD pronta para títulos" : "LD pronta", "ready", `${state.catalogRows.length.toLocaleString("pt-BR")} documentos · ${parsed.history.length.toLocaleString("pt-BR")} registros SIGEM`);
       window.setTimeout(hideProgress, 500);
       updateControls();
       window.dispatchEvent(new CustomEvent("recon:ld-ready", { detail: {
@@ -890,9 +925,29 @@
   if (els.saveFilters) els.saveFilters.addEventListener("click", () => { saveDraft(); renderActiveFilters(); showToast("Combinação de filtros salva neste navegador.", "success"); });
   if (els.resetFilters) els.resetFilters.addEventListener("click", resetRelationFilters);
   document.addEventListener("recon:ld-compatibility", (event) => {
+    if (titleAnalysisMode()) return;
     if (!event.detail || event.detail.file !== state.ldFile) return;
     if (event.detail.ready && !state.index && !state.loadingLd) loadLd(event.detail.file, false);
     else updateControls();
+  });
+
+  window.addEventListener("recon:module", (event) => {
+    const module = event.detail && event.detail.module;
+    if (module === "titles") {
+      if (L) L.close();
+      els.compatibilityOpen.hidden = true;
+      if (state.ldFile && !state.index && !state.loadingLd) loadLd(state.ldFile, false);
+      return;
+    }
+    if (state.ldFile && L && L.inspectionFor(state.ldFile)) els.compatibilityOpen.hidden = false;
+    if ((module === "relations" || module === "databook") && state.compatibilityBypassedForTitles && state.ldFile && !state.loadingLd) {
+      state.parsed = null;
+      state.index = null;
+      state.catalogRows = [];
+      state.compatibilityBypassedForTitles = false;
+      window.dispatchEvent(new CustomEvent("recon:ld-cleared", { detail: { file: state.ldFile, reason: "compatibility-required" } }));
+      loadLd(state.ldFile, true);
+    }
   });
 
   const draft = readDraft();

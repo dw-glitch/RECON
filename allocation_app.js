@@ -870,7 +870,7 @@
     const show = Boolean(plan && plan.groups && plan.groups.length && (plan.etGroups > 0 || plan.groups.length > 1));
     els.batchPlan.hidden = !show;
     const plural = Boolean(plan && plan.groups && plan.groups.length > 1);
-    els.exportFile.textContent = plural ? "Baixar alocações (ZIP)" : "Baixar alocação";
+    els.exportFile.textContent = plural ? "Baixar alocações no modelo oficial (ZIP)" : "Baixar alocação no modelo oficial";
     els.exportControl.textContent = plural ? "Baixar linhas por alocação (ZIP)" : "Baixar linhas do controle";
     els.exportPackage.textContent = plural ? "Gerar pacote das alocações" : "Gerar pacote";
     if (!show) return;

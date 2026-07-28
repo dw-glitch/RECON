@@ -6,6 +6,7 @@
   const moduleState = new Map();
   const busyModules = new Set();
   let compatibilityMode = false;
+  const moduleLabels = { relations: "Relações", allocation: "Alocação", databook: "Databook", titles: "Correção de títulos", tags: "Conferência de TAGs", renamer: "Renomeador" };
 
   const moduleDeps = {
     relations: ["relations"],
@@ -32,6 +33,7 @@
     audit: ["TriagemCore", "RECONAuditCore", "RECONAudits"],
     tags: ["RECONTagConferenceCore", "RECONTagConference"],
     renamer: ["RECONRenamerCore", "RECONRenamer"],
+    "offline:scon-escopo-titles": ["RECONSconEscopoTitleCatalog"],
   };
 
   const groups = {
@@ -42,10 +44,11 @@
     "offline:audit": ["offline", "offline_recon_audit_bases.js"],
     "offline:databook-b": ["offline", "offline_recon_databook_b.js"],
     "offline:pdf-worker": ["offline", "offline_recon_pdf_worker.js"],
+    "offline:scon-escopo-titles": ["scon_escopo_title_catalog.js"],
     common: ["recon_compute_client.js", "recon_pager.js", "core.js", "ld_conflicts.js", "recon_export_guard.js", "ld_compatibility.js", "timeline_core.js"],
     relations: ["xlsx", "common", "relations_core.js", "relations_app.js"],
-    allocation: ["xlsx", "offline:databook-b", "common", "allocation_confirmation_sources.js", "allocation_core.js", "allocation_batches.js", "databook_catalog.js", "databook_allocation_sources.js", "allocation_workbook.js", "allocation_title_quality.js", "allocation_app.js"],
-    audit: ["xlsx", "offline:audit", "common", "allocation_confirmation_sources.js", "allocation_core.js", "databook_catalog.js", "databook_allocation_sources.js", "non_tagged_title_rules.js", "scon_catalog_loader.js", "audit_core.js", "ld_preservation.js", "ld_databook_writer.js", "ld_title_writer.js", "audit_app.js"],
+    allocation: ["xlsx", "offline:databook-b", "common", "allocation_confirmation_sources.js", "allocation_core.js", "allocation_batches.js", "databook_catalog.js", "databook_allocation_sources.js", "offline_recon_allocation_template.js", "allocation_workbook.js", "allocation_title_quality.js", "allocation_app.js"],
+    audit: ["xlsx", "offline:audit", "offline:scon-escopo-titles", "common", "allocation_confirmation_sources.js", "allocation_core.js", "databook_catalog.js", "databook_allocation_sources.js", "non_tagged_title_rules.js", "scon_catalog_loader.js", "audit_core.js", "ld_preservation.js", "ld_databook_writer.js", "ld_title_writer.js", "audit_app.js"],
     tags: ["xlsx", "tag_reference_catalog.js", "tag_conference_core.js", "tag_conference_app.js"],
     renamer: ["offline:pdf-worker", "pdf.min.js", "renamer_core.js", "renamer_app.js"],
   };
@@ -74,7 +77,7 @@
     const status = document.getElementById("runtime-status-text") || document.querySelector(".runtime-status span:last-child");
     if (!status) return;
     if (busy && message) status.textContent = message;
-    else if (!busy) status.textContent = compatibilityMode ? "Modo compatível · processamento local" : "Execução local";
+    else if (!busy) status.textContent = "Pronto para uso";
   }
 
   function setBusy(module, busy, message) {
@@ -171,7 +174,7 @@
     if (moduleState.get(module) === "loading") return loading.get(`module:${module}`);
 
     moduleState.set(module, "loading");
-    setBusy(module, true, `Carregando ${module}…`);
+    setBusy(module, true, `Abrindo ${moduleLabels[module] || "módulo"}…`);
 
     const promise = (async () => {
       try {
@@ -186,7 +189,7 @@
         console.error(error);
         const toast = document.getElementById("toast");
         if (toast) {
-          toast.textContent = error.message || `Falha ao carregar ${module}.`;
+          toast.textContent = "Não foi possível abrir este módulo. Recarregue a página e tente novamente.";
           toast.className = "toast show error";
         }
         throw error;
@@ -203,14 +206,8 @@
   root.addEventListener("recon:worker-fallback", () => {
     compatibilityMode = true;
     document.body.classList.add("recon-worker-fallback");
-    document.body.dataset.reconWorkerMode = "compatible";
+    document.body.dataset.reconWorkerMode = "local";
     updateGlobalBusy();
-    const toast = document.getElementById("toast");
-    if (toast && toast.dataset.workerFallbackShown !== "true") {
-      toast.dataset.workerFallbackShown = "true";
-      toast.textContent = "O navegador bloqueou o Worker. O RECON continuará em modo compatível; esta análise pode levar mais tempo.";
-      toast.className = "toast show warning";
-    }
   });
 
   root.addEventListener("recon:module", (event) => {

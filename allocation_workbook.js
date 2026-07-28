@@ -74,28 +74,128 @@
     return row;
   }
 
+  function decodeTemplate(base64) {
+    const value = String(base64 || "");
+    if (!value) throw new Error("Modelo oficial de alocação indisponível.");
+    if (typeof Buffer !== "undefined" && typeof Buffer.from === "function") return Buffer.from(value, "base64");
+    if (typeof atob !== "function") throw new Error("O navegador não conseguiu abrir o modelo oficial de alocação.");
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes.buffer;
+  }
+
+  function xmlEscape(value) {
+    return String(value === null || value === undefined ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&apos;");
+  }
+
+  function excelSerial(value) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    const date = asDate(value);
+    if (!date) return null;
+    return Math.round(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000 + 25569);
+  }
+
+  function inlineCell(reference, style, value, options) {
+    const settings = options || {};
+    if (value === null || value === undefined || value === "") return `<c r="${reference}" s="${style}"/>`;
+    if (settings.date) {
+      const serial = excelSerial(value);
+      if (serial !== null) return `<c r="${reference}" s="${style}"><v>${serial}</v></c>`;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) return `<c r="${reference}" s="${style}"><v>${value}</v></c>`;
+    if (typeof value === "boolean") return `<c r="${reference}" s="${style}" t="b"><v>${value ? 1 : 0}</v></c>`;
+    return `<c r="${reference}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
+  }
+
+  function allocationRowXml(rowNumber, values) {
+    const row = values || [];
+    const workflowStyle = rowNumber <= 27 ? 5 : 4;
+    const cells = [
+      inlineCell(`A${rowNumber}`, 8, row[0]),
+      inlineCell(`B${rowNumber}`, 8, row[1], { date: true }),
+      inlineCell(`C${rowNumber}`, workflowStyle, row[2]),
+      row[3] === null || row[3] === undefined || row[3] === "" ? "" : inlineCell(`D${rowNumber}`, 6, row[3]),
+      inlineCell(`E${rowNumber}`, 6, row[4]),
+      inlineCell(`F${rowNumber}`, 6, row[5], { date: true }),
+      inlineCell(`G${rowNumber}`, 7, row[6]),
+      inlineCell(`H${rowNumber}`, 6, row[7]),
+      inlineCell(`I${rowNumber}`, 6, row[8]),
+      inlineCell(`J${rowNumber}`, 6, row[9]),
+      inlineCell(`K${rowNumber}`, 6, row[10]),
+      inlineCell(`L${rowNumber}`, 6, row[11]),
+      inlineCell(`M${rowNumber}`, 6, row[12]),
+      inlineCell(`N${rowNumber}`, 3, row[13]),
+      inlineCell(`O${rowNumber}`, 3, row[14]),
+      inlineCell(`P${rowNumber}`, 3, row[15]),
+    ].join("");
+    return `<row r="${rowNumber}" spans="1:16" x14ac:dyDescent="0.35">${cells}</row>`;
+  }
+
+  function blankAllocationRowXml(rowNumber) {
+    return allocationRowXml(rowNumber, Array(16).fill(null));
+  }
+
+  function updateFilterDatabase(workbookXml, lastFilterRow) {
+    return workbookXml.replace(
+      /(<definedName\b[^>]*name="_xlnm\._FilterDatabase"[^>]*>)[\s\S]*?(<\/definedName>)/,
+      (_match, opening, closing) => `${opening}GERAL!$A$1:$P$${lastFilterRow}${closing}`,
+    );
+  }
+
+  function updateCoreProperties(coreXml) {
+    const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    let output = coreXml
+      .replace(/<dc:creator>[\s\S]*?<\/dc:creator>/, "<dc:creator>RECON 1.26.10</dc:creator>")
+      .replace(/<cp:lastModifiedBy>[\s\S]*?<\/cp:lastModifiedBy>/, "<cp:lastModifiedBy>RECON 1.26.10</cp:lastModifiedBy>");
+    output = output.replace(
+      /(<dcterms:modified\b[^>]*>)[\s\S]*?(<\/dcterms:modified>)/,
+      (_match, opening, closing) => `${opening}${now}${closing}`,
+    );
+    return output;
+  }
+
   async function buildAllocation(results, ExcelJS) {
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = "RECON";
-    workbook.created = new Date();
-    workbook.modified = new Date();
-    workbook.calcProperties.fullCalcOnLoad = true;
-    const sheet = workbook.addWorksheet("GERAL", { properties: { defaultRowHeight: 15 } });
-    sheet.views = [{ state: "frozen", ySplit: 1, activeCell: "A2", showGridLines: false, zoomScale: 95, zoomScaleNormal: 95 }];
-    const headerRow = setRowValues(sheet, 1, A.ALLOCATION_HEADERS.map((header) => String(header)));
-    styleHeader(headerRow, { yellowColumns });
+    const template = typeof globalThis !== "undefined" ? globalThis.RECONAllocationTemplate : null;
+    const Zip = typeof globalThis !== "undefined" ? globalThis.JSZip : null;
+    if (!template || !template.base64) throw new Error("Modelo oficial de alocação não foi carregado.");
+    if (!Zip || typeof Zip.loadAsync !== "function") throw new Error("Biblioteca ZIP indisponível para gerar a alocação no modelo oficial.");
 
-    (results || []).forEach((result, index) => {
-      const row = setRowValues(sheet, index + 2, dateCells(A.allocationRow(result), [1, 5]));
-      styleDataRow(row, A.ALLOCATION_HEADERS.length, new Set([2, 6]), index);
+    const list = results || [];
+    const dataEndRow = list.length + 1;
+    const lastStyledRow = Math.max(126, dataEndRow);
+    const lastFilterRow = Math.max(104, dataEndRow);
+    const zip = await Zip.loadAsync(decodeTemplate(template.base64));
+    const sheetEntry = zip.file("xl/worksheets/sheet1.xml");
+    const workbookEntry = zip.file("xl/workbook.xml");
+    if (!sheetEntry || !workbookEntry) throw new Error("O modelo oficial de alocação está incompleto.");
+
+    let sheetXml = await sheetEntry.async("string");
+    const headerMatch = sheetXml.match(/<row\b[^>]*r="1"[^>]*>[\s\S]*?<\/row>/);
+    if (!headerMatch) throw new Error("O cabeçalho do modelo oficial de alocação não foi localizado.");
+    const rows = [headerMatch[0]];
+    list.forEach((result, index) => {
+      rows.push(allocationRowXml(index + 2, dateCells(A.allocationRow(result), [1, 5])));
     });
+    for (let rowNumber = dataEndRow + 1; rowNumber <= lastStyledRow; rowNumber += 1) rows.push(blankAllocationRowXml(rowNumber));
 
-    [40, 17.86, 31.86, 16, 14, 17, 24, 15, 32, 62.86, 15, 18, 27.43, 18, 15, 15]
-      .forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
-    sheet.autoFilter = { from: "A1", to: `P${Math.max(1, sheet.rowCount)}` };
-    sheet.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: "1:1", margins: { left: .25, right: .25, top: .45, bottom: .45, header: .2, footer: .2 } };
-    sheet.headerFooter.oddFooter = "&LRECON · ALOCAÇÃO&C&P de &N&R&D";
-    return workbook.xlsx.writeBuffer();
+    sheetXml = sheetXml
+      .replace(/<dimension\b[^>]*ref="[^"]*"[^>]*\/>/, `<dimension ref="A1:P${lastStyledRow}"/>`)
+      .replace(/<sheetData>[\s\S]*?<\/sheetData>/, `<sheetData>${rows.join("")}</sheetData>`)
+      .replace(/(<autoFilter\b[^>]*ref=")[^"]*(")/, (_match, opening, closing) => `${opening}A1:P${lastFilterRow}${closing}`);
+    zip.file("xl/worksheets/sheet1.xml", sheetXml);
+
+    const workbookXml = updateFilterDatabase(await workbookEntry.async("string"), lastFilterRow);
+    zip.file("xl/workbook.xml", workbookXml);
+    const coreEntry = zip.file("docProps/core.xml");
+    if (coreEntry) zip.file("docProps/core.xml", updateCoreProperties(await coreEntry.async("string")));
+
+    return zip.generateAsync({ type: "uint8array", compression: "DEFLATE", compressionOptions: { level: 6 } });
   }
 
   async function buildControlLines(results, meta, ExcelJS) {
@@ -181,7 +281,7 @@
 
   async function buildAnalysisReport(results, meta, ExcelJS) {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = "RECON 1.26.2";
+    workbook.creator = "RECON 1.26.10";
     workbook.created = new Date();
     workbook.modified = new Date();
     const settings = meta || {};
@@ -265,7 +365,12 @@
       const actual = valueText(allocationSheet.getCell(1, index + 1).value);
       if (actual !== header) throw new Error(`Cabeçalho da alocação inválido na coluna ${index + 1}: esperado “${header}”, encontrado “${actual}”.`);
     });
-    if (allocationSheet.rowCount !== expected.length + 1) throw new Error("A quantidade de linhas da alocação não confere.");
+    const allocationDocuments = [];
+    for (let rowNumber = 2; rowNumber <= allocationSheet.rowCount; rowNumber += 1) {
+      const document = valueText(allocationSheet.getCell(rowNumber, 1).value);
+      if (document) allocationDocuments.push({ rowNumber, document });
+    }
+    if (allocationDocuments.length !== expected.length) throw new Error("A quantidade de documentos da alocação não confere.");
 
     const controlBook = new ExcelJS.Workbook();
     await controlBook.xlsx.load(buffer.control);

@@ -73,7 +73,7 @@
       task.worker.onmessage = (event) => {
         const data = event.data || {};
         if (data.id !== id || task.settled) return;
-        if (data.error) finish(reject, new Error(data.error));
+        if (data.error) fallback(new Error(data.error));
         else finish(resolve, data.result);
       };
       task.worker.onerror = (event) => fallback(new Error(event.message || "Falha de infraestrutura no Worker de análise."));

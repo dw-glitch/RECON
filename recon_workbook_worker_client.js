@@ -43,7 +43,7 @@
         task.directTimer = 0;
         if (task.cancelled) { reject(abortError("Leitura cancelada pelo usuário.")); return; }
         try {
-          dispatchProgress(task.id, mode, 15, "Abrindo planilha em modo compatível");
+          dispatchProgress(task.id, mode, 15, "Abrindo planilha");
           const workbook = root.XLSX.read(buffer, { type: "array", cellDates: true, cellFormula: true, dense: false, ...(options || {}) });
           if (mode === "ld") {
             dispatchProgress(task.id, mode, 48, "Lendo documentos e histórico");
@@ -55,13 +55,13 @@
             );
             dispatchProgress(task.id, mode, 76, "Criando índice da LD");
             const index = meta && meta.buildIndex === false ? null : root.TriagemCore.buildIndex(parsed.records, parsed.history);
-            dispatchProgress(task.id, mode, 100, "Concluído em modo compatível");
+            dispatchProgress(task.id, mode, 100, "Concluído");
             resolve({ parsed, index });
             return;
           }
           dispatchProgress(task.id, mode, 70, "Preparando abas");
           const serialized = serializeWorkbook(workbook);
-          dispatchProgress(task.id, mode, 100, "Concluído em modo compatível");
+          dispatchProgress(task.id, mode, 100, "Concluído");
           resolve(serialized);
         } catch (error) { reject(error); }
       }, 0);
@@ -104,7 +104,7 @@
         const data = event.data || {};
         if (data.id !== id || task.settled) return;
         if (data.progress !== undefined) dispatchProgress(id, mode, data.progress, data.message || "");
-        if (data.error) { finish(reject, new Error(data.error)); return; }
+        if (data.error) { fallback(new Error(data.error)); return; }
         if (data.result) finish(resolve, data.result);
       };
       task.worker.onerror = (event) => fallback(new Error(event.message || "Falha de infraestrutura no Worker da planilha."));

@@ -1,4 +1,4 @@
-/* RECON 1.26.2 — camada final consolidada. */
+/* RECON 1.26.4 — camada final consolidada. */
 /* RECON 1.24.0 — camada visual estrutural, acessível e responsiva. */
 html[data-app="RECON"][data-ui-generation="3"] {
   --ui-bg: #f3f6f8;
@@ -334,7 +334,7 @@ html[data-app="RECON"][data-ui-generation="3"] .p1-task-grid > button {
 }
 
 
-/* RECON 1.26.2 — Macroetapa 4: redesign funcional dos módulos operacionais. */
+/* RECON 1.26.4 — Macroetapa 4: redesign funcional dos módulos operacionais. */
 html[data-app="RECON"][data-functional-generation="4"] {
   --f4-border: color-mix(in srgb, var(--border, #cbd8e3) 82%, transparent);
   --f4-muted: var(--text-muted, #607487);
@@ -940,7 +940,7 @@ html[data-app="RECON"][data-functional-generation="4"] .renamer-package-summary 
 }
 
 
-/* RECON 1.26.2 — correção de sobreposição no módulo Corrigir títulos. */
+/* RECON 1.26.4 — correção de sobreposição no módulo Corrigir títulos. */
 html[data-app="RECON"][data-functional-generation="4"] #module-titles .audit-config-main {
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
@@ -1083,7 +1083,7 @@ html[data-app="RECON"] #recon-preferences-open { margin-top: .25rem; }
   html[data-app="RECON"] .recon-preferences-dialog { scroll-behavior: auto; }
 }
 
-/* RECON 1.26.2 — contraste AA para textos secundários. */
+/* RECON 1.26.4 — contraste AA para textos secundários. */
 html[data-app="RECON"] .configuration-footer > span,
 html[data-app="RECON"] .mode-switch small,
 html[data-app="RECON"] #allocation-text-count,
@@ -1096,7 +1096,7 @@ html[data-app="RECON"] .databook-level-grid label {
 }
 
 
-/* RECON 1.26.2 — contraste e legibilidade final. */
+/* RECON 1.26.4 — contraste e legibilidade final. */
 html[data-app="RECON"] .primary-button:disabled,
 html[data-app="RECON"] .analyze-button:disabled,
 html[data-app="RECON"] .final-package-button:disabled {
@@ -1113,3 +1113,60 @@ html[data-app="RECON"] .renamer-live-example {
 html[data-app="RECON"] .renamer-live-example > span,
 html[data-app="RECON"] .renamer-live-example small { color: #e8f3fa; }
 html[data-app="RECON"] .renamer-live-example strong { color: #ffffff; }
+
+
+/* RECON 1.26.4 — títulos sem confirmação manual de associações */
+html[data-app="RECON"] .title-analysis-rule {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+/* RECON 1.26.10 — interface compacta, linguagem operacional e evidência SCON ESCOPO. */
+html[data-app="RECON"] :where(.filter-panel,.results-toolbar,.audit-toolbar,.allocation-toolbar,.tag-toolbar,.ops-renamer-tools,.title-review-toolbar) {
+  gap: .55rem;
+}
+html[data-app="RECON"] :where(.filter-panel,.results-toolbar,.audit-toolbar,.allocation-toolbar,.tag-toolbar,.ops-renamer-tools,.title-review-toolbar) label {
+  gap: .2rem;
+}
+html[data-app="RECON"] :where(.filter-panel,.results-toolbar,.audit-toolbar,.allocation-toolbar,.tag-toolbar,.ops-renamer-tools,.title-review-toolbar) label > span {
+  font-size: .72rem;
+  line-height: 1.1;
+}
+html[data-app="RECON"] :where(.filter-panel,.audit-config,.allocation-control-panel,.allocation-relation-card,.tag-control-panel,.renamer-howto,.renamer-advanced) {
+  padding: .8rem;
+  row-gap: .7rem;
+}
+html[data-app="RECON"] .audit-toolbar {
+  grid-template-columns: minmax(13rem,1.35fr) repeat(4,minmax(8.5rem,.72fr)) auto;
+  align-items: end;
+  padding: .65rem .75rem;
+}
+html[data-app="RECON"] .title-review-toolbar {
+  padding: .65rem .75rem;
+  align-items: end;
+}
+html[data-app="RECON"] .allocation-toolbar,
+html[data-app="RECON"] .results-toolbar,
+html[data-app="RECON"] .tag-toolbar,
+html[data-app="RECON"] .ops-renamer-tools {
+  padding: .65rem .75rem;
+}
+html[data-app="RECON"] :where(.configuration-card,.source-card,.file-source,.source-state) {
+  padding: .8rem;
+}
+html[data-app="RECON"] :where(.configuration-card,.source-card,.file-source,.source-state) header {
+  margin-bottom: .45rem;
+}
+html[data-app="RECON"] .runtime-actions quality-status.runtime span { font-weight: 750; }
+
+@media (max-width: 1120px) {
+  html[data-app="RECON"] .audit-toolbar { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  html[data-app="RECON"] .audit-toolbar .search-box { grid-column: span 2; }
+}
+@media (max-width: 720px) {
+  html[data-app="RECON"] :where(.filter-panel,.results-toolbar,.audit-toolbar,.allocation-toolbar,.tag-toolbar,.ops-renamer-tools,.title-review-toolbar) {
+    grid-template-columns: 1fr;
+    padding: .6rem;
+  }
+  html[data-app="RECON"] .audit-toolbar .search-box { grid-column: auto; }
+}

@@ -1,3 +1,4 @@
+/* RECON 1.26.10 — integração complementar do SCON ESCOPO. */
 (function () {
   "use strict";
 
@@ -28,6 +29,7 @@
     titleReferenceFile: null,
     titleReferences: null,
     titleSupplementalReferences: null,
+    sconEscopoTitleReferences: null,
     sconReferenceFile: null,
     sconTitleReferences: null,
     titleBaseLoading: true,
@@ -301,6 +303,7 @@
   function mergedTitleReferences() {
     const merged = mergeIndexedReferences(state.titleReferences, state.titleSupplementalReferences);
     merged.scon = state.sconTitleReferences || null;
+    merged.sconEscopo = state.sconEscopoTitleReferences || null;
     return merged;
   }
 
@@ -308,10 +311,12 @@
     const baseCount = state.titleReferences && state.titleReferences.entries ? state.titleReferences.entries.length : 0;
     const extraCount = state.titleSupplementalReferences && state.titleSupplementalReferences.entries ? state.titleSupplementalReferences.entries.length : 0;
     const sconCount = state.sconTitleReferences && state.sconTitleReferences.entries ? state.sconTitleReferences.entries.length : 0;
+    const sconEscopoCount = state.sconEscopoTitleReferences && state.sconEscopoTitleReferences.uniqueTagCount || 0;
     const baseText = `${baseCount.toLocaleString("pt-BR")} conclusões controladas`;
-    const sconText = sconCount ? `${sconCount.toLocaleString("pt-BR")} códigos SCON` : "SCON sob demanda";
+    const sconText = sconCount ? `${sconCount.toLocaleString("pt-BR")} códigos SCON TAG SGP` : "SCON TAG SGP sob demanda";
+    const sconEscopoText = sconEscopoCount ? `${sconEscopoCount.toLocaleString("pt-BR")} TAGs de referência no SCON ESCOPO` : "SCON ESCOPO indisponível";
     const extraText = extraCount ? ` · ${extraCount.toLocaleString("pt-BR")} referências adicionais` : "";
-    els.titleBaseStatus.textContent = `${baseText} · ${sconText} · usa o 3º campo da DESCRIÇÃO${extraText}`;
+    els.titleBaseStatus.textContent = `${baseText} · ${sconText} · ${sconEscopoText}${extraText}`;
     if (els.titleSconReferenceMeta && !state.sconReferenceFile) {
       els.titleSconReferenceMeta.textContent = sconCount ? `Base incorporada · ${sconCount.toLocaleString("pt-BR")} códigos` : "Base incorporada indisponível";
     }
@@ -330,11 +335,20 @@
   function titleSourceCategory(row) {
     if (!row) return "without_evidence";
     if (row.issue === "ok") return "already_correct";
+    if (row.descriptionSource === "SCON TAG SGP + SCON ESCOPO") return "scon_combined";
+    if (row.sconEscopoMatch === "SIM" && /^SCON ESCOPO/i.test(row.descriptionSource || "")) {
+      return /DENTRO DO GRUPO 7/i.test(row.sconEscopoMatchMode || "") ? "scon_escopo_component" : "scon_escopo_exact";
+    }
     if (row.sconMatch === "AMBÍGUO") return "scon_ambiguous";
     if (row.sconMatch === "SIM") {
       const mode = Q.norm(row.sconMatchMode || "");
-      return /NORMAL|PONTUAC/.test(mode) ? "scon_normalized" : "scon_exact";
+      return /CODIGO SGP DO SCON/.test(mode)
+        ? "scon_sgp_tag"
+        : /DENTRO DO GRUPO 7/.test(mode)
+          ? "scon_component"
+          : /NORMAL|PONTUAC/.test(mode) ? "scon_normalized" : "scon_exact";
     }
+    if (row.sconEscopoMatch === "AMBÍGUO" && (!row.descriptionSource || row.descriptionSource === "Título atual")) return "scon_escopo_ambiguous";
     if (row.descriptionSource && !/SEM|NAO LOCALIZ|NÃO LOCALIZ/i.test(row.descriptionSource)) return "controlled";
     return "without_evidence";
   }
@@ -366,7 +380,7 @@
       if (sheet && row.sheet !== sheet) return false;
       if (confidence && row.confidence !== confidence) return false;
       if (kind === "title" && source && titleSourceCategory(row) !== source) return false;
-      if (search && !Q.norm(`${row.document} ${row.sheet} ${row.allocation || ""} ${row.controlledSourceKind || ""} ${row.controlledSourceFile || ""} ${row.title || ""} ${row.current} ${row.proposed} ${row.tag || ""} ${row.description || ""} ${row.descriptionSource || ""} ${row.sconTitleComplement || ""} ${row.sconFullDescription || ""} ${row.reason}`).includes(search)) return false;
+      if (search && !Q.norm(`${row.document} ${row.sheet} ${row.allocation || ""} ${row.controlledSourceKind || ""} ${row.controlledSourceFile || ""} ${row.title || ""} ${row.current} ${row.proposed} ${row.tag || ""} ${row.description || ""} ${row.descriptionSource || ""} ${row.sconTitleComplement || ""} ${row.sconFullDescription || ""} ${row.sconEscopoTitle || ""} ${(row.sconEscopoCandidateTitles || []).join(" ")} ${row.reason}`).includes(search)) return false;
       return true;
     });
   }
@@ -472,21 +486,66 @@
     return `${escapeHtml(start)}<mark>${escapeHtml(changed || after)}</mark>${escapeHtml(end)}`;
   }
 
+  function cleanTitleReportValue(value) {
+    if (Q && typeof Q.stripSpreadsheetErrors === "function") return Q.stripSpreadsheetErrors(value);
+    return String(value == null ? "" : value).replace(/#(?:N\/A|N\/D|VALUE!|VALOR!|REF!|NAME\?|NOME\?|DIV\/0!)/giu, " ").replace(/\s+/g, " ").trim();
+  }
+
   function titleEvidenceHtml(row) {
     const category = titleSourceCategory(row);
     const sourceLabel = {
-      scon_exact: "SCON · Código SGP exato",
-      scon_normalized: "SCON · correspondência normalizada única",
-      scon_ambiguous: "SCON · correspondência ambígua",
+      scon_combined: "SCON TAG SGP + SCON ESCOPO",
+      scon_exact: "SCON TAG SGP · Código SGP exato",
+      scon_normalized: "SCON TAG SGP · correspondência normalizada única",
+      scon_component: "SCON TAG SGP · TAG principal localizada no Grupo 7",
+      scon_sgp_tag: "SCON TAG SGP · TAG localizada no CÓDIGO SGP",
+      scon_ambiguous: "SCON TAG SGP · correspondência ambígua",
+      scon_escopo_exact: "SCON ESCOPO · TAG exata",
+      scon_escopo_component: "SCON ESCOPO · TAG principal localizada no Grupo 7",
+      scon_escopo_ambiguous: "SCON ESCOPO · referência não conclusiva",
       controlled: row.descriptionSource || "Base controlada",
       without_evidence: "Sem correspondência segura",
       already_correct: "Título já adequado",
     }[category] || row.descriptionSource || "Evidência";
-    const sourceRows = (row.sconSourceRows || []).join(", ");
-    const description = row.nonTaggedRule
+    const sourceRows = (row.sconSourceRows && row.sconSourceRows.length ? row.sconSourceRows : row.sconEscopoSourceRows || []).join(", ");
+    const sconOnlyAmbiguous = row.sconMatch === "AMBÍGUO" && (!row.sconTitleComplement && !row.sconEscopoTitle);
+    const sconEscopoOnlyAmbiguous = row.sconEscopoMatch === "AMBÍGUO" && (!row.descriptionSource || row.descriptionSource === "Título atual");
+    const sconCandidates = (row.sconCandidateTitles || [])
+      .map(cleanTitleReportValue)
+      .filter(Boolean)
+      .slice(0, 3);
+    const sconCandidateText = sconCandidates.length
+      ? ` Opções encontradas: ${sconCandidates.join(" | ")}${row.sconCandidateCount > sconCandidates.length ? " | …" : ""}`
+      : "";
+    const sconEscopoCandidates = (row.sconEscopoCandidateTitles || [])
+      .map(cleanTitleReportValue)
+      .filter(Boolean)
+      .slice(0, 3);
+    const sconEscopoCandidateText = sconEscopoCandidates.length
+      ? ` Opções encontradas: ${sconEscopoCandidates.join(" | ")}${row.sconEscopoCandidateCount > sconEscopoCandidates.length ? " | …" : ""}`
+      : "";
+    const sconEscopoConflictText = /DISCIPLINA/i.test(row.sconEscopoMatchMode || "")
+      ? `A referência foi encontrada no SCON ESCOPO, mas a disciplina não coincide com a LD. Confira a disciplina antes de escolher o título.${sconEscopoCandidateText}`
+      : `${row.sconEscopoCandidateCount || 0} referências foram localizadas, mas não puderam ser combinadas com segurança.${sconEscopoCandidateText}`;
+    const sconConflictText = /DISCIPLINA/i.test(row.sconMatchMode || "")
+      ? `A TAG foi localizada no SCON TAG SGP, mas a disciplina não coincide com a LD.${sconCandidateText}`
+      : `A TAG foi localizada no SCON TAG SGP, porém existem descrições diferentes e nenhuma foi escolhida automaticamente.${sconCandidateText}`;
+    const sconMatchDetail = row.sconMatchMode && row.sconMatch !== "NÃO" ? ` (${row.sconMatchMode})` : "";
+    const sconEscopoMatchDetail = row.sconEscopoMatchMode && row.sconEscopoMatch !== "NÃO" ? ` (${row.sconEscopoMatchMode})` : "";
+    const controlledDescriptions = [
+      row.sconTitleComplement ? `SCON TAG SGP${sconMatchDetail}: ${cleanTitleReportValue(row.sconTitleComplement)}` : "",
+      row.sconEscopoTitle ? `SCON ESCOPO${sconEscopoMatchDetail}: ${cleanTitleReportValue(row.sconEscopoTitle)}` : "",
+    ].filter(Boolean);
+    const rawDescription = row.nonTaggedRule
       ? `O QUÊ: ${row.nonTaggedWhat || "não identificado"} · ONDE/QUANDO: ${row.nonTaggedWhereWhen || "não identificado"}`
-      : row.sconFullDescription || row.description || row.evidence || row.reason || "Nenhuma descrição segura foi localizada.";
-    return `<div class="title-evidence-source ${category}"><span>${escapeHtml(sourceLabel)}</span>${sourceRows ? `<small>Linha(s) ${escapeHtml(sourceRows)}</small>` : ""}</div><p>${escapeHtml(description)}</p>${row.tag || row.possibleIdentifier || row.nonTaggedIdentifier ? `<code>${escapeHtml(row.nonTaggedRule ? `nt-${row.nonTaggedIdentifier || ""}` : row.tag || row.possibleIdentifier)}</code>` : ""}`;
+      : sconOnlyAmbiguous
+        ? sconConflictText
+      : sconEscopoOnlyAmbiguous
+        ? sconEscopoConflictText
+        : controlledDescriptions.join(" | ") || row.description || row.evidence || row.reason || "Nenhuma descrição segura foi localizada.";
+    const description = cleanTitleReportValue(rawDescription) || "Nenhuma descrição segura foi localizada.";
+    const identifier = cleanTitleReportValue(row.nonTaggedRule ? `nt-${row.nonTaggedIdentifier || ""}` : row.tag || row.possibleIdentifier);
+    return `<div class="title-evidence-source ${category}"><span>${escapeHtml(sourceLabel)}</span>${sourceRows ? `<small>Linha(s) ${escapeHtml(sourceRows)}</small>` : ""}</div><p>${escapeHtml(description)}</p>${identifier ? `<code>${escapeHtml(identifier)}</code>` : ""}`;
   }
 
   function renderTitles() {
@@ -495,13 +554,13 @@
     const preview = titlePager ? titlePager.slice(visible) : visible.slice(0, DEFAULT_PAGE_SIZE);
     els.titleBody.innerHTML = preview.map((row) => `<article class="title-review-card ${auditRowClass(row)} source-${titleSourceCategory(row)}" role="listitem" data-title-id="${escapeHtml(row.id)}">
       <header class="title-review-card-head">
-        <label class="title-review-select">${row.issue !== "ok" && row.proposed ? `<input class="audit-check" type="checkbox" data-select-id="${escapeHtml(row.id)}" ${state.titleSelected.has(row.id) ? "checked" : ""}>` : ""}<span><strong>${escapeHtml(row.document)}</strong><small>${escapeHtml(row.sheet || "Aba não informada")} · ${escapeHtml(row.issue === "ok" ? "Sem alteração necessária" : row.reason || "Revisão de título")}</small></span></label>
+        <label class="title-review-select">${row.issue !== "ok" && row.proposed ? `<input class="audit-check" type="checkbox" data-select-id="${escapeHtml(row.id)}" ${state.titleSelected.has(row.id) ? "checked" : ""}>` : ""}<span><strong>${escapeHtml(row.document)}</strong><small>${escapeHtml(row.sheet || "Aba não informada")} · ${escapeHtml(row.issue === "ok" ? "Título já está adequado" : row.reason || "Revisão de título")}</small></span></label>
         <div class="title-review-status">${conclusionHtml(row)}${confidenceHtml(row.confidence)}<span class="ld-conflict-cell ${row.ldConflict && row.ldConflict.hasConflict ? "yes" : "no"}">${escapeHtml(row.conflictLd || "SEM CONFLITO")}</span></div>
       </header>
       <div class="title-review-comparison">
-        <section class="title-review-block current"><span>Título atual</span><p>${escapeHtml(row.current || "Título vazio")}</p></section>
-        <section class="title-review-block evidence"><span>Evidência encontrada</span>${titleEvidenceHtml(row)}</section>
-        <section class="title-review-block proposed"><span>Título sugerido</span><p>${row.proposed ? titleDiffHtml(row.current, row.proposed) : "Sem sugestão automática"}</p></section>
+        <section class="title-review-block current"><span>Título atual na LD</span><p>${escapeHtml(row.current || "Título vazio")}</p></section>
+        <section class="title-review-block evidence"><span>O que as bases informam</span>${titleEvidenceHtml(row)}</section>
+        <section class="title-review-block proposed"><span>Título recomendado</span><p>${row.proposed ? titleDiffHtml(row.current, row.proposed) : row.issue === "ok" ? "Nenhuma mudança necessária" : "Sem sugestão segura"}</p></section>
       </div>
       <footer class="title-review-card-footer"><div class="title-review-guidance">${messageHtml(row)}</div><div class="title-review-decision">${decisionHtml(row)}</div></footer>
     </article>`).join("");
@@ -565,7 +624,7 @@
     const taskId = Tasks ? Tasks.start("Auditoria de títulos", taskDetail) : "";
     state.busyKinds.add("title"); updateReady(); setProgress("title", 15, "Preparando títulos, descrições e tags…"); await yieldFrame();
     try {
-      setProgress("title", 32, "Carregando descrições SCON necessárias…");
+      setProgress("title", 32, "Carregando evidências SCON TAG SGP e SCON ESCOPO…");
       await ensureSconForTitles(requestedKeys);
       setProgress("title", 48, "Verificando especificidade e padronização…"); if (Tasks) Tasks.update(taskId, 48, "Conferindo documento exato, tag e disciplina"); await yieldFrame();
       const titleOptions = requestedKeys ? { documentKeys: requestedKeys } : null;
@@ -581,7 +640,8 @@
       showToast(`${state.titleRows.length.toLocaleString("pt-BR")} título(s) analisado(s)${suffix}.`, state.titleUnmatchedCodes.length ? "warn" : "success");
       if (Tasks) Tasks.finish(taskId, `${state.titleRows.length.toLocaleString("pt-BR")} títulos analisados${suffix}`);
     } catch (error) {
-      hideProgress("title"); showToast(error.message || "Não foi possível analisar os títulos.", "error");
+      console.error("RECON: falha na análise de títulos", error);
+      hideProgress("title"); showToast("Não foi possível concluir a análise dos títulos. Confira a LD e tente novamente.", "error");
       if (Tasks) Tasks.fail(taskId, error);
     } finally { state.busyKinds.delete("title"); updateReady(); }
   }
@@ -748,12 +808,57 @@
     return labels[issue] || issue;
   }
 
+  function titleReferenceSummary(row) {
+    if (row.nonTaggedRule) {
+      return cleanTitleReportValue(`Item não tagueado — O QUÊ: ${row.nonTaggedWhat || "não identificado"} · ONDE/QUANDO: ${row.nonTaggedWhereWhen || "não identificado"}`);
+    }
+    const references = [
+      row.sconTitleComplement ? `SCON TAG SGP: ${row.sconTitleComplement}` : "",
+      row.sconEscopoTitle ? `SCON ESCOPO: ${row.sconEscopoTitle}` : "",
+    ].filter(Boolean);
+    if (!row.sconTitleComplement && row.sconCandidateTitles && row.sconCandidateTitles.length) {
+      references.push(`SCON TAG SGP para conferência: ${row.sconCandidateTitles.join(" · ")}`);
+    }
+    if (!row.sconEscopoTitle && row.sconEscopoCandidateTitles && row.sconEscopoCandidateTitles.length) {
+      references.push(`SCON ESCOPO para conferência: ${row.sconEscopoCandidateTitles.join(" · ")}`);
+    }
+    return cleanTitleReportValue(references.join(" | ") || row.description || row.evidence || "");
+  }
+
+  function simpleAuditMessage(row) {
+    const message = row.userMessage && [row.userMessage.title, row.userMessage.explanation].filter(Boolean).join(" — ");
+    return cleanTitleReportValue(message || row.reason || "");
+  }
+
+  function titleSourceSummary(row) {
+    const details = [
+      row.descriptionSource || "",
+      row.sconMatchMode && row.sconMatch !== "NÃO" ? `SCON TAG SGP: ${row.sconMatchMode}` : "",
+      row.sconEscopoMatchMode && row.sconEscopoMatch !== "NÃO" ? `SCON ESCOPO: ${row.sconEscopoMatchMode}` : "",
+    ].filter(Boolean);
+    return cleanTitleReportValue([...new Set(details)].join(" · "));
+  }
+
   function excelColumns(kind) {
     if (kind === "databook") return [
       ["Documento", "document"], ["Aba LD", "sheet"], ["Linha LD", "row"], ["Coluna LD", (row) => `${PendingCore && PendingCore.columnLetter(row.column) || "—"}${row.columnHeader ? ` · ${row.columnHeader}` : ""}`], ["Alocação", "allocation"], ["Fonte controlada", "controlledSourceKind"], ["Arquivo da fonte", "controlledSourceFile"], ["Aba da fonte", "controlledSourceSheet"], ["Linha da fonte", "controlledSourceRow"], ["Data da fonte", "controlledSourceDate"], ["Título na LD", "title"], ["Disciplina", "discipline"], ["Caminho atual", "current"], ["Caminho sugerido", "proposed"], ["Origem simples da sugestão", (row) => PendingCore ? PendingCore.originFor("databook", row) : row.evidence], ["Tipo da conclusão", conclusionLabel], ["Confiança", "confidence"], ["Conflito na LD", "conflictLd"], ["Situação", (row) => issueLabel(kind, row.issue)], ["Código interno", "reasonCode"], ["Mensagem simples", (row) => (row.userMessage && `${row.userMessage.title} ${row.userMessage.explanation}`) || row.reason], ["Próxima ação", (row) => row.userMessage && row.userMessage.nextAction || ""], ["Motivo técnico", "reason"], ["Evidência", "evidence"], ["Documentos relacionados", (row) => (row.relatedDocuments || []).join(" · ")], ["Decisão", decisionLabel], ["Valor após decisão", (row) => row.decision === "approved" ? row.proposed : row.current],
     ];
     return [
-      ["Documento", "document"], ["Aba LD", "sheet"], ["Linha LD", "row"], ["Coluna LD", (row) => `${PendingCore && PendingCore.columnLetter(row.column) || "—"}${row.columnHeader ? ` · ${row.columnHeader}` : ""}`], ["Disciplina", "discipline"], ["Prefixo preservado", "titlePrefix"], ["Regra aplicada", "drawingRule"], ["Identificador do Campo 7 nt-", "nonTaggedIdentifier"], ["O QUÊ", "nonTaggedWhat"], ["ONDE / QUANDO", "nonTaggedWhereWhen"], ["Fonte da interpretação nt-", "nonTaggedSource"], ["Título atual", "current"], ["TAG comprovada", "tag"], ["TAG acrescentada ao título", "titleTag"], ["Identificadores já presentes na descrição", (row) => (row.descriptionIdentifiers || []).join(" · ")], ["Possível identificador", "possibleIdentifier"], ["Origem da TAG", (row) => row.tagEvidence && row.tagEvidence.source || ""], ["Correspondência SCON", "sconMatch"], ["Modo de busca SCON", "sconMatchMode"], ["SCON — 3º campo da DESCRIÇÃO", "sconTitleComplement"], ["SCON — DESCRIÇÃO completa", "sconFullDescription"], ["SCON — TAG da planilha", "sconTag"], ["SCON — tipo de item", "sconItemType"], ["SCON — desenho de referência", "sconDrawingReference"], ["SCON — arquivo fonte", "sconSourceFile"], ["SCON — aba fonte", "sconSourceSheet"], ["SCON — linha(s) fonte", (row) => (row.sconSourceRows || []).join(", ")], ["Origem da descrição usada", "descriptionSource"], ["Descrição usada", "description"], ["Título sugerido", "proposed"], ["Origem simples da sugestão", (row) => PendingCore ? PendingCore.originFor("title", row) : row.evidence], ["Tipo da conclusão", conclusionLabel], ["Confiança", "confidence"], ["Conflito na LD", "conflictLd"], ["Situação", (row) => issueLabel(kind, row.issue)], ["Código interno", "reasonCode"], ["Mensagem simples", (row) => (row.userMessage && `${row.userMessage.title} ${row.userMessage.explanation}`) || row.reason], ["Próxima ação", (row) => row.userMessage && row.userMessage.nextAction || ""], ["Motivo técnico", "reason"], ["Evidência", "evidence"], ["Decisão", decisionLabel], ["Valor após decisão", (row) => row.decision === "approved" ? row.proposed : row.current],
+      ["Documento da LD", "document"],
+      ["Local na LD", (row) => `${row.sheet || "Aba não informada"} · linha ${row.row || "não informada"}`],
+      ["Disciplina", "discipline"],
+      ["Título atual na LD", "current"],
+      ["TAG usada", "tag"],
+      ["O que as bases informam", titleReferenceSummary],
+      ["Fonte principal", titleSourceSummary],
+      ["Título recomendado", "proposed"],
+      ["Situação", (row) => issueLabel(kind, row.issue)],
+      ["Confiança da sugestão", "confidence"],
+      ["Por que revisar", simpleAuditMessage],
+      ["Próxima ação", (row) => row.userMessage && row.userMessage.nextAction || (row.proposed ? "Conferir e aprovar ou manter o título atual" : "Conferir manualmente")],
+      ["Conflito na LD", "conflictLd"],
+      ["Decisão", decisionLabel],
+      ["Título final", (row) => row.decision === "approved" ? row.proposed : row.current],
     ];
   }
 
@@ -802,17 +907,22 @@
     summary.mergeCells("A10:H10"); summary.getCell("A10").value = "CRITÉRIOS DA ANÁLISE"; summary.getCell("A10").font = { name: "Aptos", size: 9, bold: true, color: { argb: "FFFFFFFF" } }; summary.getCell("A10").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF24689A" } };
     const controlledSourceSummary = kind === "databook"
       ? `${state.databookSourceRows.confirmation.length.toLocaleString("pt-BR")} registro(s) de confirmação · ${state.databookSourceRows.allocation.length.toLocaleString("pt-BR")} registro(s) de arquivo de alocação`
-      : (state.titleReferenceFile ? state.titleReferenceFile.name : "Não informada");
-    const criteriaRows = [["Princípio", kind === "databook" ? "A LD só é alterada em uma nova cópia após confirmação do download; caminhos controlados são copiados sem reescrever o texto" : "A LD só é alterada em uma nova cópia após confirmação do download"], ["Decisões aprovadas", totals.approved], [kind === "databook" ? "Fontes controladas" : "Base complementar", controlledSourceSummary]];
-    if (kind === "title") criteriaRows.push(["Escopo da revisão", titleScopeSpecific() ? `${state.titleRequestedCodes.length} código(s) solicitado(s) · ${state.titleMatchedCodes.length} localizado(s) · ${state.titleUnmatchedCodes.length} não localizado(s)` : "Toda a LD"]);
+      : `${state.sconTitleReferences && state.sconTitleReferences.entries ? state.sconTitleReferences.entries.length.toLocaleString("pt-BR") : "0"} códigos SCON TAG SGP · ${state.sconEscopoTitleReferences && state.sconEscopoTitleReferences.uniqueTagCount ? state.sconEscopoTitleReferences.uniqueTagCount.toLocaleString("pt-BR") : "0"} TAGs SCON ESCOPO · ${state.titleReferences && state.titleReferences.entries ? state.titleReferences.entries.length.toLocaleString("pt-BR") : "0"} conclusões controladas`;
+    const criteriaRows = [["Princípio", kind === "databook" ? "A LD só é alterada em uma nova cópia após confirmação do download; caminhos controlados são copiados sem reescrever o texto" : "A LD só é alterada em uma nova cópia após confirmação do download"], ["Decisões aprovadas", totals.approved], [kind === "databook" ? "Fontes controladas" : "Bases da análise", controlledSourceSummary]];
+    if (kind === "title") {
+      criteriaRows.push(["Como ler", "“Título atual na LD” é o valor encontrado; “O que as bases informam” mostra as referências limpas; “Título recomendado” é a proposta para conferência antes da aprovação"]);
+      criteriaRows.push(["Ordem da busca", "1. Código documental SGP exato; 2. código sem diferenças de pontuação; 3. TAG completa do Grupo 7; 4. TAG no campo CÓDIGO SGP; 5. TAG principal contida em identificador maior. Nas buscas 3 a 5, a disciplina e a unicidade da descrição são obrigatórias"]);
+      criteriaRows.push(["Regra da SCON ESCOPO", "Disciplina e área servem somente para localizar a referência. O título combina as atividades encontradas, sem esses campos, e mantém a TAG no final"]);
+      criteriaRows.push(["Escopo da revisão", titleScopeSpecific() ? `${state.titleRequestedCodes.length} código(s) solicitado(s) · ${state.titleMatchedCodes.length} localizado(s) · ${state.titleUnmatchedCodes.length} não localizado(s)` : "Toda a LD"]);
+    }
     criteriaRows.forEach(([label, value], index) => { const row = 11 + index; summary.mergeCells(`A${row}:B${row}`); summary.mergeCells(`C${row}:H${row}`); summary.getCell(`A${row}`).value = label; summary.getCell(`C${row}`).value = value; summary.getCell(`A${row}`).font = { name: "Aptos", size: 9, bold: true, color: { argb: "FF53697B" } }; summary.getCell(`C${row}`).font = { name: "Aptos", size: 9, color: { argb: "FF263E52" } }; summary.getCell(`C${row}`).alignment = { vertical: "middle", horizontal: "left", wrapText: true }; });
     [15, 15, 22, 22, 15, 15, 22, 22].forEach((width, index) => { summary.getColumn(index + 1).width = width; }); summary.pageSetup = { orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 1 }; summary.headerFooter.oddFooter = "&LRECON&C&P de &N&R&D";
 
-    const audit = workbook.addWorksheet("Auditoria", { properties: { defaultRowHeight: 18 } }); const columns = excelColumns(kind); const last = columnLetter(columns.length); audit.views = [{ state: "frozen", ySplit: 6, showGridLines: false, zoomScale: 85 }]; fillRange(audit, `A1:${last}3`, "FF153A5C"); audit.mergeCells(`C1:${last}2`); audit.getCell("C1").value = `RECON · ${name}`; audit.getCell("C1").font = { name: "Aptos Display", size: 17, bold: true, color: { argb: "FFFFFFFF" } }; audit.getCell("C1").alignment = { vertical: "middle" }; if (logoId !== null) audit.addImage(logoId, { tl: { col: .12, row: .18 }, ext: { width: 158, height: 58 } });
+    const audit = workbook.addWorksheet(kind === "title" ? "Títulos para revisar" : "Auditoria", { properties: { defaultRowHeight: 18 } }); const columns = excelColumns(kind); const last = columnLetter(columns.length); audit.views = [{ state: "frozen", ySplit: 6, showGridLines: false, zoomScale: 85 }]; fillRange(audit, `A1:${last}3`, "FF153A5C"); audit.mergeCells(`C1:${last}2`); audit.getCell("C1").value = `RECON · ${name}`; audit.getCell("C1").font = { name: "Aptos Display", size: 17, bold: true, color: { argb: "FFFFFFFF" } }; audit.getCell("C1").alignment = { vertical: "middle" }; if (logoId !== null) audit.addImage(logoId, { tl: { col: .12, row: .18 }, ext: { width: 158, height: 58 } });
     audit.mergeCells(`A4:${last}4`); audit.getCell("A4").value = `${rows.length.toLocaleString("pt-BR")} documento(s) · LD: ${state.file.name} · Aba: ${selectedSheetLabel}`; audit.getCell("A4").font = { name: "Aptos", size: 8, color: { argb: "FF536679" } }; audit.getCell("A4").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEAF0F4" } };
     const headerRow = audit.getRow(6); columns.forEach(([label], index) => { const cell = headerRow.getCell(index + 1); cell.value = label; cell.font = { name: "Aptos", size: 10, bold: true, color: { argb: "FFFFFFFF" } }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF225D87" } }; cell.alignment = { vertical: "middle", wrapText: true }; }); headerRow.height = 32;
-    rows.forEach((row, rowIndex) => { const excelRow = audit.getRow(rowIndex + 7); columns.forEach(([, field], columnIndex) => { const raw = typeof field === "function" ? field(row) : row[field]; const cell = excelRow.getCell(columnIndex + 1); cell.value = raw === "" || raw === undefined ? null : raw; cell.font = { name: "Aptos", size: 9.5, color: { argb: "FF30465A" } }; cell.alignment = { vertical: "middle", wrapText: true }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: rowIndex % 2 ? "FFF8FAFB" : "FFFFFFFF" } }; cell.border = { bottom: { style: "hair", color: { argb: "FFDCE4EA" } } }; }); excelRow.height = 40; });
-    audit.autoFilter = { from: "A6", to: `${last}${rows.length + 6}` }; columns.forEach(([label], index) => { const n = Q.norm(label); audit.getColumn(index + 1).width = /TITULO|CAMINHO|EVIDENCIA|MOTIVO|RELACIONADO|VALOR APOS/.test(n) ? 36 : /DOCUMENTO/.test(n) ? 30 : /DISCIPLINA/.test(n) ? 22 : 16; }); audit.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: .25, right: .25, top: .45, bottom: .45, header: .2, footer: .2 }, horizontalCentered: true }; audit.pageSetup.printTitlesRow = "6:6"; audit.headerFooter.oddFooter = "&LRECON · Auditoria&C&P de &N&R&D";
+    rows.forEach((row, rowIndex) => { const excelRow = audit.getRow(rowIndex + 7); columns.forEach(([, field], columnIndex) => { const raw = typeof field === "function" ? field(row) : row[field]; const cell = excelRow.getCell(columnIndex + 1); cell.value = raw === "" || raw === undefined ? null : raw; cell.font = { name: "Aptos", size: 9.5, color: { argb: "FF30465A" } }; cell.alignment = { vertical: "middle", wrapText: true }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: rowIndex % 2 ? "FFF8FAFB" : "FFFFFFFF" } }; cell.border = { bottom: { style: "hair", color: { argb: "FFDCE4EA" } } }; }); excelRow.height = kind === "title" ? 56 : 40; });
+    audit.autoFilter = { from: "A6", to: `${last}${rows.length + 6}` }; columns.forEach(([label], index) => { const n = Q.norm(label); audit.getColumn(index + 1).width = /TITULO|CAMINHO|EVIDENCIA|MOTIVO|RELACIONADO|VALOR APOS|BASES INFORMAM|POR QUE/.test(n) ? 38 : /DOCUMENTO/.test(n) ? 30 : /DISCIPLINA/.test(n) ? 22 : /FONTE PRINCIPAL|PROXIMA ACAO/.test(n) ? 24 : 16; }); audit.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: .25, right: .25, top: .45, bottom: .45, header: .2, footer: .2 }, horizontalCentered: true }; audit.pageSetup.printTitlesRow = "6:6"; audit.headerFooter.oddFooter = `&LRECON · ${kind === "title" ? "Títulos para revisar" : "Auditoria"}&C&P de &N&R&D`;
 
     if (kind === "title" && titleScopeSpecific()) {
       const requestSheet = workbook.addWorksheet("Códigos solicitados", { properties: { defaultRowHeight: 18 } });
@@ -915,6 +1025,15 @@
         const merged = new Map([...state.catalog, ...parsed.entries].map((item) => [`${Q.norm(item.description)}|${A.pathKey(item.databook)}`, item]));
         state.catalog = [...merged.values()]; els.dbBaseStatus.textContent = `${parsed.entries.length} referências validadas · base Rev.A`;
       }),
+      Promise.resolve().then(() => {
+        if (!window.RECONSconEscopoTitleCatalog) throw new Error("O SCON ESCOPO incorporado não foi carregado.");
+        const parsed = Q.parseSconEscopoTitleCatalog(window.RECONSconEscopoTitleCatalog);
+        if (parsed.entries.length !== 7798 || parsed.uniqueTagCount !== 3027) {
+          throw new Error(`O SCON ESCOPO contém ${parsed.entries.length} linhas e ${parsed.uniqueTagCount} TAGs; eram esperadas 7.798 linhas e 3.027 TAGs.`);
+        }
+        state.sconEscopoTitleReferences = parsed;
+        updateTitleReferenceStatus();
+      }),
     ];
     const results = await Promise.allSettled(jobs);
     const failures = results.filter((result) => result.status === "rejected");
@@ -936,7 +1055,7 @@
   els.dbReference.addEventListener("change", () => loadDatabookReference(els.dbReference.files && els.dbReference.files[0]));
   if (els.dbConfirmationFolder) els.dbConfirmationFolder.addEventListener("change", () => loadDatabookSourceFolder("confirmation", els.dbConfirmationFolder.files));
   if (els.dbAllocationFolder) els.dbAllocationFolder.addEventListener("change", () => loadDatabookSourceFolder("allocation", els.dbAllocationFolder.files));
-  els.titleReference.addEventListener("change", () => loadTitleReference(els.titleReference.files && els.titleReference.files[0]));
+  if (els.titleReference) els.titleReference.addEventListener("change", () => loadTitleReference(els.titleReference.files && els.titleReference.files[0]));
   if (els.titleSconReference) els.titleSconReference.addEventListener("change", () => loadSconReference(els.titleSconReference.files && els.titleSconReference.files[0]));
   els.titleScopeRadios.forEach((radio) => radio.addEventListener("change", () => {
     if (!radio.checked) return;
