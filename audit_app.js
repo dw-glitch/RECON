@@ -301,6 +301,7 @@
   function mergedTitleReferences() {
     const merged = mergeIndexedReferences(state.titleReferences, state.titleSupplementalReferences);
     merged.scon = state.sconTitleReferences || null;
+    merged.tagCatalog = Q.buildTagTitleCatalog(window.RECONTagReferenceCatalog);
     return merged;
   }
 

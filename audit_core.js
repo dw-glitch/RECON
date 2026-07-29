@@ -656,6 +656,88 @@
     };
   }
 
+  function tagMatchKey(value) {
+    return norm(value).replace(/[^A-Z0-9]/g, "");
+  }
+
+  function tagMatchKeys(value) {
+    const raw = norm(value);
+    return [...new Set([
+      tagMatchKey(raw),
+      tagMatchKey(raw.replace(/[_./-](?:REV)?[A-Z0-9]{1,2}$/i, "")),
+    ].filter((key) => key.length >= 4))];
+  }
+
+  function buildTagTitleCatalog(catalog) {
+    const source = catalog && catalog.entries || [];
+    const entries = source.map((entry, index) => ({
+      ...entry,
+      tag: validatedTag(entry.tag),
+      tagKey: tagMatchKey(entry.tag),
+      description: usableDescription(entry.description || entry.equipmentArea),
+      sourceFile: catalog && catalog.meta && catalog.meta.source || "Anexo I — bens tagueados",
+      sourceSheet: catalog && catalog.meta && catalog.meta.sheet || "",
+      row: index + 2,
+    })).filter((entry) => entry.tag && entry.tagKey && entry.description);
+    const byTag = new Map();
+    entries.forEach((entry) => {
+      if (!byTag.has(entry.tagKey)) byTag.set(entry.tagKey, []);
+      byTag.get(entry.tagKey).push(entry);
+    });
+    return { entries, byTag, metadata: catalog && catalog.meta || {} };
+  }
+
+  function documentContext(record) {
+    const groups = text(record && record.document).replace(/\.[A-Z0-9]+$/i, "").split("_");
+    return {
+      unit: norm(groups[2] || "").replace(/^U/, ""),
+      eap: norm(groups[3] || ""),
+      discipline: disciplineKey(record && record.discipline || groups[4] || ""),
+    };
+  }
+
+  function tagCatalogReferenceFor(record, catalog) {
+    if (!catalog || !catalog.entries || !catalog.entries.length) return null;
+    const declaredTag = extractTagFromDocument(record && record.document)
+      || reportGroup7Info(record && record.document).tag
+      || recordValue(record, TAG_HEADERS);
+    const wantedKeys = tagMatchKeys(declaredTag);
+    if (!wantedKeys.length) return null;
+    const wanted = wantedKeys[0];
+    const exactKey = wantedKeys.find((key) => catalog.byTag && catalog.byTag.has(key));
+    const exact = exactKey ? catalog.byTag.get(exactKey) : [];
+    const candidates = exact.length ? exact : catalog.entries.filter((entry) => (
+      entry.tagKey.length >= 4
+      && wantedKeys.some((key) => key.endsWith(entry.tagKey) || entry.tagKey.endsWith(key))
+    ));
+    if (!candidates.length) return null;
+    const context = documentContext(record);
+    const ranked = candidates.map((entry) => {
+      const unit = norm(entry.unit).replace(/^U/, "");
+      const discipline = disciplineKey(entry.discipline);
+      let score = wantedKeys.includes(entry.tagKey) ? 100 : 60 + Math.min(entry.tagKey.length, wanted.length);
+      if (context.unit && unit === context.unit) score += 20;
+      if (context.discipline && discipline === context.discipline) score += 10;
+      return { entry, score };
+    }).sort((left, right) => right.score - left.score);
+    const bestScore = ranked[0].score;
+    const best = ranked.filter((candidate) => candidate.score === bestScore).map((candidate) => candidate.entry);
+    const descriptions = [...new Map(best.map((entry) => [norm(entry.description), entry.description])).values()];
+    if (descriptions.length !== 1) return null;
+    const chosen = best[0];
+    return {
+      ...chosen,
+      description: descriptions[0],
+      tag: chosen.tag,
+      inferred: true,
+      verifiedCatalog: true,
+      confidence: wantedKeys.includes(chosen.tagKey) ? "alta" : "media",
+      matchMode: wantedKeys.includes(chosen.tagKey) ? "TAG exata" : "trecho distintivo da TAG",
+      sourceRows: best.map((entry) => entry.row),
+      eap: context.eap,
+    };
+  }
+
   function parseSconTitleCatalog(catalog) {
     const columns = catalog && catalog.columns || [];
     const position = new Map(columns.map((name, index) => [name, index]));
@@ -905,13 +987,23 @@
     const exact = references.byDocument && references.byDocument.get(record.documentKey);
     if (exact) return exact;
     const tag = norm(extractTagFromDocument(record.document));
-    if (!tag) return null;
+    if (!tag) return tagCatalogReferenceFor(record, references.tagCatalog);
     const key = `${tag}|${disciplineKey(record.discipline)}`;
     const sameDiscipline = (references.byTagDiscipline && references.byTagDiscipline.get(key) || [])
       .filter((item) => !item.manualReview && item.confidence !== "baixa");
     const descriptions = [...new Map(sameDiscipline.filter((item) => item.description).map((item) => [norm(item.description), item.description])).values()];
     if (descriptions.length === 1) return { ...sameDiscipline[0], description: descriptions[0], inferred: true };
-    return null;
+    const everyDiscipline = [];
+    if (references.byTagDiscipline) references.byTagDiscipline.forEach((items, candidateKey) => {
+      if (candidateKey.startsWith(`${tag}|`)) everyDiscipline.push(...items);
+    });
+    const fallbackDescriptions = [...new Map(everyDiscipline
+      .filter((item) => !item.manualReview && item.confidence !== "baixa" && item.description)
+      .map((item) => [norm(item.description), item.description])).values()];
+    if (fallbackDescriptions.length === 1) {
+      return { ...everyDiscipline[0], description: fallbackDescriptions[0], inferred: true, crossDiscipline: true };
+    }
+    return tagCatalogReferenceFor(record, references.tagCatalog);
   }
 
 
@@ -1151,6 +1243,8 @@
     referenceDescriptionCandidate,
     parseSconDescription,
     buildSconReferenceIndex,
+    buildTagTitleCatalog,
+    tagCatalogReferenceFor,
     parseSconTitleCatalog,
     sconReferenceFor,
     technicalIdentifiers,
