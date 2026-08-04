@@ -1346,3 +1346,60 @@ html[data-app="RECON"] .allocation-preview-limit{padding:.65rem .85rem;font-size
   html[data-app="RECON"] .allocation-databook-finder-body{padding:.75rem}
   html[data-app="RECON"] .allocation-databook-finder-actions>*{flex:1 1 auto}
 }
+
+
+/* Atalho entre aplicativos independentes — v5.31.6 / v1.26.27 */
+.app-shortcut-link {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--brand, #176fa8) 34%, #c8d4df);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface, #fff) 92%, var(--brand, #176fa8));
+  color: var(--brand-strong, #174f76);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .025em;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(19, 52, 76, .06);
+  transition: border-color .16s ease, background-color .16s ease, color .16s ease, transform .16s ease;
+}
+.app-shortcut-link:hover {
+  border-color: var(--brand, #176fa8);
+  background: color-mix(in srgb, var(--surface, #fff) 84%, var(--brand, #176fa8));
+  color: var(--brand-strong, #123f61);
+  transform: translateY(-1px);
+}
+.app-shortcut-link:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand, #176fa8) 30%, transparent);
+  outline-offset: 2px;
+}
+.app-shortcut-link svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+html[data-theme="dark"] .app-shortcut-link,
+body.p2-dark .app-shortcut-link {
+  border-color: #405b70;
+  background: #172a38;
+  color: #b9d8eb;
+}
+html[data-theme="dark"] .app-shortcut-link:hover,
+body.p2-dark .app-shortcut-link:hover {
+  border-color: #5a9ac1;
+  background: #1c3a4f;
+  color: #e2f3fd;
+}
+@media (max-width: 44rem) {
+  .app-shortcut-link { flex: 1 1 auto; min-width: 0; }
+}

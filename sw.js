@@ -1,8 +1,8 @@
-// RECON Service Worker v1.26.26
+// RECON Service Worker v1.26.27
 // Provides offline support, caching, and PWA installation capabilities
-const CACHE_NAME = "recon-cache-v1.26.26";
-const STATIC_CACHE = "recon-static-v1.26.26";
-const DATA_CACHE = "recon-data-v1.26.26";
+const CACHE_NAME = "recon-cache-v1.26.27";
+const STATIC_CACHE = "recon-static-v1.26.27";
+const DATA_CACHE = "recon-data-v1.26.27";
 
 const PRECACHE_URLS = [
   "index.html",
@@ -27,6 +27,7 @@ const PRECACHE_URLS = [
   "pending_core.js",
   "recon-favicon.ico",
   "recon-icon.png",
+  "recon-icon-192.png",
   "recon-logo-app.png",
   "recon-logo-report.png",
   "manifest.json"

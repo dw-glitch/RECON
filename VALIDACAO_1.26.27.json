@@ -1,0 +1,37 @@
+{
+  "application": "RECON",
+  "version": "1.26.27",
+  "approved": true,
+  "automated_tests": {
+    "version": "1.26.27",
+    "passed": true,
+    "checks": 7,
+    "names": [
+      "cabeçalho abre o GRCON como atalho independente",
+      "RECON permanece sem cliente, sessão ou banco do GRCON",
+      "HTML não possui IDs duplicados",
+      "manifesto declara os tamanhos reais dos ícones",
+      "service worker usa cache isolado da versão 1.26.27",
+      "arquivos essenciais do fluxo permanecem presentes",
+      "todos os JavaScripts têm sintaxe válida"
+    ]
+  },
+  "structure": {
+    "files_in_package_before_this_report": 85,
+    "html_ids": 320,
+    "duplicate_ids": [],
+    "local_references_checked": 24,
+    "missing_local_assets": []
+  },
+  "javascript": {
+    "files_checked": 64,
+    "syntax_failures": []
+  },
+  "security": {
+    "service_role_secret_patterns_found": []
+  },
+  "shortcut": {
+    "url": "https://grcon.vercel.app/",
+    "opens_new_tab": true
+  }
+}

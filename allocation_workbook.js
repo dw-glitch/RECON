@@ -181,8 +181,8 @@
   function updateCoreProperties(coreXml) {
     const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
     let output = coreXml
-      .replace(/<dc:creator>[\s\S]*?<\/dc:creator>/, "<dc:creator>RECON 1.26.26</dc:creator>")
-      .replace(/<cp:lastModifiedBy>[\s\S]*?<\/cp:lastModifiedBy>/, "<cp:lastModifiedBy>RECON 1.26.26</cp:lastModifiedBy>");
+      .replace(/<dc:creator>[\s\S]*?<\/dc:creator>/, "<dc:creator>RECON 1.26.27</dc:creator>")
+      .replace(/<cp:lastModifiedBy>[\s\S]*?<\/cp:lastModifiedBy>/, "<cp:lastModifiedBy>RECON 1.26.27</cp:lastModifiedBy>");
     output = output.replace(
       /(<dcterms:modified\b[^>]*>)[\s\S]*?(<\/dcterms:modified>)/,
       (_match, opening, closing) => `${opening}${now}${closing}`,
@@ -311,7 +311,7 @@
 
   async function buildAnalysisReport(results, meta, ExcelJS) {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = "RECON 1.26.26";
+    workbook.creator = "RECON 1.26.27";
     workbook.created = new Date();
     workbook.modified = new Date();
     const settings = meta || {};
