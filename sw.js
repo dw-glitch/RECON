@@ -25,6 +25,17 @@ const PRECACHE_URLS = [
   "recon_pager.js",
   "output_audit.js",
   "pending_core.js",
+  "scon_catalog_loader.js",
+  "scon_civil.js",
+  "scon_eletrica.js",
+  "scon_eqp_dinamico.js",
+  "scon_eqp_estatico.js",
+  "scon_est_metalica.js",
+  "scon_hvac.js",
+  "scon_instrumentacao.js",
+  "scon_seguranca.js",
+  "scon_tubulacao.js",
+  "scon_escopo_title_catalog.js",
   "recon-favicon.ico",
   "recon-icon.png",
   "recon-icon-192.png",
@@ -73,9 +84,9 @@ self.addEventListener("fetch", (event) => {
   // Skip non-GET requests
   if (request.method !== "GET") return;
 
-  // For JavaScript modules that may be loaded dynamically
+  // For JavaScript and CSS assets, prefer the network but fall back to cached copies
   if (url.pathname.endsWith(".js") || url.pathname.endsWith(".css")) {
-    event.respondWith(cacheFirst(request));
+    event.respondWith(networkFirst(request));
     return;
   }
 
@@ -97,7 +108,7 @@ self.addEventListener("fetch", (event) => {
 
 async function cacheFirst(request) {
   const cached = await caches.match(request);
-  if (cached) return cached;
+  if (cached && cached.ok) return cached;
   try {
     const response = await fetch(request);
     if (response.ok) {
@@ -113,10 +124,9 @@ async function cacheFirst(request) {
 async function networkFirst(request) {
   try {
     const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(DATA_CACHE);
-      cache.put(request, response.clone());
-    }
+    if (!response.ok) throw new Error(`Resposta de rede não foi OK: ${response.status}`);
+    const cache = await caches.open(DATA_CACHE);
+    cache.put(request, response.clone());
     return response;
   } catch (error) {
     const cached = await caches.match(request);
