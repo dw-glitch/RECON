@@ -408,8 +408,8 @@
       document.body.appendChild(toast);
     }
     toast.textContent = message;
-    toast.classList.add("visible");
-    setTimeout(function () { toast.classList.remove("visible"); }, duration || 4000);
+    toast.classList.add("show");
+    setTimeout(function () { toast.classList.remove("show"); }, duration || 4000);
   }
 
   // ===================== MICRO-INTERACTIONS & ANIMATIONS =====================
@@ -437,7 +437,7 @@
       "  transform: translateY(120%); opacity: 0;" +
       "  transition: transform 0.3s ease, opacity 0.3s ease;" +
       "}" +
-      ".recon-toast.visible, app-toast.toast.visible {" +
+      ".recon-toast.show, app-toast.toast.show {" +
       "  transform: translateY(0); opacity: 1;" +
       "}" +
 
@@ -680,13 +680,20 @@
   // ===================== SESSION AUTO-SAVE =====================
 
   function installAutoSave() {
+    // Real per-module filter keys (relations_app.js, audit_app.js, tag_conference_app.js, renamer_app.js).
+    // "allocation" and "databook" have no equivalent filters key today, so they're intentionally omitted.
+    var FILTER_KEYS = {
+      relations: "recon.relations.filters.v2",
+      tags: "recon.tags.filters.v2",
+      titles: "recon.titles.filters.v2",
+      renamer: "recon.renamer.filters.v2"
+    };
     // Auto-save preferences every 30 seconds
     setInterval(function () {
       try {
         var prefs = {};
-        // Collect module filter states
-        ["relations", "allocation", "tags", "databook", "titles", "renamer"].forEach(function (mod) {
-          var key = "recon." + mod + ".filters";
+        Object.keys(FILTER_KEYS).forEach(function (mod) {
+          var key = FILTER_KEYS[mod];
           var val = localStorage.getItem(key);
           if (val) prefs[key] = val;
         });
@@ -695,9 +702,53 @@
     }, 30000);
   }
 
+  // ===================== GLOBAL ERROR SAFETY NET =====================
+
+  // Stops spinners/disabled buttons from being stuck forever after an uncaught error.
+  // Only re-enables an analyze button when its own progress indicator was visible,
+  // i.e. there is direct evidence that module's operation was actually in flight.
+  function resetStuckUI() {
+    document.body.classList.remove("recon-module-loading");
+    delete document.body.dataset.reconLoadingCount;
+    ["relations", "allocation", "databook", "title", "renamer"].forEach(function (prefix) {
+      var progress = $(prefix + "-progress");
+      if (progress && !progress.hidden) {
+        progress.hidden = true;
+        var analyzeBtn = $(prefix + "-analyze");
+        if (analyzeBtn) analyzeBtn.disabled = false;
+      }
+    });
+    var status = $("runtime-status-text");
+    if (status) status.textContent = "Pronto para uso";
+  }
+
+  function installGlobalErrorHandler() {
+    var lastToastAt = 0;
+
+    function notifyFatalError(error) {
+      console.error("RECON: erro não tratado.", error);
+      resetStuckUI();
+      var now = Date.now();
+      if (now - lastToastAt < 4000) return; // avoid stacking toasts for cascading errors
+      lastToastAt = now;
+      showToast("Ocorreu um erro inesperado nesta operação. Verifique os dados e tente novamente.", 6000);
+    }
+
+    window.addEventListener("error", function (event) {
+      notifyFatalError(event.error || event.message);
+    });
+
+    window.addEventListener("unhandledrejection", function (event) {
+      var reason = event.reason;
+      if (reason && reason.name === "AbortError") return; // user-initiated cancellations aren't errors
+      notifyFatalError(reason);
+    });
+  }
+
   // ===================== INIT ALL =====================
 
   function init() {
+    installGlobalErrorHandler();
     try {
       installKeyboardShortcuts();
       installDragAndDrop();

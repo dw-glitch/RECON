@@ -109,7 +109,10 @@
         const data = event.data || {};
         if (data.id !== id || task.settled) return;
         if (data.progress !== undefined) dispatchProgress(id, mode, data.progress, data.message || "");
-        if (data.error) { fallback(new Error(data.error)); return; }
+        // Worker responded successfully; data.error is a caught business-logic exception,
+        // not an infrastructure failure. Reject directly — don't fall back and re-read the
+        // same buffer on the main thread, and don't mark the worker itself as unavailable.
+        if (data.error) { finish(reject, new Error(data.error)); return; }
         if (data.result) finish(resolve, data.result);
       };
       task.worker.onerror = (event) => fallback(new Error(event.message || "Falha de infraestrutura no Worker da planilha."));

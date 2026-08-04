@@ -74,7 +74,11 @@
       task.worker.onmessage = (event) => {
         const data = event.data || {};
         if (data.id !== id || task.settled) return;
-        if (data.error) fallback(new Error(data.error));
+        // The worker responded, so its infrastructure is fine — data.error here means
+        // the business logic itself threw. Reject directly instead of falling back to
+        // the main thread, which would just reproduce the same error while also
+        // permanently (and incorrectly) marking the worker as unavailable.
+        if (data.error) finish(reject, new Error(data.error));
         else finish(resolve, data.result);
       };
       task.worker.onerror = (event) => fallback(new Error(event.message || "Falha de infraestrutura no Worker de análise."));

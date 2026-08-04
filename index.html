@@ -542,8 +542,8 @@ if ("serviceWorker" in navigator && window.isSecureContext && reconWebOrigin) {
               var toast = document.getElementById("toast");
               if (toast) {
                 toast.textContent = "Nova versão disponível. Feche e abra o RECON novamente para atualizar.";
-                toast.classList.add("visible");
-                setTimeout(function() { toast.classList.remove("visible"); }, 8000);
+                toast.classList.add("show");
+                setTimeout(function() { toast.classList.remove("show"); }, 8000);
               }
             }
           });

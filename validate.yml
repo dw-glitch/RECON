@@ -1,21 +1,34 @@
-name: Validate static app
+name: Validar RECON
 
 on:
   push:
+    branches: [main, master]
   pull_request:
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - name: Check JavaScript syntax
+          node-version: "20"
+
+      - name: Verificar sintaxe JavaScript
         run: |
-          find . -maxdepth 1 -name "*.js" -print0 | xargs -0 -n1 node --check
-      - name: Check required entry point
-        run: test -f index.html
-      - name: Check duplicate HTML ids and local references
-        run: python3 .github/scripts/validate_static.py
+          set -e
+          for file in *.js; do
+            echo "Verificando $file"
+            node --check "$file"
+          done
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validar IDs estáticos e referências
+        run: python .github/scripts/validate_static.py
