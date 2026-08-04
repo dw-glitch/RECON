@@ -63,6 +63,7 @@
         );
       };
 
+      if (root.location && root.location.protocol === "file:") { fallback(new Error("Modo local: processamento direto habilitado.")); return; }
       if (typeof root.Worker !== "function") { fallback(new Error("Web Worker não suportado neste navegador.")); return; }
       try {
         task.worker = new root.Worker("recon_compute_worker.js");
@@ -73,7 +74,7 @@
       task.worker.onmessage = (event) => {
         const data = event.data || {};
         if (data.id !== id || task.settled) return;
-        if (data.error) finish(reject, new Error(data.error));
+        if (data.error) fallback(new Error(data.error));
         else finish(resolve, data.result);
       };
       task.worker.onerror = (event) => fallback(new Error(event.message || "Falha de infraestrutura no Worker de análise."));

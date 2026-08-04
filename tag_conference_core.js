@@ -40,6 +40,37 @@
     return normalizedTag(value).replace(/[^A-Z0-9]/g, "");
   }
 
+  function stripRedundantUnitPrefix(value, expectedUnit) {
+    const candidate = text(value);
+    const match = candidate.match(/^(U[-_.\/\s]?32)[-_.\/\s]+(.+)$/i);
+    if (!match) return { value: candidate, removed: false, prefix: "" };
+    const expected = norm(expectedUnit).replace(/[^A-Z0-9]/g, "");
+    const prefix = norm(match[1]).replace(/[^A-Z0-9]/g, "");
+    const remainder = text(match[2]);
+    if (expected && prefix !== expected) return { value: candidate, removed: false, prefix: "" };
+    if (!/[A-Z]/i.test(remainder) || !/\d/.test(remainder) || !/[-_.\/]/.test(remainder)) {
+      return { value: candidate, removed: false, prefix: "" };
+    }
+    return { value: remainder, removed: true, prefix: normalizedTag(match[1]) };
+  }
+
+  function lookupCandidate(value, expectedUnit) {
+    const withoutNt = text(value).replace(/^nt(?:-|_)/i, "");
+    return stripRedundantUnitPrefix(withoutNt, expectedUnit);
+  }
+
+  function looksLikeDirectTag(value) {
+    const candidate = text(value);
+    const normalized = normalizedTag(candidate);
+    return candidate.length >= 4
+      && candidate.length <= 120
+      && !/_RNEST_/i.test(candidate)
+      && /[A-Z]/i.test(normalized)
+      && /\d/.test(normalized)
+      && /[-_./]/.test(candidate)
+      && /^[A-Z0-9._~\/-]+$/i.test(candidate);
+  }
+
   function cleanInput(value) {
     let raw = text(value).replace(/^['"]+|['",;]+$/g, "");
     raw = raw.split(/[\\/]/).pop() || raw;
@@ -54,8 +85,29 @@
     const groups = document.split("_");
     const validBase = groups.length >= 7 && norm(groups[1]) === "RNEST";
     if (!validBase) {
+      if (looksLikeDirectTag(document)) {
+        const isNonTagged = /^nt(?:-|_)/i.test(document);
+        const exactNt = document.startsWith("nt-");
+        const lookup = lookupCandidate(document, "");
+        const candidateTag = lookup.value;
+        return {
+          original,
+          document,
+          valid: true,
+          directTag: true,
+          groups: [document],
+          prefix: "",
+          identifier: document,
+          candidateTag,
+          unitPrefixRemoved: lookup.removed,
+          removedUnitPrefix: lookup.prefix,
+          isNonTagged,
+          exactNt,
+          error: "",
+        };
+      }
       return {
-        original, document, valid: false, groups, prefix: "", identifier: "", candidateTag: "",
+        original, document, valid: false, directTag: false, groups, prefix: "", identifier: "", candidateTag: "",
         isNonTagged: false, exactNt: false,
         error: groups.length < 7
           ? "O código não possui os sete grupos separados por underline."
@@ -66,11 +118,20 @@
     const identifier = groups.slice(6).join("_").trim();
     const isNonTagged = /^nt(?:-|_)/i.test(identifier);
     const exactNt = identifier.startsWith("nt-");
-    const candidateTag = isNonTagged ? identifier.replace(/^nt(?:-|_)/i, "") : identifier;
+    const lookup = lookupCandidate(identifier, groups[2]);
+    const candidateTag = lookup.value;
     if (!identifier) {
-      return { original, document, valid: false, groups, prefix, identifier, candidateTag, isNonTagged, exactNt, error: "O Campo 7 está vazio." };
+      return {
+        original, document, valid: false, directTag: false, groups, prefix, identifier, candidateTag,
+        unitPrefixRemoved: lookup.removed, removedUnitPrefix: lookup.prefix,
+        isNonTagged, exactNt, error: "O Campo 7 está vazio.",
+      };
     }
-    return { original, document, valid: true, groups, prefix, identifier, candidateTag, isNonTagged, exactNt, error: "" };
+    return {
+      original, document, valid: true, directTag: false, groups, prefix, identifier, candidateTag,
+      unitPrefixRemoved: lookup.removed, removedUnitPrefix: lookup.prefix,
+      isNonTagged, exactNt, error: "",
+    };
   }
 
   function referenceEntry(row) {
@@ -130,7 +191,7 @@
   }
 
   function replaceIdentifier(parsed, nextIdentifier) {
-    return parsed.prefix ? `${parsed.prefix}_${nextIdentifier}` : parsed.document;
+    return parsed.directTag ? nextIdentifier : parsed.prefix ? `${parsed.prefix}_${nextIdentifier}` : parsed.document;
   }
 
   function analyzeOne(value, index) {
@@ -178,7 +239,9 @@
         identifier: parsed.identifier,
         candidateTag: parsed.candidateTag,
         correctedCode: replaceIdentifier(parsed, normalizedTag(found.entry.tag)),
-        reason: `A TAG ${found.entry.tag} existe no Anexo I — Apêndice 3. O Campo 7 não deve começar por nt-.`,
+        reason: parsed.unitPrefixRemoved
+          ? `A TAG ${found.entry.tag} existe no Anexo I — Apêndice 3. Para consultar a base, foram retirados nt- e o prefixo redundante ${parsed.removedUnitPrefix}.`
+          : `A TAG ${found.entry.tag} existe no Anexo I — Apêndice 3. O Campo 7 não deve começar por nt-.`,
         reference: found.entry,
         matchType: found.matchType,
         confidence: "alta",
@@ -197,9 +260,13 @@
         identifier: parsed.identifier,
         candidateTag: parsed.candidateTag,
         correctedCode: replaceIdentifier(parsed, standardized),
-        reason: found.matchType === "punctuation"
+        reason: parsed.unitPrefixRemoved
+          ? `O prefixo ${parsed.removedUnitPrefix} identifica a unidade e não faz parte da TAG. A busca foi realizada por ${parsed.candidateTag} e a TAG oficial foi padronizada como ${standardized}.`
+          : found.matchType === "punctuation"
           ? `A TAG foi localizada desconsiderando pontuação e foi padronizada como ${standardized}.`
-          : "A TAG existe na base oficial de bens tagueados.",
+          : parsed.directTag
+            ? "A TAG informada diretamente existe na base oficial de bens tagueados."
+            : "A TAG existe na base oficial de bens tagueados.",
         reference: found.entry,
         matchType: found.matchType,
         confidence: "alta",
@@ -207,7 +274,9 @@
     }
 
     if (parsed.isNonTagged) {
-      const correctedIdentifier = parsed.exactNt ? parsed.identifier : `nt-${parsed.candidateTag}`;
+      const correctedIdentifier = parsed.exactNt && !parsed.unitPrefixRemoved
+        ? parsed.identifier
+        : `nt-${parsed.candidateTag}`;
       return {
         status: STATUS.NON_TAGGED,
         statusLabel: parsed.exactNt ? "NÃO TAGUEADO CORRETO" : "CORRIGIR MARCADOR PARA nt-",
@@ -230,7 +299,7 @@
       document: parsed.document,
       identifier: parsed.identifier,
       candidateTag: parsed.candidateTag,
-      correctedCode: replaceIdentifier(parsed, `nt-${parsed.identifier}`),
+      correctedCode: replaceIdentifier(parsed, `nt-${parsed.candidateTag}`),
       reason: "O identificador do Campo 7 não foi encontrado no Anexo I — Apêndice 3. O código deve ser tratado como não tagueado.",
       reference: null,
       matchType: "none",
@@ -260,6 +329,9 @@
     norm,
     normalizedTag,
     compactTag,
+    stripRedundantUnitPrefix,
+    lookupCandidate,
+    looksLikeDirectTag,
     cleanInput,
     parseDocument,
     buildReferenceIndex,

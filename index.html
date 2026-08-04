@@ -1,17 +1,35 @@
 <!DOCTYPE html>
 
-<html data-app="RECON" data-ops-ui="enabled" data-ui-architecture="scoped-components-v3" data-ui-generation="3" data-ui-version="1.26.2" data-version="1.26.2" data-functional-generation="4" lang="pt-BR">
+<html data-app="RECON" data-ops-ui="enabled" data-ui-architecture="scoped-components-v3" data-ui-generation="3" data-ui-version="1.26.26" data-version="1.26.26" data-functional-generation="5" lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <meta content="light dark" name="color-scheme"/>
 <meta content="#155c8a" name="theme-color"/>
+<script>
+try {
+  const savedTheme = localStorage.getItem("quality-theme-recon") === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = savedTheme;
+  document.documentElement.style.colorScheme = savedTheme;
+} catch (_) {
+  document.documentElement.dataset.theme = "light";
+}
+</script>
 <meta content="Aplicativo corporativo de controle documental com processamento local e acessível." name="description"/>
 <title>RECON — Relações e Conformidade Documental</title>
 <link href="recon-favicon.ico" rel="icon" sizes="any"/>
 <link href="recon-icon.png" rel="icon" type="image/png"/>
-<link href="recon-icon.png" rel="apple-touch-icon"/><link href="design-system.css" rel="stylesheet"/><link href="legacy-compat.css" rel="stylesheet"/><link href="recon-ui.css" rel="stylesheet"/><link href="recon-final.css" rel="stylesheet"/>
-<meta content="1.26.2" name="application-version"/></head>
+<link href="recon-icon.png" rel="apple-touch-icon"/>
+<script>
+if (location.protocol === "http:" || location.protocol === "https:") {
+  const manifestLink = document.createElement("link");
+  manifestLink.rel = "manifest";
+  manifestLink.href = "manifest.json";
+  document.head.appendChild(manifestLink);
+}
+</script>
+<link href="design-system.css" rel="stylesheet"/><link href="legacy-compat.css" rel="stylesheet"/><link href="recon-ui.css" rel="stylesheet"/><link href="recon-final.css" rel="stylesheet"/>
+<meta content="1.26.26" name="application-version"/></head>
 <body>
 <a class="skip-link" href="#app-main">Ir direto para o conteúdo principal</a>
 <header class="topbar">
@@ -19,7 +37,7 @@
 <div class="recon-brand-plate"><img alt="RECON" id="brand-logo" src="recon-logo-app.png"/></div>
 <div class="brand-copy"><h1 class="sr-only">RECON</h1><span>Relações e Conformidade Documental</span><small>Controle documental local da Qualidade</small></div>
 </div>
-<div class="runtime-actions"><quality-status class="runtime" tone="success"><i></i><span>Processamento local</span></quality-status></div>
+<div class="runtime-actions"><quality-status class="runtime" tone="success"><i></i><span id="runtime-status-text">Pronto para uso</span></quality-status></div>
 </header>
 <div class="recon-shell">
 <aside aria-label="Módulos do RECON" class="module-sidebar">
@@ -27,10 +45,6 @@
 <button class="module-link p1-home-link" id="p1-home-button" type="button">
 <svg viewbox="0 0 24 24"><path d="M4 11l8-7 8 7v9h-6v-6h-4v6H4z"></path></svg>
 <span><strong>Início</strong><small>Escolher uma tarefa</small></span>
-</button>
-<button class="module-link pending-panel-link" id="recon-pending-open" type="button">
-<svg viewbox="0 0 24 24"><path d="M12 3l9 16H3zM12 9v4M12 17h.01"></path></svg>
-<span><strong>Pendências</strong><small>Erros, alertas e sugestões</small></span><b hidden="" id="recon-pending-badge">0</b>
 </button>
 <button aria-current="page" class="module-link active" data-module="relations" type="button">
 <svg viewbox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"></path></svg>
@@ -81,8 +95,6 @@
 <span><strong>Selecionar LD</strong><small id="relations-ld-meta">Nenhum arquivo</small></span>
 </label>
 <div class="source-state"><quality-status class="state-pill neutral" id="relations-source-state">Aguardando LD</quality-status><small id="relations-source-count">—</small></div>
-<button class="link-button" hidden="" id="ld-compatibility-open" type="button">Estrutura da LD</button>
-<span hidden="" id="ld-compatibility-status"></span>
 </section>
 <section aria-live="polite" class="p1-context-bar" hidden="" id="p1-recon-context">
 <metric-chip><span>Tarefa atual</span><strong id="p1-context-task">—</strong></metric-chip>
@@ -145,9 +157,9 @@
 <section class="allocation-control-panel">
 <div class="allocation-source-grid">
 <label class="compact-source allocation-source">
-<input accept=".xlsx,.xls,.xlsm" id="allocation-ld-input" type="file"/>
+<input accept=".xlsx,.xls,.xlsm" id="allocation-ld-input" multiple type="file"/>
 <span class="source-icon excel">X</span>
-<span><strong>LD controlada</strong><small id="allocation-ld-meta">Selecionar arquivo</small></span>
+<span><strong>LDs controladas</strong><small id="allocation-ld-meta">Selecionar uma ou mais LDs</small></span>
 </label>
 <label class="compact-source allocation-source">
 <input accept=".xlsx,.xls,.xlsm" id="allocation-control-input" type="file"/>
@@ -177,7 +189,7 @@
 <label for="allocation-text">Entrada por texto</label>
 <div>
 <span id="allocation-text-count">0 itens</span>
-<button class="text-action danger" id="allocation-clear" type="button">Limpar</button>
+<button class="text-action danger" id="allocation-clear" type="button" title="Encerra a análise atual e prepara o módulo para uma nova relação">Limpar análise</button>
 </div>
 </header>
 <textarea autocomplete="off" id="allocation-text" placeholder="Cole um código ou nome de documento por linha" spellcheck="false"></textarea>
@@ -204,6 +216,23 @@
 <span><strong>Histórico de alocações</strong><small id="allocation-history-meta">Selecionar pasta</small></span>
 </label>
 </div>
+</details>
+
+<details class="allocation-databook-finder" id="allocation-databook-finder">
+  <summary aria-controls="allocation-databook-finder-body">
+    <span class="allocation-databook-finder-icon" aria-hidden="true">DB</span>
+    <span class="allocation-databook-finder-heading"><strong id="allocation-databook-finder-title">Consultar caminho Databook</strong><small>Pesquisa independente por código e título na base Caminho Databook Rev. B.</small></span>
+    <span class="allocation-databook-finder-toggle" aria-hidden="true">⌄</span>
+  </summary>
+  <div class="allocation-databook-finder-body" id="allocation-databook-finder-body">
+    <div class="allocation-databook-finder-grid">
+      <label><span>Código do documento</span><input id="allocation-db-code" type="text" placeholder="Ex.: C1O_RNEST_U32_3.8.5.1_TUB_REP_VM-320003" spellcheck="false"></label>
+      <label><span>Título do documento</span><input id="allocation-db-title" type="text" placeholder="Ex.: Relatório de inspeção de tubulação" spellcheck="false"></label>
+      <div class="allocation-databook-finder-actions"><button class="primary-button" id="allocation-db-search" type="button">Buscar caminho</button><button class="text-action" id="allocation-db-clear" type="button">Limpar</button></div>
+    </div>
+    <p class="allocation-databook-finder-note">A origem da sugestão é mostrada para conferência. O RECON não grava o caminho na LD nem na alocação por esta consulta.</p>
+    <div class="allocation-databook-finder-result" id="allocation-db-result" hidden aria-live="polite"></div>
+  </div>
 </details>
 <div class="progress-wrap" hidden="" id="allocation-progress">
 <div class="progress-track"><div class="progress-bar" id="allocation-progress-bar"></div></div>
@@ -244,7 +273,7 @@
 <button class="secondary-button compact table-filter-clear" hidden id="allocation-clear-column-filters" type="button">Limpar filtros das colunas</button>
 <div class="toolbar-spacer"></div>
 <button class="secondary-button allocation-report-button" disabled="" id="allocation-export-report" type="button">Baixar relatório da análise</button>
-<button class="secondary-button" disabled="" id="allocation-export-file" type="button">Baixar alocação</button>
+<button class="secondary-button" disabled="" id="allocation-export-file" type="button">Baixar alocação oficial</button>
 <button class="secondary-button" disabled="" id="allocation-export-control" type="button">Baixar linhas do controle</button>
 <button class="primary-button final-package-button" disabled="" id="allocation-export-package" type="button">Gerar pacote</button>
 </div>
@@ -323,12 +352,12 @@
 </section>
 </section>
 <section aria-labelledby="recon-module-title-4" class="module-view" data-module-view="titles" hidden="" id="module-titles">
-<header class="module-heading"><div><span>CONFORMIDADE</span><h2 id="recon-module-title-4">Corrigir títulos da LD</h2></div><p>Interprete o código completo, compare o título atual com a devolutiva e altere somente o que você aprovar.</p></header>
+<header class="module-heading"><div><span>CONFORMIDADE</span><h2 id="recon-module-title-4">Corrigir títulos da LD</h2></div><p>Interprete o código completo com SCON TAG SGP, SCON ESCOPO e as regras documentais já consolidadas.</p></header>
 <section class="audit-config card">
-<div class="audit-config-main"><div class="section-title"><span>BASES</span><div><strong>Referência de títulos</strong><small id="title-base-status">Carregando base controlada e SCON</small></div></div>
+<div class="audit-config-main"><div class="section-title"><span>BASES</span><div><strong>Referência de títulos</strong><small id="title-base-status">Carregando bases controladas, SCON TAG SGP e SCON ESCOPO</small></div></div>
 <div class="title-reference-sources">
 <label class="file-source compact-source controlled-source"><input accept=".xlsx,.xls,.xlsm" id="title-scon-reference" type="file"/><span class="file-icon">S</span><span><strong>Atualizar SCON - TAG SGP</strong><small id="title-scon-reference-meta">Base incorporada · usa o 3º campo da DESCRIÇÃO</small></span></label>
-<label class="file-source compact-source optional-source"><input accept=".xlsx,.xls,.xlsm,.csv" id="title-reference" type="file"/><span class="file-icon">X</span><span><strong>Adicionar outra base de tags e descrições</strong><small id="title-reference-meta">Opcional · complementa a base controlada</small></span></label>
+<div class="controlled-source-rule title-analysis-rule"><strong>Análise automática:</strong> no SCON ESCOPO, o RECON tenta a TAG completa do 7º grupo e depois pesquisa progressivamente suas partes. O EAP do 4º grupo é conferido completo e, quando termina em <code>.1</code>, também sem esse trecho final. A disciplina elimina resultados incompatíveis; somente uma TAG restante pode gerar sugestão. DISCIPLINA e ÁREA são preservadas, conteúdos entre parênteses são retirados e a TAG do documento fica no final.</div>
 </div>
 </div>
 <section aria-labelledby="title-scope-heading" class="title-scope-card">
@@ -352,7 +381,7 @@
 <section class="audit-results card" hidden="" id="title-results">
 <header class="audit-head"><div class="section-title"><span>REVISÃO</span><div><strong>Resultado da análise</strong><small>Somente títulos aprovados podem ser aplicados à cópia da LD</small></div></div><div class="audit-head-actions"><button class="secondary-button" id="title-export" type="button">Baixar relatório da revisão</button><button class="primary-button" disabled="" id="title-apply-ld" type="button">Baixar cópia da LD revisada</button></div></header>
 <nav class="audit-summary"><div><span>Analisados</span><strong data-title-count="all">0</strong></div><div class="ok"><span>Adequados</span><strong data-title-count="ok">0</strong></div><div class="warn"><span>Sugestões para conferir</span><strong data-title-count="review">0</strong></div><div class="pending"><span>Informação insuficiente</span><strong data-title-count="unsafe">0</strong></div><div class="approved"><span>Aprovados</span><strong data-title-count="approved">0</strong></div></nav>
-<div class="audit-toolbar title-review-toolbar"><label class="audit-filter labeled-filter sheet-filter"><span>Aba analisada</span><select id="title-sheet"><option value="">Selecione uma aba</option></select></label><label class="search-box"><svg viewbox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="M16 16l5 5"></path></svg><input id="title-search" placeholder="Buscar documento, título ou evidência" type="search"/></label><label class="audit-filter labeled-filter"><span>Situação</span><select id="title-issue"><option value="">Todas as situações</option><option value="empty">Título vazio</option><option value="generic">Pouco específico</option><option value="description_mismatch">Descrição divergente</option><option value="missing_tag">TAG comprovada ausente</option><option value="possible_identifier">Possível identificador</option><option value="format">Padronização</option><option value="conflict">Conflito na LD</option><option value="ok">Adequado</option></select></label><label class="audit-filter labeled-filter"><span>Origem da evidência</span><select id="title-source-filter"><option value="">Todas as origens</option><option value="scon_exact">SCON exato</option><option value="scon_normalized">SCON normalizado</option><option value="scon_ambiguous">SCON ambíguo</option><option value="controlled">Outra base controlada</option><option value="without_evidence">Sem correspondência</option><option value="already_correct">Já correto</option></select></label><label class="audit-filter labeled-filter"><span>Confiança</span><select id="title-confidence"><option value="">Todas as confianças</option><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option><option value="nenhuma">Sem sugestão</option></select></label><span id="title-result-meta">0 linhas</span></div>
+<div class="audit-toolbar title-review-toolbar"><label class="audit-filter labeled-filter sheet-filter"><span>Aba analisada</span><select id="title-sheet"><option value="">Selecione uma aba</option></select></label><label class="search-box"><svg viewbox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="M16 16l5 5"></path></svg><input id="title-search" placeholder="Buscar documento, TAG, EAP ou título" type="search"/></label><label class="audit-filter labeled-filter"><span>Situação</span><select id="title-issue"><option value="">Todas as situações</option><option value="empty">Título vazio</option><option value="generic">Pouco específico</option><option value="description_mismatch">Descrição divergente</option><option value="missing_tag">TAG comprovada ausente</option><option value="possible_identifier">Possível identificador</option><option value="format">Padronização</option><option value="conflict">Conflito na LD</option><option value="ok">Adequado</option></select></label><label class="audit-filter labeled-filter"><span>Origem da evidência</span><select id="title-source-filter"><option value="">Todas as origens</option><option value="all_tag_bases">Todas as bases TAG/EAP</option><option value="scon_appendix">SCON TAG SGP + Apêndice 3</option><option value="scon_combined">SCON TAG SGP + SCON ESCOPO</option><option value="tag_eap_dual">SCON ESCOPO + Apêndice 3</option><option value="appendix">Apêndice 3 Rev.B</option><option value="scon_exact">SCON TAG SGP exato</option><option value="scon_normalized">SCON TAG SGP normalizado</option><option value="scon_component">SCON TAG SGP · TAG principal no Grupo 7</option><option value="scon_sgp_tag">SCON TAG SGP · TAG no CÓDIGO SGP</option><option value="scon_ambiguous">SCON TAG SGP ambíguo</option><option value="scon_escopo_exact">SCON ESCOPO · TAG + EAP confirmados</option><option value="scon_escopo_fallback">SCON ESCOPO · mesma TAG em outro EAP</option><option value="scon_escopo_activity">SCON ESCOPO · EAP + atividade documental</option><option value="scon_escopo_component">SCON ESCOPO · TAG principal + EAP</option><option value="scon_escopo_ambiguous">SCON ESCOPO · TAG/EAP não conclusivos</option><option value="controlled">Outra base controlada</option><option value="without_evidence">Sem correspondência</option><option value="already_correct">Já correto</option></select></label><label class="audit-filter labeled-filter"><span>Confiança</span><select id="title-confidence"><option value="">Todas as confianças</option><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option><option value="nenhuma">Sem sugestão</option></select></label><span id="title-result-meta">0 linhas</span></div>
 <div class="batch-bar"><label><input id="title-select-visible" type="checkbox"/> Selecionar visíveis</label><span id="title-selected-count">0 selecionados</span><div class="spacer"></div><button class="secondary-button" id="title-approve-selected" type="button">Aprovar evidências idênticas</button><button class="secondary-button" id="title-keep-selected" type="button">Manter atuais</button></div>
 <div class="title-review-list" id="title-body" role="list" aria-label="Comparação de títulos"></div><div class="empty" hidden="" id="title-empty">Nenhum item corresponde aos filtros.</div>
 </section>
@@ -433,7 +462,7 @@
 </section>
 </section>
 </main>
-<footer class="app-footer"><span>RECON 1.26.2 · Relações e Conformidade Documental</span><span>Processamento local · sem envio automático de arquivos</span></footer></div>
+<footer class="app-footer"><span>RECON 1.26.26 · Relações e Conformidade Documental</span><span>Arquivos processados somente neste navegador</span></footer></div>
 <div class="drawer-overlay" hidden="" id="databook-assistant-overlay"></div><aside aria-hidden="true" aria-labelledby="databook-assistant-title" class="databook-assistant-drawer" hidden inert id="databook-assistant-drawer">
 <header class="drawer-header">
 <div><h2 id="databook-assistant-title">Assistente de Databook</h2><span id="databook-assistant-subtitle">Revisão nesta análise</span></div>
@@ -464,8 +493,7 @@
 <button class="secondary-button" id="databook-assistant-cancel" type="button">Cancelar</button>
 <button class="secondary-button" id="databook-assistant-apply" type="button">Aplicar nesta análise</button>
 </footer>
-</aside><div class="drawer-overlay" hidden="" id="ld-compatibility-overlay"></div>
-<aside aria-hidden="true" aria-labelledby="ld-compatibility-title" class="compatibility-drawer" hidden inert id="ld-compatibility-drawer"><header><div><h2 id="ld-compatibility-title">Estrutura da LD</h2><span id="ld-compatibility-summary">Analisando estrutura</span></div><button aria-label="Fechar" class="icon-button" id="ld-compatibility-close" type="button"><svg viewbox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"></path></svg></button></header><div class="compatibility-body" id="ld-compatibility-body"></div><div class="compatibility-message" hidden="" id="ld-compatibility-message"></div><footer><button class="secondary-button" id="ld-compatibility-cancel" type="button">Cancelar</button><button class="primary-button" id="ld-compatibility-confirm" type="button">Confirmar associações</button></footer></aside>
+</aside>
 <div class="p1-confirm-overlay" hidden="" id="p1-confirm-overlay"></div>
 <section aria-labelledby="p1-confirm-title" aria-modal="true" class="p1-confirm-dialog" hidden="" id="p1-confirm-dialog" role="dialog">
 <div aria-hidden="true" class="p1-confirm-icon">✓</div>
@@ -494,26 +522,51 @@
 </div>
 </section>
 <app-toast aria-live="polite" class="toast" id="toast" role="status"></app-toast>
-<div class="pending-panel-overlay" hidden="" id="recon-pending-overlay"></div>
-<aside aria-hidden="true" aria-labelledby="recon-pending-title" class="pending-panel-drawer" hidden="" id="recon-pending-drawer">
-<header><div><span>CONTROLE CENTRAL</span><h2 id="recon-pending-title">Pendências da sessão</h2><p>Erros, alertas e sugestões reunidos em um só lugar.</p></div><button aria-label="Fechar pendências" id="recon-pending-close" type="button">×</button></header>
-<div class="pending-panel-summary" id="recon-pending-summary"></div>
-<div aria-label="Filtrar por nível de risco" class="pending-panel-filters" role="group"><button aria-pressed="true" class="active" data-pending-risk="all" type="button">Todas</button><button aria-pressed="false" data-pending-risk="error" type="button">Erros</button><button aria-pressed="false" data-pending-risk="warning" type="button">Alertas</button><button aria-pressed="false" data-pending-risk="suggestion" type="button">Sugestões</button></div>
-<div class="pending-panel-list" id="recon-pending-list"></div><empty-state class="pending-panel-empty" hidden="" id="recon-pending-empty"><strong>Nenhuma pendência neste filtro</strong><span>Os resultados já conferidos não aparecem aqui.</span></empty-state>
-</aside>
+
+<!-- PWA + Service Worker Registration -->
+<script>
+const reconWebOrigin = location.protocol === "https:"
+  || (location.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname));
+if ("serviceWorker" in navigator && window.isSecureContext && reconWebOrigin) {
+  window.addEventListener("load", function() {
+    navigator.serviceWorker.register("sw.js").then(function(reg) {
+      console.log("RECON Service Worker registrado com sucesso.");
+      reg.addEventListener("updatefound", function() {
+        var installing = reg.installing;
+        if (installing) {
+          installing.addEventListener("statechange", function() {
+            if (installing.state === "installed" && navigator.serviceWorker.controller) {
+              var toast = document.getElementById("toast");
+              if (toast) {
+                toast.textContent = "Nova versão disponível. Feche e abra o RECON novamente para atualizar.";
+                toast.classList.add("visible");
+                setTimeout(function() { toast.classList.remove("visible"); }, 8000);
+              }
+            }
+          });
+        }
+      });
+    }).catch(function(err) {
+      console.warn("Service Worker não pôde ser registrado:", err);
+    });
+  });
+}
+</script>
 <script defer src="output_audit.js"></script>
 <script defer src="pending_core.js"></script>
 <script defer src="recon-brand.js"></script>
 <script defer src="recon_contracts.js"></script>
 <script defer src="task_center.js"></script>
+<script defer src="file_access.js"></script>
 <script defer src="recon_module_loader.js"></script>
 <script defer src="recon_compute_client.js"></script>
 <script defer src="recon_pager.js"></script>
 <script defer src="recon_app.js"></script>
-<script defer src="pending_panel.js"></script>
 <script defer src="p1_ux.js"></script>
 <script defer src="app-ui.js"></script>
 <script defer src="ui-v3.js"></script>
 <script defer src="productivity_center.js"></script>
+<script defer src="recon_enhancements.js"></script>
+<script src="allocation_databook_finder.js"></script>
 </body>
 </html>

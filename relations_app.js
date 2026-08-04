@@ -39,6 +39,7 @@
     busy: false,
     loadingLd: false,
     loadToken: 0,
+    compatibilityBypassedForTitles: false,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -125,6 +126,16 @@
 
   function yieldFrame() {
     return new Promise((resolve) => window.setTimeout(resolve, 0));
+  }
+
+  function activeModuleName() {
+    const activeLink = document.querySelector('.module-link[data-module].active');
+    if (activeLink && activeLink.dataset.module) return activeLink.dataset.module;
+    try { return window.sessionStorage.getItem('recon.active.module.v1') || 'relations'; } catch (_) { return 'relations'; }
+  }
+
+  function titleAnalysisMode() {
+    return activeModuleName() === 'titles';
   }
 
   function readDraft() {
@@ -318,7 +329,8 @@
 
   async function readWorkbook(file) {
     if (window.RECONWorkbookWorker) return window.RECONWorkbookWorker.read(file, { cellDates: true, cellFormula: true });
-    return XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true, cellFormula: true });
+    const buffer = window.RECONFileAccess ? await window.RECONFileAccess.readArrayBuffer(file) : await file.arrayBuffer();
+    return XLSX.read(buffer, { type: "array", cellDates: true, cellFormula: true });
   }
 
   async function buildCatalog(token) {
@@ -333,6 +345,7 @@
 
   async function loadLd(file, interactive) {
     if (!file) return false;
+    const bypassTitleAssociations = titleAnalysisMode();
     const token = ++state.loadToken;
     state.loadingLd = true;
     state.ldFile = file;
@@ -346,16 +359,11 @@
     setProgress(7, "Reconhecendo a estrutura da LD…");
     try {
       if (L) {
-        await L.prepare(file, { interactive: Boolean(interactive) });
+        await L.prepare(file, { interactive: false });
         if (token !== state.loadToken) return false;
-        els.compatibilityOpen.hidden = false;
-        if (!L.ready(file)) {
-          setSourceState("Confirmar estrutura", "loading", "Associações pendentes");
-          hideProgress();
-          updateControls();
-          return false;
-        }
+        L.close();
       }
+      if (els.compatibilityOpen) els.compatibilityOpen.hidden = true;
       setProgress(34, "Lendo documentos e histórico fora da interface…");
       let parsed; let index;
       if (window.RECONWorkbookWorker && window.RECONWorkbookWorker.readLd) {
@@ -375,6 +383,7 @@
       if (!parsed.records.length) throw new Error("Nenhum documento técnico foi encontrado na LD.");
       state.parsed = parsed;
       state.index = index;
+      state.compatibilityBypassedForTitles = false;
       setProgress(54, `${state.index.documents.length} documentos localizados…`);
       state.catalogRows = await buildCatalog(token);
       if (token !== state.loadToken) return false;
@@ -864,7 +873,7 @@
   }
 
   els.ld.addEventListener("change", () => loadLd(els.ld.files && els.ld.files[0] || null, true));
-  els.compatibilityOpen.addEventListener("click", () => { if (state.ldFile && L) L.open(state.ldFile); });
+  if (els.compatibilityOpen) els.compatibilityOpen.hidden = true;
   els.modeButtons.forEach((button) => button.addEventListener("click", () => setMode(button.dataset.mode)));
   els.filterSheet.addEventListener("change", () => {
     invalidateResults();
@@ -891,8 +900,12 @@
   if (els.resetFilters) els.resetFilters.addEventListener("click", resetRelationFilters);
   document.addEventListener("recon:ld-compatibility", (event) => {
     if (!event.detail || event.detail.file !== state.ldFile) return;
-    if (event.detail.ready && !state.index && !state.loadingLd) loadLd(event.detail.file, false);
-    else updateControls();
+    updateControls();
+  });
+
+  window.addEventListener("recon:module", () => {
+    if (L) L.close();
+    if (els.compatibilityOpen) els.compatibilityOpen.hidden = true;
   });
 
   const draft = readDraft();

@@ -74,7 +74,7 @@
     if (!file || !/\.(xlsx|xlsm)$/i.test(file.name || "")) throw new Error("Use uma LD nos formatos .xlsx ou .xlsm.");
     const rows = (approvedRows || []).filter((row) => row && row.decision === "approved" && text(row.proposed));
     if (!rows.length) throw new Error("Nenhum título foi aprovado para alteração.");
-    const original = await file.arrayBuffer();
+    const original = root.RECONFileAccess ? await root.RECONFileAccess.readArrayBuffer(file) : await file.arrayBuffer();
     const workbook = XLSX.read(original, { type: "array", cellDates: true, cellFormula: true, bookVBA: true });
     const zip = await JSZip.loadAsync(original);
     const sheetPaths = await workbookSheetPaths(zip);

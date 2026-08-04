@@ -24,7 +24,8 @@
 
   function sheetOf(result) { return text(result && (result.sheet || result.record && result.record.sheet)); }
   function workflowOf(result) {
-    return text(result && result.output && result.output.workflow)
+    return text(result && result.output && result.output.discipline)
+      || text(result && result.output && result.output.workflow)
       || text(result && result.record && result.record.discipline)
       || text(result && result.workflow);
   }

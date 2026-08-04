@@ -22,6 +22,10 @@
     return { sheetNames: [...(workbook.SheetNames || [])], sheets, props: workbook.Props || {}, custprops: workbook.Custprops || {} };
   }
   function trimCache(cache, limit) { while (cache.size > limit) cache.delete(cache.keys().next().value); }
+  function readFile(file) {
+    if (root.RECONFileAccess) return root.RECONFileAccess.readArrayBuffer(file);
+    return file.arrayBuffer();
+  }
   function abortError(message) {
     try { return new DOMException(message, "AbortError"); }
     catch (_) { const error = new Error(message); error.name = "AbortError"; return error; }
@@ -43,7 +47,7 @@
         task.directTimer = 0;
         if (task.cancelled) { reject(abortError("Leitura cancelada pelo usuário.")); return; }
         try {
-          dispatchProgress(task.id, mode, 15, "Abrindo planilha em modo compatível");
+          dispatchProgress(task.id, mode, 15, "Abrindo planilha");
           const workbook = root.XLSX.read(buffer, { type: "array", cellDates: true, cellFormula: true, dense: false, ...(options || {}) });
           if (mode === "ld") {
             dispatchProgress(task.id, mode, 48, "Lendo documentos e histórico");
@@ -55,13 +59,13 @@
             );
             dispatchProgress(task.id, mode, 76, "Criando índice da LD");
             const index = meta && meta.buildIndex === false ? null : root.TriagemCore.buildIndex(parsed.records, parsed.history);
-            dispatchProgress(task.id, mode, 100, "Concluído em modo compatível");
+            dispatchProgress(task.id, mode, 100, "Concluído");
             resolve({ parsed, index });
             return;
           }
           dispatchProgress(task.id, mode, 70, "Preparando abas");
           const serialized = serializeWorkbook(workbook);
-          dispatchProgress(task.id, mode, 100, "Concluído em modo compatível");
+          dispatchProgress(task.id, mode, 100, "Concluído");
           resolve(serialized);
         } catch (error) { reject(error); }
       }, 0);
@@ -93,6 +97,7 @@
         );
       };
 
+      if (root.location && root.location.protocol === "file:") { fallback(new Error("Modo local: leitura direta habilitada.")); return; }
       if (typeof root.Worker !== "function") { fallback(new Error("Web Worker não suportado neste navegador.")); return; }
       try {
         task.worker = new root.Worker("recon_workbook_worker.js");
@@ -104,7 +109,7 @@
         const data = event.data || {};
         if (data.id !== id || task.settled) return;
         if (data.progress !== undefined) dispatchProgress(id, mode, data.progress, data.message || "");
-        if (data.error) { finish(reject, new Error(data.error)); return; }
+        if (data.error) { fallback(new Error(data.error)); return; }
         if (data.result) finish(resolve, data.result);
       };
       task.worker.onerror = (event) => fallback(new Error(event.message || "Falha de infraestrutura no Worker da planilha."));
@@ -121,12 +126,32 @@
 
   async function read(file, options) {
     if (!file) throw new Error("Planilha não informada.");
-    return processBuffer(await file.arrayBuffer(), signature(file), options, "workbook", null);
+    const key = signature(file);
+    if (workbookCache.has(key)) return rebuild(workbookCache.get(key));
+    return processBuffer(await readFile(file), key, options, "workbook", null);
   }
   async function readLd(file, meta) {
     if (!file) throw new Error("LD não informada.");
     const key = `ld:${signature(file)}|${profileKey(meta && meta.compatibilityProfile)}|${meta && meta.buildIndex === false ? "records" : "index"}`;
-    return processBuffer(await file.arrayBuffer(), key, { cellDates: true, cellFormula: true }, "ld", {
+    if (ldCache.has(key)) return ldCache.get(key);
+    const workbookKey = signature(file);
+    if (workbookCache.has(workbookKey)) {
+      const workbook = rebuild(workbookCache.get(workbookKey));
+      const parsed = root.TriagemCore.parseWorkbook(
+        workbook,
+        meta && meta.sourceName || file.name,
+        meta && meta.sourceTimestamp || file.lastModified || 0,
+        meta && meta.compatibilityProfile || null
+      );
+      const result = {
+        parsed,
+        index: meta && meta.buildIndex === false ? null : root.TriagemCore.buildIndex(parsed.records, parsed.history),
+      };
+      ldCache.set(key, result);
+      trimCache(ldCache, 1);
+      return result;
+    }
+    return processBuffer(await readFile(file), key, { cellDates: true, cellFormula: true }, "ld", {
       sourceName: meta && meta.sourceName || file.name,
       sourceTimestamp: meta && meta.sourceTimestamp || file.lastModified || 0,
       compatibilityProfile: meta && meta.compatibilityProfile || null,

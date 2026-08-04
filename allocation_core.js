@@ -587,6 +587,14 @@
     return norm(value).split(/[|/]/).filter(Boolean).at(-1) || "";
   }
 
+  function isAsBuiltPurpose(value) {
+    return norm(value) === "CONFORME CONSTRUIDO";
+  }
+
+  function workflowForPurpose(purpose, discipline) {
+    return isAsBuiltPurpose(purpose) ? "" : text(discipline);
+  }
+
   function evidenceRecord(row, index) {
     const group = index && index.byDocument && index.byDocument.get(key(row && row.document));
     if (!group || !group.records || !group.records.length) return null;
@@ -909,14 +917,17 @@
     while (levels.length < 10) levels.push("");
     const sourceAction = recordValue(record, ["ESCOPO", "AÇÃO", "ACAO"]) || text(history && history["Ação"]) || "INCLUSÃO";
     const action = norm(sourceAction) === "EMISSAO" ? "INCLUSÃO" : sourceAction;
+    const purpose = recordValue(record, ["PROPÓSITO DE EMISSÃO", "PROPÓSITO DE EMISSÃO ORIGINAL"]) || text(history && history["Propósito de Emissão Original"]);
+    const discipline = recordValue(record, ["DISCIPLINA", "WORKFLOW", "QUEM?"]) || (history && history.workflow) || "";
     return {
       document: record.document,
       plannedDate: text(history && history["Data Prevista"]) || text(allocationDate),
-      workflow: recordValue(record, ["DISCIPLINA", "WORKFLOW", "QUEM?"]) || (history && history.workflow) || "",
+      discipline,
+      workflow: workflowForPurpose(purpose, discipline),
       active: recordValue(record, ["DOCUMENTO ATIVO"]) || text(history && history["Documento Ativo"]),
       action,
       baselineDate: recordValue(record, ["DATA DA LINHA BASE"]) || text(history && history["Data da Linha Base"]),
-      purpose: recordValue(record, ["PROPÓSITO DE EMISSÃO", "PROPÓSITO DE EMISSÃO ORIGINAL"]) || text(history && history["Propósito de Emissão Original"]),
+      purpose,
       critical: recordValue(record, ["DOCUMENTO CRÍTICO"]) || text(history && history["Documento Crítico"]),
       observation: recordValue(record, ["OBSERVAÇÃO"]) || text(history && history["Observação"]),
       databook,
@@ -1121,6 +1132,8 @@
     const seenDocuments = new Set();
     let duplicateCount = 0;
     const allocationDate = text(options && options.allocationDate);
+    const ldSourceNames = [...new Set((options && options.ldSourceNames || []).map(text).filter(Boolean))];
+    const ldScopeLabel = ldSourceNames.length > 1 ? `${ldSourceNames.length} LDs carregadas` : "LD carregada";
 
     (entries || []).forEach((entry) => {
       const hintedSheet = entry.hintedSheet || C.inferSheetFromName(entry.raw);
@@ -1128,8 +1141,9 @@
       if (matches.length !== 1) {
         results.push({
           decision: REVIEW, selected: false, document: text(entry.raw),
-          reason: matches.length ? "Mais de um documento da LD foi identificado." : "Documento não encontrado na LD.",
-          allocationReason: matches.length ? "Mais de uma linha possível foi encontrada; nenhuma foi escolhida." : "Não há linha na LD para comprovar a situação de alocação.",
+          reason: matches.length ? `Mais de um documento foi identificado na ${ldScopeLabel}.` : `Documento não encontrado na ${ldScopeLabel}.`,
+          allocationReason: matches.length ? "Mais de uma linha possível foi encontrada; nenhuma foi escolhida." : `Não há linha em nenhuma das ${ldSourceNames.length || 1} LD(s) carregada(s) para comprovar a situação de alocação.`,
+          ldSource: "", ldSources: [],
           postingStatus: "SEM EVIDÊNCIA DE POSTAGEM NA LD", postingEvidence: null, source: entry,
         });
         return;
@@ -1150,6 +1164,8 @@
           reason: `Conflito na LD. Valores diferentes em: ${blockingConflictFields.join(", ")}. Nenhuma linha foi escolhida para gerar a alocação.`,
           allocationReason: `A situação não foi decidida porque existem divergências técnicas: ${blockingConflictFields.join(", ")}.`,
           warnings: [F.evidenceText(ldConflict)], conflictLd: `SIM — ${blockingConflictFields.join(", ")}`, ldConflict,
+          ldSource: "",
+          ldSources: [...new Set((ldConflict.candidates || []).map((candidate) => text(candidate.source)).filter(Boolean))],
           postingStatus: "CONFLITO NA LD", postingEvidence: null, record: null, source: entry,
         });
         return;
@@ -1161,6 +1177,7 @@
         if (hinted.length) candidates = hinted;
       }
       const record = latestRecord(candidates);
+      const ldSources = [...new Set(candidates.map((candidate) => text(candidate.source)).filter(Boolean))];
       const history = histories.get(looseKey(matched.document)) || null;
       const confirmationResolution = P && P.resolve ? P.resolve(confirmationIndex, matched.documentKey) : { evidence: null, conflict: false, candidates: [] };
       const confirmation = confirmationResolution.evidence || null;
@@ -1179,7 +1196,7 @@
       const output = outputFromRecord(record, history, base, control, allocationDate, inference);
       const ldVersion = recordVersion(record, control.latestLdVersion);
       const warnings = [];
-      if (!output.workflow) warnings.push("Workflow vazio");
+      if (!output.workflow && !isAsBuiltPurpose(output.purpose)) warnings.push("Workflow vazio");
       if (!output.databook) warnings.push("Caminho Data Book vazio");
       if (!output.levels.slice(0, 6).some(Boolean)) warnings.push("Níveis N1 a N6 vazios");
       if (!ldVersion) warnings.push("Versão da LD vazia");
@@ -1189,6 +1206,8 @@
       const common = {
         document: record.document,
         sheet: record.sheet,
+        ldSource: text(record.source),
+        ldSources,
         record,
         history,
         base,
@@ -1223,17 +1242,21 @@
         return;
       }
 
-      if (resolution.kind === "rejected" || resolution.kind === "not_allocated") {
+      if (resolution.kind === "rejected" || resolution.kind === "not_allocated" || resolution.kind === "empty") {
+        // Quando a LD confirma recusa, não alocação ou não contém confirmação (empty),
+        // permitir preparar a alocação desde que a linha exista na LD e não haja
+        // divergências bloqueantes. GRDT e Data Efetiva de Emissão NÃO devem bloquear
+        // a geração da alocação — são apenas informativas.
         const reallocationRequired = resolution.kind === "rejected";
         if (reallocationRequired) appendReallocationObservation(output, existingAllocation, fiscalComment, resolution.source);
-        if (postingEvidence.complete || postingEvidence.partial) {
-          const postingReason = postingEvidence.complete
-            ? `${postingEvidence.explanation} Apesar da recusa ou do status não alocado, não é seguro gerar nova alocação enquanto a postagem registrada na LD não for regularizada.`
-            : `${postingEvidence.explanation} Confira a evidência antes de gerar a nova alocação.`;
-          results.push({ ...common, decision: REVIEW, selected: false, reason: `${allocationReason} ${postingReason}`, allocationReason: `${allocationReason} ${postingReason}`, reallocationRequired });
-          return;
-        }
-        results.push({ ...common, decision: READY, selected: true, reason: allocationReason, reallocationRequired });
+        results.push({
+          ...common,
+          decision: READY,
+          selected: true,
+          reason: allocationReason,
+          allocationReason,
+          reallocationRequired,
+        });
         return;
       }
 
@@ -1308,6 +1331,8 @@
     titleSimilarity,
     subjectTags,
     suggestCatalogDatabook: chooseCatalogEvidence,
+    isAsBuiltPurpose,
+    workflowForPurpose,
     recordValue,
     hasAllocationStatusColumn,
     newestLdVersion,

@@ -27,7 +27,7 @@
   const DEFAULT_STATUS = "PENDENTE ENVIO DE LD";
 
   const state = {
-    ldFile: null,
+    ldFiles: [],
     controlFile: null,
     listFile: null,
     databookFile: null,
@@ -49,6 +49,8 @@
     catalogEntries: [],
     assistantDocumentKey: "",
     assistantDocumentKeys: [],
+    analysisRun: 0,
+    progressTimer: 0,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -165,8 +167,23 @@
     return today;
   }
 
+  function currentLdFiles() {
+    if (state.ldFiles.length) return state.ldFiles.slice();
+    const selected = els.ldInput.files ? Array.from(els.ldInput.files) : [];
+    if (selected.length) return selected;
+    const shared = els.mainLdInput && els.mainLdInput.files ? Array.from(els.mainLdInput.files) : [];
+    return shared.slice(0, 1);
+  }
+
   function currentLdFile() {
-    return state.ldFile || (els.ldInput.files && els.ldInput.files[0]) || (els.mainLdInput && els.mainLdInput.files && els.mainLdInput.files[0]) || null;
+    return currentLdFiles()[0] || null;
+  }
+
+  function ldFileLabel(files) {
+    const list = Array.isArray(files) ? files : [];
+    if (!list.length) return "Selecionar uma ou mais LDs";
+    if (list.length === 1) return list[0].name;
+    return `${list.length} LDs selecionadas`;
   }
 
   function hasRelation() {
@@ -177,15 +194,17 @@
     return Boolean(A.parseAllocationCode(els.code.value));
   }
 
-  function ldCompatibilityReady(file) {
-    return !file || !L || L.ready(file);
+  async function prepareLdCompatibility(file) {
+    if (!file || !L) return true;
+    await L.prepare(file, { interactive: false });
+    L.close();
+    updateInputs();
+    return true;
   }
 
-  async function prepareLdCompatibility(file, interactive) {
-    if (!file || !L) return true;
-    await L.prepare(file, { interactive: Boolean(interactive) });
-    updateInputs();
-    return L.ready(file);
+  async function prepareLdFiles(files) {
+    for (const file of files) await prepareLdCompatibility(file);
+    return true;
   }
 
   function updateReadyName() {
@@ -196,8 +215,9 @@
 
   function updateInputs() {
     refreshAllocationDate();
-    const ld = currentLdFile();
-    els.ldMeta.textContent = ld ? ld.name : "Selecionar arquivo";
+    const ldFiles = currentLdFiles();
+    els.ldMeta.textContent = ldFileLabel(ldFiles);
+    els.ldMeta.title = ldFiles.map((file) => file.name).join("\n");
     els.controlMeta.textContent = state.controlFile ? state.controlFile.name : "Selecionar arquivo";
     els.listMeta.textContent = state.listFile ? state.listFile.name : "Excel ou texto";
     els.databookMeta.textContent = state.databookFile ? state.databookFile.name : "Base incluída";
@@ -211,9 +231,7 @@
     els.evidenceMeta.textContent = evidenceParts.join(" · ");
     const textCount = relationLineCount();
     els.textCount.textContent = `${textCount} ${textCount === 1 ? "item" : "itens"}`;
-    const compatibilityInspected = !ld || !L || Boolean(L.inspectionFor(ld));
-    const compatibilityCanStart = ldCompatibilityReady(ld) || !compatibilityInspected;
-    els.analyze.disabled = state.busy || !ld || !compatibilityCanStart || !state.controlFile || !hasRelation() || !els.date.value || !codeIsValid();
+    els.analyze.disabled = state.busy || !ldFiles.length || !state.controlFile || !hasRelation() || !els.date.value || !codeIsValid();
     updateReadyName();
   }
 
@@ -223,6 +241,63 @@
     state.duplicateCount = 0;
     els.results.hidden = true;
     renderResults();
+  }
+
+  function abortError(message) {
+    try { return new DOMException(message || "Análise substituída.", "AbortError"); }
+    catch (_) { const error = new Error(message || "Análise substituída."); error.name = "AbortError"; return error; }
+  }
+
+  function ensureCurrentAnalysis(runId) {
+    if (runId !== state.analysisRun) throw abortError("Esta análise foi limpa ou substituída por outra.");
+  }
+
+  function cancelAllocationAnalysis() {
+    state.analysisRun += 1;
+    if (window.RECONCompute) window.RECONCompute.cancel("allocation");
+    if (window.RECONWorkbookWorker) window.RECONWorkbookWorker.cancelAll();
+    if (state.progressTimer) window.clearTimeout(state.progressTimer);
+    state.progressTimer = 0;
+    state.busy = false;
+    if (Workspace) Workspace.finish("allocation-analysis");
+    if (els.progress) els.progress.hidden = true;
+  }
+
+  function resetAllocationAnalysis(options) {
+    const config = { clearRelation: true, notify: true, ...(options || {}) };
+    const previousList = state.listFile;
+    cancelAllocationAnalysis();
+    if (previousList && window.RECONWorkbookWorker) window.RECONWorkbookWorker.clear(previousList);
+    if (previousList && window.RECONFileAccess) window.RECONFileAccess.clear(previousList);
+
+    state.results = [];
+    state.selected = new Set();
+    state.duplicateCount = 0;
+    state.search = "";
+    state.columnFilters = {};
+    state.databookFilter = "all";
+    state.decisionFilter = "all";
+    state.assistantDocumentKey = "";
+    state.assistantDocumentKeys = [];
+    if (pager) pager.reset();
+    if (config.clearRelation) {
+      els.text.value = "";
+      els.listInput.value = "";
+      state.listFile = null;
+      if (Workspace) Workspace.clearDraft("allocationText");
+    }
+    els.search.value = "";
+    if (els.databookFilter) els.databookFilter.value = "all";
+    if (els.decisionFilter) els.decisionFilter.value = "all";
+    if (els.columnFilterRow) els.columnFilterRow.querySelectorAll("input").forEach((input) => { input.value = ""; });
+    if (els.clearColumnFilters) els.clearColumnFilters.hidden = true;
+    if (els.selectAll) els.selectAll.checked = false;
+    closeDatabookAssistant();
+    els.results.hidden = true;
+    renderResults();
+    updateInputs();
+    if (config.clearRelation) els.text.focus();
+    if (config.notify) showToast("Análise limpa. Carregue outra relação e analise novamente.", "success");
   }
 
   function setProgress(percent, message) {
@@ -238,7 +313,8 @@
 
   async function readWorkbook(file) {
     if (window.RECONWorkbookWorker) return window.RECONWorkbookWorker.read(file, { cellDates: true, cellFormula: true });
-    return XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true, cellFormula: true });
+    const buffer = window.RECONFileAccess ? await window.RECONFileAccess.readArrayBuffer(file) : await file.arrayBuffer();
+    return XLSX.read(buffer, { type: "array", cellDates: true, cellFormula: true });
   }
 
   function allocationHistoryFiles(fileList) {
@@ -404,7 +480,7 @@
   }
 
   const ALLOCATION_COLUMN_FILTERS = Object.freeze([
-    ["situation", "Situação"], ["document", "NomeDocumento"], ["sheet", "Aba LD"], ["ldVersion", "Versão da LD"], ["allocationStatus", "Confirmação na LD"], ["confirmationOutcome", "Resultado da confirmação"], ["confirmationComment", "Comentário da confirmação"], ["confirmationSource", "Fonte da confirmação"], ["previousAllocation", "Alocação anterior"], ["allocationReason", "Motivo"], ["grdt", "Número da GRDT"], ["effectiveDate", "Data efetiva"], ["postingStatus", "Situação de postagem"], ["plannedDate", "Data prevista"], ["workflow", "Workflow"], ["action", "Ação"], ["purpose", "Propósito"], ["databook", "Caminho Data Book"], ["n1", "N1"], ["n2", "N2"], ["n3", "N3"], ["n4", "N4"], ["n5", "N5"], ["n6", "N6"], ["conflict", "Conflito na LD"], ["history", "Alocação / Histórico"],
+    ["situation", "Situação"], ["document", "NomeDocumento"], ["ldSource", "Arquivo LD"], ["sheet", "Aba LD"], ["ldVersion", "Versão da LD"], ["allocationStatus", "Confirmação na LD"], ["confirmationOutcome", "Resultado da confirmação"], ["confirmationComment", "Comentário da confirmação"], ["confirmationSource", "Fonte da confirmação"], ["previousAllocation", "Alocação anterior"], ["allocationReason", "Motivo"], ["grdt", "Número da GRDT"], ["effectiveDate", "Data efetiva"], ["postingStatus", "Situação de postagem"], ["plannedDate", "Data prevista"], ["workflow", "Workflow"], ["action", "Ação"], ["purpose", "Propósito"], ["databook", "Caminho Data Book"], ["n1", "N1"], ["n2", "N2"], ["n3", "N3"], ["n4", "N4"], ["n5", "N5"], ["n6", "N6"], ["conflict", "Conflito na LD"], ["history", "Alocação / Histórico"],
   ]);
 
   function allocationHistoryText(result) {
@@ -415,7 +491,7 @@
 
   function allocationColumnValue(result, keyName) {
     const output=result&&result.output||{}, record=result&&result.record||{}, levels=output.levels||[];
-    const values={situation:allocationStatusLabel(result),document:result&&result.document,sheet:result&&result.sheet,ldVersion:result&&result.ldVersion||record.ldVersion,allocationStatus:result&&result.allocationStatus||record.allocationStatus,confirmationOutcome:result&&result.confirmationOutcome,confirmationComment:result&&result.confirmationComment||result&&result.fiscalComment,confirmationSource:result&&result.confirmationSource,previousAllocation:result&&result.previousAllocation,allocationReason:result&&result.allocationReason||result&&result.reason,grdt:result&&result.grdt||record.grdt,effectiveDate:formatDateBR(result&&result.effectiveDate||record.effectiveDate),postingStatus:result&&result.postingStatus,plannedDate:formatDateBR(output.plannedDate),workflow:output.workflow,action:output.action,purpose:output.purpose,databook:output.databook,n1:levels[0],n2:levels[1],n3:levels[2],n4:levels[3],n5:levels[4],n6:levels[5],conflict:result&&result.conflictLd||"NÃO",history:allocationHistoryText(result)};
+    const values={situation:allocationStatusLabel(result),document:result&&result.document,ldSource:result&&result.ldSource||record.source,sheet:result&&result.sheet,ldVersion:result&&result.ldVersion||record.ldVersion,allocationStatus:result&&result.allocationStatus||record.allocationStatus,confirmationOutcome:result&&result.confirmationOutcome,confirmationComment:result&&result.confirmationComment||result&&result.fiscalComment,confirmationSource:result&&result.confirmationSource,previousAllocation:result&&result.previousAllocation,allocationReason:result&&result.allocationReason||result&&result.reason,grdt:result&&result.grdt||record.grdt,effectiveDate:formatDateBR(result&&result.effectiveDate||record.effectiveDate),postingStatus:result&&result.postingStatus,plannedDate:formatDateBR(output.plannedDate),workflow:output.workflow,action:output.action,purpose:output.purpose,databook:output.databook,n1:levels[0],n2:levels[1],n3:levels[2],n4:levels[3],n5:levels[4],n6:levels[5],conflict:result&&result.conflictLd||"NÃO",history:allocationHistoryText(result)};
     return values[keyName]||"";
   }
   function activeColumnFilters(){return Object.entries(state.columnFilters||{}).filter(([,value])=>A.norm(value));}
@@ -439,6 +515,7 @@
       if (!search) return true;
       return A.norm([
         result.document,
+        result.ldSource,
         result.sheet,
         result.reason,
         result.output && result.output.workflow,
@@ -497,14 +574,15 @@
       const history = allocationHistoryText(result);
       const decisionKind = allocationDecisionKind(result);
       const warnings = (result.warnings || []).join(" · ");
+      const workflowDisplay = output.workflow || (A.isAsBuiltPurpose(output.purpose) ? "Não se aplica — Conforme Construído" : "Definir");
       return `<tr class="allocation-result-row decision-${decisionKind} ${selected ? "selected" : ""}" data-allocation-document="${escapeHtml(A.key(result.document))}">
         <td><div class="allocation-situation decision-first"><input class="allocation-check" type="checkbox" ${selected ? "checked" : ""} ${canSelect ? "" : "disabled"}><span class="allocation-status ${allocationStatusClass(result)}">${allocationStatusLabel(result)}</span>${result.reallocationRequired ? '<small>Após recusa</small>' : ''}</div></td>
-        <td><div class="allocation-document-card"><strong title="${escapeHtml(result.document)}">${escapeHtml(result.document)}</strong><span>${escapeHtml(result.sheet || "Aba não informada")} · LD ${escapeHtml(version || "sem versão")}</span>${result.conflictLd && result.conflictLd !== "NÃO" ? `<small class="evidence-warning">Conflito na LD: ${escapeHtml(result.conflictLd)}</small>` : ""}</div></td>
+        <td><div class="allocation-document-card"><strong title="${escapeHtml(result.document)}">${escapeHtml(result.document)}</strong><span>${escapeHtml(result.ldSource || record.source || "LD não identificada")} · ${escapeHtml(result.sheet || "Aba não informada")} · versão ${escapeHtml(version || "não informada")}</span>${result.ldSources && result.ldSources.length > 1 ? `<small class="evidence-warning">Encontrado em ${escapeHtml(result.ldSources.join(" · "))}</small>` : ""}${result.conflictLd && result.conflictLd !== "NÃO" ? `<small class="evidence-warning">Conflito na LD: ${escapeHtml(result.conflictLd)}</small>` : ""}</div></td>
         <td><div class="allocation-evidence-stack">${evidenceLine("Resultado", result.confirmationOutcome || "Sem confirmação externa", result.reallocationRequired ? "warning" : "")}${evidenceLine("Fonte", result.confirmationSource || "LD / controle")}${evidenceLine("Fiscal", result.confirmationComment || result.fiscalComment || "Sem comentário")}${evidenceLine("Alocação anterior", result.previousAllocation)}</div></td>
         <td><div class="allocation-evidence-stack">${evidenceLine("SIGEM", result.postingStatus || result.sigemStatus || "Sem evidência na LD")}${evidenceLine("GRDT", result.grdt || record.grdt)}${evidenceLine("Data efetiva", formatDateBR(result.effectiveDate || record.effectiveDate))}${evidenceLine("Revisão", record.revision || result.revision)}</div></td>
         <td>${databookCell(result, output, evidence, inferred)}</td>
-        <td><div class="allocation-reason-card"><strong>${escapeHtml(result.allocationReason || result.reason || "Sem motivo registrado")}</strong><details><summary>Ver evidências completas</summary>${evidenceLine("Histórico", history)}${evidenceLine("Workflow", output.workflow)}${evidenceLine("Propósito", output.purpose)}${evidenceLine("Ação", output.action)}${evidenceLine("Alertas", warnings, warnings ? "warning" : "")}</details></div></td>
-        <td><div class="allocation-output-card">${evidenceLine("Workflow", output.workflow || "Definir")}${evidenceLine("Ação", output.action || "—")}${evidenceLine("Propósito", output.purpose || "—")}${evidenceLine("Data prevista", formatDateBR(output.plannedDate) || "—")}</div></td>
+        <td><div class="allocation-reason-card"><strong>${escapeHtml(result.allocationReason || result.reason || "Sem motivo registrado")}</strong><details><summary>Ver evidências completas</summary>${evidenceLine("Histórico", history)}${evidenceLine("Workflow", workflowDisplay)}${evidenceLine("Propósito", output.purpose)}${evidenceLine("Ação", output.action)}${evidenceLine("Alertas", warnings, warnings ? "warning" : "")}</details></div></td>
+        <td><div class="allocation-output-card">${evidenceLine("Workflow", workflowDisplay)}${evidenceLine("Ação", output.action || "—")}${evidenceLine("Propósito", output.purpose || "—")}${evidenceLine("Data prevista", formatDateBR(output.plannedDate) || "—")}</div></td>
       </tr>`;
     }).join("");
     els.previewLimit.hidden = false;
@@ -773,51 +851,74 @@
   async function analyzeAllocation() {
     if (state.busy) return;
     const allocationDate = refreshAllocationDate();
-    const ldFile = currentLdFile();
+    const ldFiles = currentLdFiles();
     const controlFile = state.controlFile;
-    if (!ldFile || !controlFile || !hasRelation()) return;
+    if (!ldFiles.length || !controlFile || !hasRelation()) return;
     if (!codeIsValid()) {
       showToast("Informe o número no formato C1O-ALOC-CM-0000-2026.", "error");
       return;
     }
-    if (!(await prepareLdCompatibility(ldFile, true))) {
-      showToast("Confirme a estrutura da LD antes de analisar.", "warn");
-      return;
-    }
-
+    const runId = ++state.analysisRun;
     state.busy = true;
     if (Workspace) Workspace.start("allocation-analysis", "Análise de alocação");
+    if (state.progressTimer) window.clearTimeout(state.progressTimer);
+    state.progressTimer = 0;
     updateInputs();
     setProgress(5, "Lendo a LD…");
     try {
-      let parsedLd;
-      if (window.RECONWorkbookWorker && window.RECONWorkbookWorker.readLd) {
-        parsedLd = (await window.RECONWorkbookWorker.readLd(ldFile, {
-          sourceName: ldFile.name,
-          sourceTimestamp: ldFile.lastModified || 0,
-          compatibilityProfile: L && L.profileFor(ldFile),
-          buildIndex: false,
-        })).parsed;
-      } else {
-        const ldWorkbook = L && L.workbookFor(ldFile) || await readWorkbook(ldFile);
-        parsedLd = C.parseWorkbook(ldWorkbook, ldFile.name, ldFile.lastModified || 0, L && L.profileFor(ldFile));
+      await prepareLdFiles(ldFiles);
+      ensureCurrentAnalysis(runId);
+      const parsedSources = [];
+      for (let index = 0; index < ldFiles.length; index += 1) {
+        const ldFile = ldFiles[index];
+        setProgress(5 + Math.round((index / Math.max(ldFiles.length, 1)) * 28), `Lendo LD ${index + 1} de ${ldFiles.length}…`);
+        let parsed;
+        if (window.RECONWorkbookWorker && window.RECONWorkbookWorker.readLd) {
+          parsed = (await window.RECONWorkbookWorker.readLd(ldFile, {
+            sourceName: ldFile.name,
+            sourceTimestamp: ldFile.lastModified || 0,
+            compatibilityProfile: L && L.profileFor(ldFile),
+            buildIndex: false,
+          })).parsed;
+        } else {
+          const ldWorkbook = L && L.workbookFor(ldFile) || await readWorkbook(ldFile);
+          parsed = C.parseWorkbook(ldWorkbook, ldFile.name, ldFile.lastModified || 0, L && L.profileFor(ldFile));
+        }
+        ensureCurrentAnalysis(runId);
+        if (!parsed.records.length) throw new Error(`Nenhuma linha técnica foi encontrada em ${ldFile.name}.`);
+        parsedSources.push({ file: ldFile, parsed });
+        await yieldFrame();
       }
-      if (!parsedLd.records.length) throw new Error("Nenhuma linha técnica foi encontrada na LD.");
+      const parsedLd = {
+        records: parsedSources.flatMap((source) => source.parsed.records),
+        history: parsedSources.flatMap((source) => source.parsed.history),
+        sources: parsedSources.map((source) => ({
+          name: source.file.name,
+          records: source.parsed.records.length,
+          history: source.parsed.history.length,
+          ldVersion: source.parsed.ldVersion || "",
+        })),
+      };
       await yieldFrame();
       setProgress(38, "Lendo o controle…");
       const control = state.control && state.controlSource === controlFile.name ? state.control : await loadControl(controlFile, true);
+      ensureCurrentAnalysis(runId);
 
       await yieldFrame();
       setProgress(46, "Preparando Databook e níveis…");
       const catalogEntries = await loadDatabookCatalog();
+      ensureCurrentAnalysis(runId);
       const historyRows = state.historyFiles.length ? await loadHistoricalAllocations(state.historyFiles) : [];
+      ensureCurrentAnalysis(runId);
       const confirmationRows = state.confirmationFiles.length ? await loadConfirmationRows(state.confirmationFiles) : [];
+      ensureCurrentAnalysis(runId);
 
       await yieldFrame();
       setProgress(68, "Lendo a relação…");
       let entries = [];
       if (state.listFile) {
         const relationWorkbook = await readWorkbook(state.listFile);
+        ensureCurrentAnalysis(runId);
         entries = entries.concat(A.parseRelationWorkbook(relationWorkbook, XLSX).entries);
       }
       if (relationLineCount()) entries = entries.concat(A.parseTextRelation(els.text.value).entries);
@@ -825,18 +926,23 @@
 
       await yieldFrame();
       setProgress(82, `Conferindo ${entries.length} itens…`);
-      const analysisOptions = { allocationDate, catalogEntries, historyRows, confirmationRows, ldHistory: parsedLd.history };
+      const analysisOptions = { allocationDate, catalogEntries, historyRows, confirmationRows, ldHistory: parsedLd.history, ldSourceNames: ldFiles.map((file) => file.name) };
       const analyzed = window.RECONCompute ? await window.RECONCompute.run("allocation", "allocation-analyze", { entries, records: parsedLd.records, control, options: analysisOptions }) : A.analyze(entries, parsedLd.records, control, analysisOptions);
-      state.results = analyzed.results;
+      ensureCurrentAnalysis(runId);
+      state.results = analyzed.results.map((result) => ({
+        ...result,
+        ldSource: result.ldSource || result.record && result.record.source || "",
+        ldSources: result.ldSources && result.ldSources.length ? result.ldSources : (result.record && result.record.source ? [result.record.source] : []),
+      }));
       if (pager) pager.reset();
       if (!state.densityManual && state.results.length > 500) state.compactMode = true;
       state.duplicateCount = analyzed.duplicateCount;
-      state.selected = new Set(analyzed.results.filter((result) => result.decision === A.READY).map((result) => A.key(result.document)));
+      state.selected = new Set(state.results.filter((result) => result.decision === A.READY).map((result) => A.key(result.document)));
       els.results.hidden = false;
       renderResults();
       setProgress(100, "Concluído");
       const counts = resultCounts();
-      const inferredCount = analyzed.results.filter((result) => result.output && result.output.databook
+      const inferredCount = state.results.filter((result) => result.output && result.output.databook
         && ["history", "ld", "catalog"].includes(result.output.databookEvidence && result.output.databookEvidence.sourceType)).length;
       const duplicateSuffix = analyzed.duplicateCount ? ` · ${analyzed.duplicateCount} duplicado(s) removido(s)` : "";
       const inferredSuffix = inferredCount ? ` · ${inferredCount} Databook${inferredCount === 1 ? "" : "s"} recuperado${inferredCount === 1 ? "" : "s"}` : "";
@@ -844,17 +950,24 @@
       const splitSuffix = plan.groups.length ? ` · ${plan.groups.length} alocação${plan.groups.length === 1 ? "" : "ões"}` : "";
       const planWarning = plan.errors.length ? ` ${plan.errors[0]}` : "";
       showToast(`${counts.ready} documento(s) pronto(s)${splitSuffix}${inferredSuffix}${duplicateSuffix}.${planWarning}`, counts.ready && !plan.errors.length ? "success" : "warn");
-      window.setTimeout(() => { els.progress.hidden = true; }, 500);
+      state.progressTimer = window.setTimeout(() => {
+        if (runId === state.analysisRun) els.progress.hidden = true;
+        state.progressTimer = 0;
+      }, 500);
     } catch (error) {
-      console.error(error);
+      if (runId !== state.analysisRun || error && error.name === "AbortError") return;
+      if (error && error.name === "RECONFileReadError") console.warn(error.message);
+      else console.error(error);
       els.progress.hidden = true;
       invalidateResults();
       showToast(error.message || "Não foi possível analisar a alocação.", "error");
     } finally {
-      state.busy = false;
-      if (Workspace) Workspace.finish("allocation-analysis");
-      updateInputs();
-      renderResults();
+      if (runId === state.analysisRun) {
+        state.busy = false;
+        if (Workspace) Workspace.finish("allocation-analysis");
+        updateInputs();
+        renderResults();
+      }
     }
   }
 
@@ -870,7 +983,7 @@
     const show = Boolean(plan && plan.groups && plan.groups.length && (plan.etGroups > 0 || plan.groups.length > 1));
     els.batchPlan.hidden = !show;
     const plural = Boolean(plan && plan.groups && plan.groups.length > 1);
-    els.exportFile.textContent = plural ? "Baixar alocações (ZIP)" : "Baixar alocação";
+    els.exportFile.textContent = plural ? "Baixar alocações oficiais (ZIP)" : "Baixar alocação oficial";
     els.exportControl.textContent = plural ? "Baixar linhas por alocação (ZIP)" : "Baixar linhas do controle";
     els.exportPackage.textContent = plural ? "Gerar pacote das alocações" : "Gerar pacote";
     if (!show) return;
@@ -942,16 +1055,17 @@
     els.exportReport.textContent = "Gerando…";
     if (Workspace) Workspace.start("allocation-analysis-report", "Relatório da análise de alocação");
     try {
-      const ldFile = currentLdFile();
+      const ldFiles = currentLdFiles();
       const buffer = await W.buildAnalysisReport(state.results, {
-        ldName: ldFile && ldFile.name || "",
+        ldName: ldFiles.map((file) => file.name).join(" · "),
         generatedAt: new Date().toLocaleString("pt-BR"),
       }, window.ExcelJS);
       const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "").replace("T", "_");
       downloadBlob(new Blob([buffer], { type: W.MIME }), `Relatorio_RECON_Analise_Alocacao_${stamp}.xlsx`);
       showToast(`Relatório gerado com ${state.results.length} documento(s).`, "success");
     } catch (error) {
-      console.error(error);
+      if (error && error.name === "RECONFileReadError") console.warn(error.message);
+      else console.error(error);
       showToast(error.message || "Não foi possível gerar o relatório da análise.", "error");
     } finally {
       state.busy = false;
@@ -1004,38 +1118,41 @@
 
   window.addEventListener("recon:module", (event) => {
     if (!event.detail || event.detail.module !== "allocation") return;
-    if (!state.ldFile && els.mainLdInput && els.mainLdInput.files && els.mainLdInput.files[0]) {
-      state.ldFile = els.mainLdInput.files[0];
+    if (!state.ldFiles.length && els.mainLdInput && els.mainLdInput.files && els.mainLdInput.files[0]) {
+      state.ldFiles = [els.mainLdInput.files[0]];
       updateInputs();
-      prepareLdCompatibility(state.ldFile, true).catch((error) => showToast(error.message || "A LD não pôde ser lida.", "error"));
+      prepareLdFiles(state.ldFiles).catch((error) => showToast(error.message || "A LD não pôde ser lida.", "error"));
     }
   });
 
   els.ldInput.addEventListener("change", async () => {
-    state.ldFile = els.ldInput.files && els.ldInput.files[0] || null;
+    cancelAllocationAnalysis();
+    state.ldFiles = els.ldInput.files ? Array.from(els.ldInput.files) : [];
     invalidateResults();
     updateInputs();
     try {
-      await prepareLdCompatibility(state.ldFile, true);
+      await prepareLdFiles(state.ldFiles);
     } catch (error) {
-      showToast(error.message || "A LD não pôde ser lida.", "error");
+      showToast(error.message || "Uma das LDs não pôde ser lida.", "error");
     }
   });
   if (els.mainLdInput) els.mainLdInput.addEventListener("change", async () => {
-    if (els.ldInput.files && els.ldInput.files[0]) return;
-    state.ldFile = els.mainLdInput.files && els.mainLdInput.files[0] || null;
+    if (els.ldInput.files && els.ldInput.files.length) return;
+    cancelAllocationAnalysis();
+    state.ldFiles = els.mainLdInput.files && els.mainLdInput.files[0] ? [els.mainLdInput.files[0]] : [];
     invalidateResults();
     updateInputs();
     try {
-      await prepareLdCompatibility(state.ldFile, true);
+      await prepareLdFiles(state.ldFiles);
     } catch (error) {
       showToast(error.message || "A LD não pôde ser lida.", "error");
     }
   });
   document.addEventListener("recon:ld-compatibility", (event) => {
-    if (event.detail && event.detail.file === currentLdFile()) updateInputs();
+    if (event.detail && currentLdFiles().includes(event.detail.file)) updateInputs();
   });
   els.controlInput.addEventListener("change", async () => {
+    cancelAllocationAnalysis();
     state.controlFile = els.controlInput.files && els.controlInput.files[0] || null;
     state.control = null;
     state.controlSource = "";
@@ -1045,7 +1162,8 @@
     try {
       await loadControl(state.controlFile, false);
     } catch (error) {
-      console.error(error);
+      if (error && error.name === "RECONFileReadError") console.warn(error.message);
+      else console.error(error);
       state.controlFile = null;
       state.control = null;
       els.controlInput.value = "";
@@ -1054,17 +1172,20 @@
     }
   });
   els.listInput.addEventListener("change", () => {
+    cancelAllocationAnalysis();
     state.listFile = els.listInput.files && els.listInput.files[0] || null;
     invalidateResults();
     updateInputs();
   });
   els.databookInput.addEventListener("change", () => {
+    cancelAllocationAnalysis();
     state.databookFile = els.databookInput.files && els.databookInput.files[0] || null;
     state.catalogEntries = [];
     invalidateResults();
     updateInputs();
   });
   if (els.confirmationInput) els.confirmationInput.addEventListener("change", () => {
+    cancelAllocationAnalysis();
     state.confirmationFiles = allocationConfirmationFiles(els.confirmationInput.files);
     invalidateResults();
     updateInputs();
@@ -1074,6 +1195,7 @@
   });
 
   els.historyInput.addEventListener("change", () => {
+    cancelAllocationAnalysis();
     state.historyFiles = allocationHistoryFiles(els.historyInput.files);
     invalidateResults();
     updateInputs();
@@ -1082,25 +1204,20 @@
     }
   });
   els.text.addEventListener("input", () => {
+    cancelAllocationAnalysis();
     if (Workspace) Workspace.setDraft("allocationText", els.text.value);
     invalidateResults();
     updateInputs();
   });
-  els.clear.addEventListener("click", () => {
-    els.text.value = "";
-    if (Workspace) Workspace.clearDraft("allocationText");
-    els.listInput.value = "";
-    state.listFile = null;
-    invalidateResults();
-    updateInputs();
-    els.text.focus();
-  });
+  els.clear.addEventListener("click", () => resetAllocationAnalysis());
   els.code.addEventListener("input", () => {
+    cancelAllocationAnalysis();
     state.codeAutomatic = false;
     updateInputs();
     renderResults();
   });
   els.date.addEventListener("change", () => {
+    cancelAllocationAnalysis();
     if (state.control && state.codeAutomatic) {
       const year = Number(els.date.value.slice(0, 4));
       els.code.value = A.suggestAllocationCode(state.control, year);
@@ -1205,8 +1322,8 @@
       expectedInputs: state.results.length,
       accountedInputs: state.results.length,
       requireUniqueTargets: true,
-      items: plan.groups.flatMap((group) => group.results.map((result) => ({ primary: result.document, secondary: `${group.allocationCode} · ${result.document}`, meta: group.isEt ? `Workflow ${group.label}` : result.sheet || "LD" }))),
+      items: plan.groups.flatMap((group) => group.results.map((result) => ({ primary: result.document, secondary: `${group.allocationCode} · ${result.document}`, meta: group.isEt ? `Disciplina ${group.label}` : result.sheet || "LD" }))),
     };
   };
-  window.RECONAllocation = { state, analyzeAllocation, renderResults, batchPlan, generateFiles, exportAnalysisReport };
+  window.RECONAllocation = { state, currentLdFiles, analyzeAllocation, resetAnalysis: resetAllocationAnalysis, renderResults, batchPlan, generateFiles, exportAnalysisReport };
 })();

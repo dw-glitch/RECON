@@ -1,21 +1,39 @@
-/* RECON 1.26.2 — camada final consolidada. */
+/* RECON 1.26.4 — camada final consolidada. */
 /* RECON 1.24.0 — camada visual estrutural, acessível e responsiva. */
 html[data-app="RECON"][data-ui-generation="3"] {
-  --ui-bg: #f3f6f8;
-  --ui-surface: #ffffff;
-  --ui-surface-soft: #f7fafc;
-  --ui-text: #183247;
-  --ui-muted: #607487;
-  --ui-border: #d7e1e8;
-  --ui-border-strong: #b9cad5;
-  --ui-brand: #155c8a;
-  --ui-brand-strong: #0d466d;
+  --ui-bg: var(--surface-0);
+  --ui-surface: var(--surface-1);
+  --ui-surface-soft: var(--surface-2);
+  --ui-text: var(--text-1);
+  --ui-muted: var(--text-2);
+  --ui-border: var(--border-1);
+  --ui-border-strong: var(--border-2);
+  --ui-brand: var(--brand-600);
+  --ui-brand-strong: var(--brand-800);
   --ui-focus: #f4b740;
   --ui-radius: 12px;
   --ui-radius-sm: 8px;
-  --ui-shadow: 0 10px 28px rgba(28, 60, 82, 0.08);
+  --ui-shadow: var(--shadow-1);
   --ui-topbar-height: 72px;
+  --background: var(--surface-0);
+  --surface: var(--surface-1);
+  --surface-soft: var(--surface-2);
+  --panel: var(--surface-1);
+  --soft: var(--surface-2);
+  --ink: var(--text-1);
+  --muted: var(--text-2);
+  --text: var(--text-1);
+  --text-muted: var(--text-2);
+  --line: var(--border-1);
+  --line-dark: var(--border-2);
+  --border: var(--border-1);
+  --primary: var(--brand-700);
+  --accent: var(--brand-600);
   color-scheme: light;
+}
+
+html[data-app="RECON"][data-ui-generation="3"][data-theme="dark"] {
+  color-scheme: dark;
 }
 
 html[data-app="RECON"][data-ui-generation="3"] body {
@@ -334,7 +352,7 @@ html[data-app="RECON"][data-ui-generation="3"] .p1-task-grid > button {
 }
 
 
-/* RECON 1.26.2 — Macroetapa 4: redesign funcional dos módulos operacionais. */
+/* RECON 1.26.4 — Macroetapa 4: redesign funcional dos módulos operacionais. */
 html[data-app="RECON"][data-functional-generation="4"] {
   --f4-border: color-mix(in srgb, var(--border, #cbd8e3) 82%, transparent);
   --f4-muted: var(--text-muted, #607487);
@@ -940,7 +958,7 @@ html[data-app="RECON"][data-functional-generation="4"] .renamer-package-summary 
 }
 
 
-/* RECON 1.26.2 — correção de sobreposição no módulo Corrigir títulos. */
+/* RECON 1.26.4 — correção de sobreposição no módulo Corrigir títulos. */
 html[data-app="RECON"][data-functional-generation="4"] #module-titles .audit-config-main {
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
@@ -1083,7 +1101,7 @@ html[data-app="RECON"] #recon-preferences-open { margin-top: .25rem; }
   html[data-app="RECON"] .recon-preferences-dialog { scroll-behavior: auto; }
 }
 
-/* RECON 1.26.2 — contraste AA para textos secundários. */
+/* RECON 1.26.4 — contraste AA para textos secundários. */
 html[data-app="RECON"] .configuration-footer > span,
 html[data-app="RECON"] .mode-switch small,
 html[data-app="RECON"] #allocation-text-count,
@@ -1096,7 +1114,7 @@ html[data-app="RECON"] .databook-level-grid label {
 }
 
 
-/* RECON 1.26.2 — contraste e legibilidade final. */
+/* RECON 1.26.4 — contraste e legibilidade final. */
 html[data-app="RECON"] .primary-button:disabled,
 html[data-app="RECON"] .analyze-button:disabled,
 html[data-app="RECON"] .final-package-button:disabled {
@@ -1113,3 +1131,218 @@ html[data-app="RECON"] .renamer-live-example {
 html[data-app="RECON"] .renamer-live-example > span,
 html[data-app="RECON"] .renamer-live-example small { color: #e8f3fa; }
 html[data-app="RECON"] .renamer-live-example strong { color: #ffffff; }
+
+
+/* RECON 1.26.4 — títulos sem confirmação manual de associações */
+html[data-app="RECON"] .title-analysis-rule {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+/* RECON 1.26.17 — busca pelo Grupo 7 sem o prefixo redundante U32. */
+html[data-app="RECON"] :where(.filter-panel,.results-toolbar,.audit-toolbar,.allocation-toolbar,.tag-toolbar,.ops-renamer-tools,.title-review-toolbar) {
+  gap: .55rem;
+}
+html[data-app="RECON"] :where(.filter-panel,.results-toolbar,.audit-toolbar,.allocation-toolbar,.tag-toolbar,.ops-renamer-tools,.title-review-toolbar) label {
+  gap: .2rem;
+}
+html[data-app="RECON"] :where(.filter-panel,.results-toolbar,.audit-toolbar,.allocation-toolbar,.tag-toolbar,.ops-renamer-tools,.title-review-toolbar) label > span {
+  font-size: .72rem;
+  line-height: 1.1;
+}
+html[data-app="RECON"] :where(.filter-panel,.audit-config,.allocation-control-panel,.allocation-relation-card,.tag-control-panel,.renamer-howto,.renamer-advanced) {
+  padding: .8rem;
+  row-gap: .7rem;
+}
+html[data-app="RECON"] .audit-toolbar {
+  grid-template-columns: minmax(13rem,1.35fr) repeat(4,minmax(8.5rem,.72fr)) auto;
+  align-items: end;
+  padding: .65rem .75rem;
+}
+html[data-app="RECON"] .title-review-toolbar {
+  padding: .65rem .75rem;
+  align-items: end;
+}
+html[data-app="RECON"] .allocation-toolbar,
+html[data-app="RECON"] .results-toolbar,
+html[data-app="RECON"] .tag-toolbar,
+html[data-app="RECON"] .ops-renamer-tools {
+  padding: .65rem .75rem;
+}
+html[data-app="RECON"] :where(.configuration-card,.source-card,.file-source,.source-state) {
+  padding: .8rem;
+}
+html[data-app="RECON"] :where(.configuration-card,.source-card,.file-source,.source-state) header {
+  margin-bottom: .45rem;
+}
+html[data-app="RECON"] .runtime-actions quality-status.runtime span { font-weight: 750; }
+
+@media (max-width: 1120px) {
+  html[data-app="RECON"] .audit-toolbar { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  html[data-app="RECON"] .audit-toolbar .search-box { grid-column: span 2; }
+}
+@media (max-width: 720px) {
+  html[data-app="RECON"] :where(.filter-panel,.results-toolbar,.audit-toolbar,.allocation-toolbar,.tag-toolbar,.ops-renamer-tools,.title-review-toolbar) {
+    grid-template-columns: 1fr;
+    padding: .6rem;
+  }
+  html[data-app="RECON"] .audit-toolbar .search-box { grid-column: auto; }
+}
+
+/* RECON 1.26.17 — tema escuro aplicado na última camada da cascata. */
+html[data-app="RECON"][data-theme="dark"] body {
+  color: var(--text-1);
+  background: var(--surface-0);
+}
+html[data-app="RECON"][data-theme="dark"] body :where(input, select, textarea) {
+  color: var(--text-1);
+  border-color: var(--border-2);
+  background-color: var(--surface-1);
+}
+html[data-app="RECON"][data-theme="dark"] body :where(input, textarea)::placeholder { color: var(--text-3); }
+html[data-app="RECON"][data-theme="dark"] :where(
+  .card,
+  .p1-task-home,
+  .configuration-card,
+  .source-card,
+  .file-source,
+  .source-state,
+  .audit-config,
+  .allocation-control-panel,
+  .allocation-relation-card,
+  .tag-control-panel,
+  .renamer-howto,
+  .renamer-advanced,
+  .recon-preferences-dialog
+) {
+  color: var(--text-1);
+  border-color: var(--border-1);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+html[data-app="RECON"][data-theme="dark"] :where(
+  .filter-panel,
+  .results-toolbar,
+  .audit-toolbar,
+  .allocation-toolbar,
+  .tag-toolbar,
+  .ops-renamer-tools,
+  .title-review-toolbar,
+  .configuration-footer
+) {
+  color: var(--text-1);
+  border-color: var(--border-1);
+  background: var(--surface-2);
+}
+html[data-app="RECON"][data-theme="dark"] :where(.p2-mode-badge, .p2-theme-toggle, .secondary-button, .icon-button) {
+  color: var(--text-2);
+  border-color: var(--border-2);
+  background: var(--surface-2);
+}
+html[data-app="RECON"][data-theme="dark"] :where(.p2-theme-toggle, .secondary-button, .icon-button):hover {
+  color: var(--brand-700);
+  border-color: var(--brand-600);
+  background: var(--brand-50);
+}
+html[data-app="RECON"][data-theme="dark"] :where(
+  .recon-preferences-dialog > header,
+  .drawer-footer,
+  .compatibility-drawer > footer
+) {
+  color: var(--text-1);
+  border-color: var(--border-1);
+  background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+}
+html[data-app="RECON"][data-theme="dark"] :where(.primary-button, .analyze-button, .final-package-button):disabled {
+  color: var(--text-3);
+  border-color: var(--border-1);
+  background: var(--surface-3);
+}
+html[data-app="RECON"][data-ui-generation="3"][data-theme="dark"] .p2-theme-toggle {
+  color: var(--text-2);
+  border-color: var(--border-2);
+  background: var(--surface-2);
+}
+html[data-app="RECON"][data-ui-generation="3"][data-theme="dark"] .p2-theme-toggle:hover {
+  color: var(--brand-700);
+  border-color: var(--brand-600);
+  background: var(--brand-50);
+}
+html[data-app="RECON"][data-ui-generation="3"][data-theme="dark"] .p1-home-note {
+  color: var(--text-2);
+  border-color: color-mix(in srgb, var(--success-700) 42%, var(--border-1));
+  background: var(--success-100);
+}
+html[data-app="RECON"][data-ui-generation="3"][data-theme="dark"] .p1-home-note strong {
+  color: var(--success-700);
+}
+html[data-app="RECON"][data-ui-generation="3"][data-theme="dark"] .p1-home-note span {
+  color: var(--text-2);
+}
+
+/* RECON 1.26.19 — múltiplas LDs com exportação travada no modelo oficial de alocação (GERAL, A:P). */
+
+/* RECON 1.26.21 — consulta Databook discreta e prévias sem estouro de conteúdo. */
+html[data-app="RECON"] .allocation-databook-finder{
+  margin-top:1rem;border:1px solid var(--border-1);border-radius:16px;background:var(--surface-1);box-shadow:var(--shadow-1);overflow:hidden;
+}
+html[data-app="RECON"] .allocation-databook-finder>summary{
+  display:grid;grid-template-columns:2.35rem minmax(0,1fr) auto;align-items:center;gap:.75rem;padding:.85rem 1rem;cursor:pointer;list-style:none;user-select:none;
+}
+html[data-app="RECON"] .allocation-databook-finder>summary::-webkit-details-marker{display:none}
+html[data-app="RECON"] .allocation-databook-finder>summary:hover{background:var(--surface-2)}
+html[data-app="RECON"] .allocation-databook-finder-icon{display:grid;place-items:center;width:2.25rem;height:2.25rem;border-radius:10px;background:var(--brand-50);color:var(--brand-700);font-size:.7rem;font-weight:900;letter-spacing:.04em}
+html[data-app="RECON"] .allocation-databook-finder-heading{display:grid;gap:.12rem;min-width:0}
+html[data-app="RECON"] .allocation-databook-finder-heading strong{font-size:.94rem;color:var(--text-1)}
+html[data-app="RECON"] .allocation-databook-finder-heading small{color:var(--text-3);line-height:1.35;overflow-wrap:anywhere}
+html[data-app="RECON"] .allocation-databook-finder-toggle{font-size:1.05rem;color:var(--text-3);transition:transform .18s ease}
+html[data-app="RECON"] .allocation-databook-finder[open] .allocation-databook-finder-toggle{transform:rotate(180deg)}
+html[data-app="RECON"] .allocation-databook-finder-body{padding:1rem;border-top:1px solid var(--border-1);background:linear-gradient(180deg,var(--surface-2),var(--surface-1) 5rem)}
+html[data-app="RECON"] .allocation-databook-finder-grid{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(320px,1.35fr) auto;gap:.75rem;align-items:end}
+html[data-app="RECON"] .allocation-databook-finder-grid label{display:grid;gap:.35rem;min-width:0}
+html[data-app="RECON"] .allocation-databook-finder-grid label span{font-size:.75rem;font-weight:750;color:var(--text-2)}
+html[data-app="RECON"] .allocation-databook-finder-grid input{width:100%;min-width:0}
+html[data-app="RECON"] .allocation-databook-finder-actions{display:flex;align-items:center;gap:.45rem;min-width:max-content}
+html[data-app="RECON"] .allocation-databook-finder-note{margin:.65rem 0 0;color:var(--text-3);font-size:.75rem;line-height:1.45}
+html[data-app="RECON"] .allocation-databook-finder-result{display:grid;gap:.6rem;margin-top:.85rem}
+html[data-app="RECON"] .finder-result-heading{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.35rem .8rem;padding:.15rem .1rem;color:var(--text-3);font-size:.75rem}
+html[data-app="RECON"] .finder-result-heading strong{color:var(--text-2)}
+html[data-app="RECON"] .finder-match{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.45rem .8rem;padding:.85rem;border:1px solid var(--border-1);border-radius:13px;background:var(--surface-1);min-width:0}
+html[data-app="RECON"] .finder-match.best{border-color:color-mix(in srgb,var(--brand-600) 45%,var(--border-1));box-shadow:0 7px 18px rgba(29,78,116,.08)}
+html[data-app="RECON"] .finder-match-main{display:grid;gap:.08rem;min-width:0}
+html[data-app="RECON"] .finder-rank{font-size:.65rem;font-weight:850;color:var(--brand-700);text-transform:uppercase;letter-spacing:.065em}
+html[data-app="RECON"] .finder-match-main strong,html[data-app="RECON"] .finder-path,html[data-app="RECON"] .finder-reason{overflow-wrap:anywhere;word-break:break-word}
+html[data-app="RECON"] .finder-match-main strong{color:var(--text-1);line-height:1.35}
+html[data-app="RECON"] .finder-match-main small{color:var(--text-3);line-height:1.35}
+html[data-app="RECON"] .finder-confidence{align-self:start;display:inline-flex;align-items:center;justify-content:center;min-height:1.65rem;padding:0 .55rem;border-radius:999px;font-size:.65rem;font-weight:850;text-align:center;white-space:normal}
+html[data-app="RECON"] .finder-confidence.strong{color:#12633f;background:#e9f7f0}
+html[data-app="RECON"] .finder-confidence.possible{color:#83530b;background:#fff4d9}
+html[data-app="RECON"] .finder-confidence.low{color:#7a4a42;background:#fff0ed}
+html[data-app="RECON"] .finder-path{grid-column:1/-1;margin:0;padding:.65rem .7rem;border-radius:9px;background:var(--surface-2);color:var(--text-1);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.78rem;line-height:1.5}
+html[data-app="RECON"] .finder-reason{margin:0;color:var(--text-3);font-size:.73rem;line-height:1.4}
+html[data-app="RECON"] .finder-copy{justify-self:end}
+html[data-app="RECON"] .finder-empty{display:grid;gap:.2rem;margin:0;padding:.8rem;border:1px dashed var(--border-1);border-radius:11px;background:var(--surface-2);color:var(--text-3)}
+html[data-app="RECON"] .finder-empty strong{color:var(--text-2)}
+
+html[data-app="RECON"] :where(.results-card,.allocation-results,.audit-results,.tag-results,.renamer-results){min-width:0}
+html[data-app="RECON"] :where(.results-card,.allocation-results,.audit-results,.tag-results,.renamer-results) :where(.section-title,.results-title,.audit-head,.renamer-results-head){align-items:flex-start;flex-wrap:wrap;min-width:0}
+html[data-app="RECON"] :where(.recon-data-table,.allocation-table,.audit-table,.tag-table) tbody tr{height:auto}
+html[data-app="RECON"] :where(.recon-data-table,.allocation-table,.audit-table,.tag-table) tbody td{height:auto!important;min-width:0;vertical-align:top;line-height:1.42;padding-top:.72rem;padding-bottom:.72rem;overflow-wrap:anywhere;word-break:break-word;white-space:normal}
+html[data-app="RECON"] :where(.recon-data-table,.allocation-table,.audit-table,.tag-table) tbody td :where(strong,span,small,p,div){max-width:100%;overflow-wrap:anywhere;word-break:break-word;white-space:normal}
+html[data-app="RECON"] :where(.recon-data-table,.allocation-table,.audit-table,.tag-table) tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--surface-2) 62%,transparent)}
+html[data-app="RECON"] :where(.recon-data-table,.allocation-table,.audit-table,.tag-table) tbody tr:hover td{background:var(--brand-50)}
+html[data-app="RECON"] .allocation-result-row :where(.allocation-document-card,.allocation-evidence-stack,.allocation-output-card,.allocation-reason-card,.allocation-databook-cell){min-width:0;align-content:start}
+html[data-app="RECON"] .allocation-result-row .allocation-document-card>strong{white-space:normal;overflow-wrap:anywhere;word-break:break-word}
+html[data-app="RECON"] .status-value{max-width:100%;height:auto;min-height:1.65rem;padding:.25rem .55rem;line-height:1.25;text-align:center;white-space:normal}
+html[data-app="RECON"] .allocation-preview-limit{padding:.65rem .85rem;font-size:.75rem;line-height:1.35}
+@media(max-width:900px){
+  html[data-app="RECON"] .allocation-databook-finder-grid{grid-template-columns:1fr}
+  html[data-app="RECON"] .allocation-databook-finder-actions{min-width:0;flex-wrap:wrap}
+  html[data-app="RECON"] .finder-match{grid-template-columns:1fr}
+  html[data-app="RECON"] .finder-confidence,html[data-app="RECON"] .finder-copy{justify-self:start}
+}
+@media(max-width:560px){
+  html[data-app="RECON"] .allocation-databook-finder>summary{grid-template-columns:2.15rem minmax(0,1fr) auto;padding:.75rem}
+  html[data-app="RECON"] .allocation-databook-finder-body{padding:.75rem}
+  html[data-app="RECON"] .allocation-databook-finder-actions>*{flex:1 1 auto}
+}

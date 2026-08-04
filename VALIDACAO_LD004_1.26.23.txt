@@ -1,0 +1,16 @@
+Arquivo: LD-5290.00-22313-91A-C1O-004_0001_0.xlsx
+- Documentos analisados: 1.263
+- Títulos que precisam de ação: 910
+- Recomendações geradas: 906
+- Sem recomendação segura: 4
+- Cobertura dos títulos que precisam de ação: 99,56%
+- Recomendações de confiança alta: 696
+- Recomendações de confiança média: 210
+- Recomendações de baixa confiança: 0
+
+CASOS SEM RECOMENDAÇÃO AUTOMÁTICA
+- C1O_RNEST_U32_10.2.1.2_ELE_RIR_nt-ELN-NF-112973
+- C1O_RNEST_U32_10.2.1.2_ELE_RIR_nt-ELN-NF-6077
+- C1O_RNEST_U32_10.2.1.2_ELE_RIR_nt-ELN-NF-613
+- C1O_RNEST_U32_3.4.18.1_CVL_PJSI_nt-SPE-INS-01
+Esses quatro itens não possuem correspondência conclusiva nas duas bases incorporadas. O RECON não inventa uma descrição e os mantém para conferência.

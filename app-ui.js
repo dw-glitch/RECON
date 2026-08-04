@@ -92,27 +92,36 @@
         target.textContent = "";
         window.setTimeout(() => { target.textContent = message; }, 20);
     }
-    function setTheme(theme, notify = false) {
-        document.documentElement.dataset.theme = theme;
-        document.body.classList.toggle("p2-dark", theme === "dark");
+    function setTheme(theme, notify = false, persist = true) {
+        const nextTheme = theme === "dark" ? "dark" : "light";
+        const dark = nextTheme === "dark";
+        document.documentElement.dataset.theme = nextTheme;
+        document.documentElement.style.colorScheme = nextTheme;
+        document.documentElement.classList.toggle("theme-dark", dark);
+        document.body.classList.toggle("p2-dark", dark);
         const themeColor = $('meta[name="theme-color"]');
         if (themeColor)
-            themeColor.content = theme === "dark" ? "#0c141b" : "#0a527d";
+            themeColor.content = dark ? "#0c141b" : "#0a527d";
         const button = $("#ui-theme-toggle");
         if (button) {
-            const dark = theme === "dark";
             button.setAttribute("aria-pressed", String(dark));
+            button.dataset.themeTarget = dark ? "light" : "dark";
             const text = $("span", button);
             if (text)
                 text.textContent = dark ? "Modo claro" : "Modo escuro";
             button.title = dark ? "Usar modo claro" : "Usar modo escuro";
         }
-        try {
-            localStorage.setItem(storageKey, theme);
+        if (persist) {
+            try {
+                localStorage.setItem(storageKey, nextTheme);
+            }
+            catch (_) { /* armazenamento opcional */ }
         }
-        catch (_) { /* armazenamento opcional */ }
+        window.dispatchEvent(new CustomEvent("quality:theme-changed", {
+            detail: { app: APP, theme: nextTheme },
+        }));
         if (notify)
-            announce(theme === "dark" ? "Modo escuro ativado." : "Modo claro ativado.");
+            announce(dark ? "Modo escuro ativado." : "Modo claro ativado.");
     }
     function installRuntimeTools() {
         const host = APP === "GRCON" ? $(".runtime-status") : $(".runtime-actions");
@@ -143,6 +152,17 @@
         catch (_) { /* armazenamento opcional */ }
         setTheme(saved);
         theme.addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true));
+        window.addEventListener("storage", (event) => {
+            if (event.key !== storageKey)
+                return;
+            setTheme(event.newValue === "dark" ? "dark" : "light", false, false);
+        });
+        window.addEventListener("pageshow", () => {
+            try {
+                setTheme(localStorage.getItem(storageKey) === "dark" ? "dark" : "light", false, false);
+            }
+            catch (_) { /* armazenamento opcional */ }
+        });
     }
     function labelControls() {
         $$('button,[role="button"],input,select,textarea').forEach((control) => {
@@ -349,7 +369,7 @@
             return;
         document.body.insertAdjacentHTML("beforeend", `
       <div class="ops-inspector-overlay" hidden id="ops-inspector-overlay"></div>
-      <aside aria-hidden="true" aria-labelledby="ops-inspector-title" class="ops-inspector" id="ops-inspector">
+      <aside aria-hidden="true" aria-labelledby="ops-inspector-title" class="ops-inspector" id="ops-inspector" inert>
         <header><div><span>Detalhes e evidências</span><h2 id="ops-inspector-title">Documento</h2></div><button aria-label="Fechar detalhes" class="ops-inspector-close" id="ops-inspector-close" type="button">×</button></header>
         <div class="ops-inspector-body" id="ops-inspector-body"></div>
       </aside>`);
@@ -380,6 +400,8 @@
             inspector.body.innerHTML = html;
         if (inspector.overlay)
             inspector.overlay.hidden = false;
+        if (inspector.drawer)
+            inspector.drawer.inert = false;
         inspector.drawer?.classList.add("open");
         inspector.drawer?.setAttribute("aria-hidden", "false");
         inspector.close?.focus();
@@ -387,6 +409,8 @@
     function closeInspector() {
         inspector.drawer?.classList.remove("open");
         inspector.drawer?.setAttribute("aria-hidden", "true");
+        if (inspector.drawer)
+            inspector.drawer.inert = true;
         if (inspector.overlay)
             inspector.overlay.hidden = true;
         inspector.grconIndex = null;

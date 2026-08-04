@@ -221,16 +221,16 @@
     const issues = [];
     const technical = configs.filter(([, config]) => config.role === "technical");
     const history = configs.filter(([, config]) => config.role === "history");
-    if (!technical.length) issues.push("Marque ao menos uma aba como Técnica.");
-    if (history.length !== 1) issues.push("Marque exatamente uma aba como Base SIGEM.");
+    if (!technical.length) issues.push("Nenhuma aba técnica foi reconhecida automaticamente.");
+    if (history.length !== 1) issues.push("A base SIGEM não foi reconhecida automaticamente de forma única.");
     technical.forEach(([name, config]) => REQUIRED_TECHNICAL.forEach((field) => {
-      if (config.columns[field] === undefined) issues.push(`${name}: associe ${FIELD_DEFS.find((item) => item.key === field).label}.`);
+      if (config.columns[field] === undefined) issues.push(`${name}: campo não localizado: ${FIELD_DEFS.find((item) => item.key === field).label}.`);
     }));
     history.forEach(([name, config]) => {
       REQUIRED_HISTORY.forEach((field) => {
-        if (config.columns[field] === undefined) issues.push(`${name}: associe ${FIELD_DEFS.find((item) => item.key === field).label}.`);
+        if (config.columns[field] === undefined) issues.push(`${name}: campo não localizado: ${FIELD_DEFS.find((item) => item.key === field).label}.`);
       });
-      if (config.columns.sigemStatus === undefined && config.columns.status === undefined) issues.push(`${name}: associe Status ou Status SIGEM.`);
+      if (config.columns.sigemStatus === undefined && config.columns.status === undefined) issues.push(`${name}: campo não localizado: Status ou Status SIGEM.`);
     });
     configs.filter(([, config]) => config.role !== "ignore").forEach(([name, config]) => {
       const used = new Map();
@@ -241,7 +241,7 @@
       used.forEach((fields, column) => {
         if (fields.length > 1) {
           const labels = fields.map((field) => FIELD_DEFS.find((item) => item.key === field)?.label || field).join(" e ");
-          issues.push(`${name}: a coluna ${Number(column) + 1} foi associada a mais de um campo (${labels}). Cada coluna deve ter uma única função.`);
+          issues.push(`${name}: a coluna ${Number(column) + 1} foi reconhecida para mais de um campo (${labels}). Cada coluna deve ter uma única função.`);
         }
       });
     });
@@ -250,7 +250,7 @@
 
   async function readWorkbook(file) {
     if (root.RECONWorkbookWorker) return root.RECONWorkbookWorker.read(file, { cellDates: true, cellFormula: true });
-    const data = await file.arrayBuffer();
+    const data = root.RECONFileAccess ? await root.RECONFileAccess.readArrayBuffer(file) : await file.arrayBuffer();
     return root.XLSX.read(data, { type: "array", cellDates: true, cellFormula: true });
   }
 
@@ -263,7 +263,6 @@
     if (!file) return null;
     if (entries.has(file)) {
       const existing = entries.get(file);
-      if (options && options.interactive && !existing.confirmed) open(file);
       return existing;
     }
     if (!pending.has(file)) {
@@ -275,7 +274,7 @@
           workbook,
           inspection,
           profile: profileFromInspection(inspection),
-          confirmed: !inspection.requiresConfirmation,
+          confirmed: true,
         };
         entries.set(file, entry);
         dispatch(file);
@@ -284,7 +283,6 @@
     }
     try {
       const entry = await pending.get(file);
-      if (options && options.interactive && !entry.confirmed) open(file);
       return entry;
     } finally {
       pending.delete(file);
@@ -295,86 +293,7 @@
   function profileFor(file) { return entryFor(file) && entryFor(file).profile || null; }
   function inspectionFor(file) { return entryFor(file) && entryFor(file).inspection || null; }
   function workbookFor(file) { return entryFor(file) && entryFor(file).workbook || null; }
-  function ready(file) { const entry = entryFor(file); return Boolean(entry && entry.confirmed && !validateProfile(entry.profile).length); }
-
-  function escapeHtml(value) {
-    return text(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-  }
-
-  function fieldOptions(sheet, selected) {
-    const available = (sheet.headers || []).map((header, column) => ({ header: text(header), column })).filter((item) => item.header);
-    return `<option value="">Não associar nesta aba</option>${available.map((item) => `<option value="${item.column}" ${Number(selected) === item.column ? "selected" : ""}>${escapeHtml(sheet.name)} › ${escapeHtml(item.header)} · coluna ${item.column + 1}</option>`).join("")}`;
-  }
-
-  function fieldRole(field) {
-    if (TECHNICAL_FIELDS.has(field.key) && HISTORY_FIELDS.has(field.key)) return "both";
-    return TECHNICAL_FIELDS.has(field.key) ? "technical" : HISTORY_FIELDS.has(field.key) ? "history" : "both";
-  }
-
-  function renderDrawer(file) {
-    const entry = entryFor(file);
-    const body = typeof document !== "undefined" ? document.getElementById("ld-compatibility-body") : null;
-    if (!entry || !body) return;
-    const inspection = entry.inspection;
-    const relevant = inspection.sheets.filter((sheet) => sheet.role !== "ignore" || sheet.score >= 10);
-    const summary = document.getElementById("ld-compatibility-summary");
-    const message = document.getElementById("ld-compatibility-message");
-    if (message) { message.textContent = ""; message.hidden = true; }
-    summary.textContent = inspection.changes.length
-      ? `${inspection.changes.length} associação(ões) para confirmar`
-      : inspection.issues.length ? `${inspection.issues.length} ajuste(s) necessário(s)` : "Estrutura reconhecida";
-    body.innerHTML = `
-      ${inspection.changes.length ? `<div class="compatibility-notice"><strong>Alterações localizadas</strong>${inspection.changes.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
-      ${inspection.issues.length ? `<div class="compatibility-notice error"><strong>Associações pendentes</strong>${inspection.issues.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
-      <div class="compatibility-sheets">${relevant.map((sheet) => `
-        <section class="compatibility-sheet" data-compat-sheet="${escapeHtml(sheet.name)}">
-          <header>
-            <div><strong>${escapeHtml(sheet.name)}</strong><span>Cabeçalho na linha ${sheet.headerRow + 1} · ${escapeHtml(sheet.sourceMode)} · data: ${escapeHtml(sheet.dateMode)}</span></div>
-            <select data-compat-role>
-              <option value="ignore" ${sheet.role === "ignore" ? "selected" : ""}>Ignorar</option>
-              <option value="technical" ${sheet.role === "technical" ? "selected" : ""}>Aba técnica</option>
-              <option value="history" ${sheet.role === "history" ? "selected" : ""}>Base SIGEM</option>
-            </select>
-          </header>
-          <div class="compatibility-scope-note">As colunas abaixo pertencem exclusivamente à aba <strong>${escapeHtml(sheet.name)}</strong>. Não são misturadas com colunas de outras abas.</div>
-          <div class="compatibility-fields" data-fields-for-role="${escapeHtml(sheet.role)}">${FIELD_DEFS.map((field) => `
-            <label data-field-role="${fieldRole(field)}"><span>${escapeHtml(field.label)}</span><select data-compat-field="${field.key}">${fieldOptions(sheet, sheet.columns[field.key])}</select></label>
-          `).join("")}</div>
-        </section>
-      `).join("")}</div>`;
-  }
-
-
-  function refreshCardRole(card) {
-    if (!card) return;
-    const role = card.querySelector("[data-compat-role]")?.value || "ignore";
-    card.dataset.activeRole = role;
-    const fields = card.querySelector(".compatibility-fields");
-    if (fields) fields.hidden = role === "ignore";
-    card.querySelectorAll("[data-field-role]").forEach((label) => {
-      const fieldRoleValue = label.dataset.fieldRole;
-      label.hidden = role === "ignore" || (fieldRoleValue !== "both" && fieldRoleValue !== role);
-    });
-  }
-
-  function initializeRoleVisibility() {
-    if (typeof document === "undefined") return;
-    document.querySelectorAll("[data-compat-sheet]").forEach((card) => refreshCardRole(card));
-  }
-  function open(file) {
-    if (typeof document === "undefined" || !file || !entryFor(file)) return;
-    currentFile = file;
-    renderDrawer(file);
-    initializeRoleVisibility();
-    const overlay = document.getElementById("ld-compatibility-overlay");
-    const drawer = document.getElementById("ld-compatibility-drawer");
-    if (!overlay || !drawer) return;
-    overlay.hidden = false;
-    drawer.hidden = false;
-    drawer.inert = false;
-    drawer.classList.add("open");
-    drawer.setAttribute("aria-hidden", "false");
-  }
+  function ready(file) { return Boolean(entryFor(file)); }
 
   function close() {
     if (typeof document === "undefined") return;
@@ -389,62 +308,10 @@
     if (overlay) overlay.hidden = true;
   }
 
-  function profileFromDrawer() {
-    const entry = entryFor(currentFile);
-    if (!entry || typeof document === "undefined") return null;
-    const sheets = {};
-    document.querySelectorAll("[data-compat-sheet]").forEach((card) => {
-      const name = card.dataset.compatSheet;
-      const original = entry.inspection.sheets.find((sheet) => sheet.name === name);
-      const role = card.querySelector("[data-compat-role]").value;
-      const columns = {};
-      const allowed = role === "technical" ? TECHNICAL_FIELDS : role === "history" ? HISTORY_FIELDS : new Set();
-      card.querySelectorAll("[data-compat-field]").forEach((select) => {
-        if (allowed.has(select.dataset.compatField) && select.value !== "") columns[select.dataset.compatField] = Number(select.value);
-      });
-      sheets[name] = { role, headerRow: original.headerRow, columns };
-    });
-    entry.inspection.sheets.filter((sheet) => !sheets[sheet.name]).forEach((sheet) => {
-      sheets[sheet.name] = { role: "ignore", headerRow: sheet.headerRow, columns: { ...sheet.columns } };
-    });
-    return { version: 1, sheets };
-  }
-
-  function showMessage(message) {
-    if (typeof document === "undefined") return;
-    const box = document.getElementById("ld-compatibility-message");
-    if (box) { box.textContent = message; box.hidden = false; }
-  }
-
-  function confirmDrawer() {
-    const entry = entryFor(currentFile);
-    if (!entry) return;
-    const profile = profileFromDrawer();
-    const issues = validateProfile(profile);
-    if (issues.length) { showMessage(issues.join(" ")); return; }
-    entry.profile = profile;
-    entry.confirmed = true;
+  function open() {
+    // A estrutura é reconhecida automaticamente. Não existe confirmação manual.
     close();
-    dispatch(currentFile);
   }
-
-  function initializeUi() {
-    if (typeof document === "undefined") return;
-    const closeButton = document.getElementById("ld-compatibility-close");
-    const cancelButton = document.getElementById("ld-compatibility-cancel");
-    const confirmButton = document.getElementById("ld-compatibility-confirm");
-    const overlay = document.getElementById("ld-compatibility-overlay");
-    if (closeButton) closeButton.addEventListener("click", close);
-    if (cancelButton) cancelButton.addEventListener("click", close);
-    if (overlay) overlay.addEventListener("click", close);
-    if (confirmButton) confirmButton.addEventListener("click", confirmDrawer);
-    const body = document.getElementById("ld-compatibility-body");
-    if (body) body.addEventListener("change", (event) => {
-      if (event.target && event.target.matches("[data-compat-role]")) refreshCardRole(event.target.closest("[data-compat-sheet]"));
-    });
-  }
-
-  if (typeof document !== "undefined") initializeUi();
 
   return {
     FIELD_DEFS,

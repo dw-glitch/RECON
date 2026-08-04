@@ -97,7 +97,8 @@
 
   async function readWorkbook(file) {
     if (window.RECONWorkbookWorker) return window.RECONWorkbookWorker.read(file, { cellDates: true, cellFormula: true });
-    return XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true, cellFormula: true });
+    const buffer = window.RECONFileAccess ? await window.RECONFileAccess.readArrayBuffer(file) : await file.arrayBuffer();
+    return XLSX.read(buffer, { type: "array", cellDates: true, cellFormula: true });
   }
 
   function parseReferenceWorkbook(workbook) {
@@ -308,7 +309,8 @@
     summary.addRow(["Documentos analisados", state.result.total, "Resultados no filtro", rows.length]);
     summary.addRow(["TAGs confirmadas", state.result.counts.confirmed || 0, "Não tagueados corretos", state.result.counts.non_tagged || 0]);
     summary.addRow(["Correções necessárias", (state.result.counts.add_nt || 0) + (state.result.counts.remove_nt || 0), "Revisões manuais", state.result.counts.review || 0]);
-    [5, 6, 7, 8, 9].forEach((rowNumber) => {
+    summary.addRow(["Normalização do Grupo 7", "U32- é retirado da chave de consulta", "Exemplo", "U32-AD-05584 → AD-05584"]);
+    [5, 6, 7, 8, 9, 10].forEach((rowNumber) => {
       summary.getRow(rowNumber).eachCell((cell, col) => {
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: col % 2 ? "FFEAF3F8" : "FFF7FAFC" } };
         cell.font = { bold: col % 2 === 1, color: { argb: "FF17324D" } };

@@ -209,7 +209,8 @@
     };
     try {
       if (!window.pdfjsLib) throw new Error("Leitor de PDF não carregado");
-      const bytes = new Uint8Array(await file.arrayBuffer());
+      const buffer = window.RECONFileAccess ? await window.RECONFileAccess.readArrayBuffer(file) : await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
       const pdf = await window.pdfjsLib.getDocument({ data: bytes }).promise;
       item.pageCount = pdf.numPages;
       const limit = settings.pages === 0 ? pdf.numPages : Math.min(pdf.numPages, settings.pages);
@@ -397,7 +398,8 @@
     els.previewEmpty.hidden = false;
     els.previewEmpty.textContent = "Carregando prévia…";
     try {
-      const bytes = new Uint8Array(await item.file.arrayBuffer());
+      const buffer = window.RECONFileAccess ? await window.RECONFileAccess.readArrayBuffer(item.file) : await item.file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
       const pdf = await window.pdfjsLib.getDocument({ data: bytes }).promise;
       if (token !== state.previewToken) { if (pdf.destroy) await pdf.destroy(); return; }
       state.currentPage = Math.max(1, Math.min(pdf.numPages, state.currentPage));

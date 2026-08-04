@@ -20,8 +20,36 @@
     return C.norm(text(value));
   }
 
+  const SPREADSHEET_ERROR_TOKEN = /#(?:N\/A|N\/D|VALUE!|VALOR!|REF!|NAME\?|NOME\?|DIV\/0!|NUM!|NÚM!|NULL!|NULO!|SPILL!|DESPEJAR!|CALC!|FIELD!|CAMPO!|BLOCKED!|BLOQUEADO!|BUSY!|OCUPADO!|CONNECT!|CONECTAR!|GETTING_DATA)/giu;
+  const UNAVAILABLE_VALUES = new Set([
+    "", "0", "-", "N/A", "N/D", "NA", "ND", "#N/A", "#N/D",
+    "NAO INFORMADO", "NÃO INFORMADO", "A DEFINIR", "PENDENTE",
+    "SEM DESCRICAO", "SEM DESCRIÇÃO", "NAO DISPONIVEL", "NÃO DISPONÍVEL",
+  ].map((value) => C.norm(value)));
+
   function cleanSpaces(value) {
     return text(value).replace(/\s+/g, " ").trim();
+  }
+
+  function stripSpreadsheetErrors(value) {
+    return cleanSpaces(text(value)
+      .replace(SPREADSHEET_ERROR_TOKEN, " ")
+      .replace(/\s*\|\s*/g, " | ")
+      .replace(/(?:^\s*\|\s*|\s*\|\s*$)/g, "")
+      .replace(/\|\s*\|/g, "|")
+      .replace(/\s+([,;:])/g, "$1")
+      .replace(/(?:\s+[-–—]\s+){2,}/g, " - "));
+  }
+
+  function isUnavailableValue(value) {
+    const raw = cleanSpaces(value);
+    if (!raw) return true;
+    if (SPREADSHEET_ERROR_TOKEN.test(raw)) {
+      SPREADSHEET_ERROR_TOKEN.lastIndex = 0;
+      return !stripSpreadsheetErrors(raw);
+    }
+    SPREADSHEET_ERROR_TOKEN.lastIndex = 0;
+    return UNAVAILABLE_VALUES.has(norm(raw));
   }
 
   function latest(items) {
@@ -166,8 +194,7 @@
   }
 
   function isPlaceholder(value) {
-    const valueNorm = norm(value);
-    return !valueNorm || ["0", "-", "N/A", "NA", "NAO INFORMADO", "A DEFINIR", "PENDENTE"].includes(valueNorm);
+    return isUnavailableValue(value);
   }
 
   function completePath(value) {
@@ -428,10 +455,9 @@
   }
 
   function usableDescription(value) {
-    const clean = cleanSpaces(value);
-    const n = norm(clean);
-    if (!clean || ["0", "-", "N/A", "NA", "A DEFINIR", "SEM DESCRICAO"].includes(n)) return "";
-    return clean;
+    if (isUnavailableValue(value)) return "";
+    const clean = stripSpreadsheetErrors(value);
+    return isUnavailableValue(clean) ? "" : clean;
   }
 
   function looksLikeTechnicalTag(value) {
@@ -451,16 +477,47 @@
     return /^[A-Z0-9]{1,10}(?:-[A-Z0-9./]+)+$/i.test(clean);
   }
 
+  function stripRedundantUnitTagPrefix(value, expectedUnit) {
+    const candidate = cleanSpaces(value);
+    const match = candidate.match(/^(U[-_.\/\s]?32)[-_.\/\s]+(.+)$/i);
+    if (!match) return { value: candidate, removed: false, prefix: "" };
+    const expected = norm(expectedUnit).replace(/[^A-Z0-9]/g, "");
+    const prefix = norm(match[1]).replace(/[^A-Z0-9]/g, "");
+    const remainder = cleanSpaces(match[2]);
+    if (expected && prefix !== expected) return { value: candidate, removed: false, prefix: "" };
+    if (!looksLikeTechnicalTag(remainder)) return { value: candidate, removed: false, prefix: "" };
+    return { value: remainder, removed: true, prefix };
+  }
+
   function reportGroup7Info(document) {
     const raw = text(document).replace(/\.(?:PDF|DOCX?|XLSX?|XLSM|DWG|DGN|PPTX?)$/i, "");
     const groups = raw.split("_");
     const isReport = groups.length >= 7 && norm(groups[1]) === "RNEST";
     const identifier = isReport ? groups.slice(6).join("_").trim() : "";
+    const multipleDocuments = (raw.match(/C1O_RNEST_/gi) || []).length > 1;
     const exactNonTagged = identifier.startsWith("nt-");
     const isNonTagged = /^nt(?:-|_)/i.test(identifier);
+    const withoutNt = identifier.replace(/^nt(?:-|_)/i, "");
+    const lookup = stripRedundantUnitTagPrefix(withoutNt, groups[2]);
+    const lookupIdentifier = lookup.value;
     const formatValid = Boolean(identifier && !/[_ç?|!@#$%¨&*(),\s]/i.test(identifier) && /^[A-Z0-9][A-Z0-9./-]*$/i.test(identifier));
-    const validTag = Boolean(identifier && !isNonTagged);
-    return { raw, groups, isReport, identifier, isNonTagged, exactNonTagged, nonTagCaseMismatch: isNonTagged && !exactNonTagged, tag: validTag ? identifier : "", validTag, formatValid };
+    const validTag = Boolean(lookupIdentifier && !isNonTagged && !multipleDocuments);
+    return {
+      raw,
+      groups,
+      isReport,
+      identifier,
+      lookupIdentifier,
+      unitPrefixRemoved: lookup.removed,
+      removedUnitPrefix: lookup.prefix,
+      isNonTagged,
+      exactNonTagged,
+      nonTagCaseMismatch: isNonTagged && !exactNonTagged,
+      multipleDocuments,
+      tag: validTag ? lookupIdentifier : "",
+      validTag,
+      formatValid,
+    };
   }
 
   function documentDeclaresNonTag(document) {
@@ -493,6 +550,17 @@
 
   function resolveTagEvidence(record, reference) {
     const group7 = reportGroup7Info(record && record.document);
+    if (group7.multipleDocuments) {
+      return {
+        tag: "",
+        possibleTag: "",
+        state: "absent",
+        source: "Célula da LD contém mais de um código documental; separar os documentos antes de confirmar a TAG",
+        confidence: "nenhuma",
+        confirmed: false,
+        group7,
+      };
+    }
     if (group7.isNonTagged || documentDeclaresNonTag(record && record.document)) {
       const source = group7.exactNonTagged
         ? "Grupo 7 iniciado por nt- — item não tagueado"
@@ -566,14 +634,25 @@
     return usableDescription(clean);
   }
 
+  function titlePrefixBeforeDescription(current) {
+    const protectedCompoundWords = new Set(["PRE", "POS", "NAO", "SUB", "AUTO"]);
+    for (let index = 1; index < current.length - 1; index += 1) {
+      if (!/[-–—]/.test(current[index])) continue;
+      const before = cleanSpaces(current.slice(0, index));
+      const after = cleanSpaces(current.slice(index + 1));
+      if (!before || !after || !looksLikeDocumentPrefix(before)) continue;
+      const previousWord = (norm(before).match(/([A-Z0-9]+)$/) || [])[1] || "";
+      if (protectedCompoundWords.has(previousWord)) continue;
+      return cleanTitlePart(before);
+    }
+    return "";
+  }
+
   function stableTitlePrefix(currentTitle, inferredType) {
     const current = unwrapTitle(currentTitle);
     if (!current) return cleanTitlePart(inferredType);
-    const split = current.split(/\s+[-–—]\s+/);
-    if (split.length > 1) {
-      const first = cleanTitlePart(split[0]);
-      if (first && !looksLikeTechnicalTag(first)) return first;
-    }
+    const prefix = titlePrefixBeforeDescription(current);
+    if (prefix) return prefix;
     if (looksLikeDocumentPrefix(current)) return cleanTitlePart(current);
     return cleanTitlePart(inferredType);
   }
@@ -610,6 +689,145 @@
     };
   }
 
+  function normalizedTagKey(value) {
+    return norm(value).replace(/[^A-Z0-9]/g, "");
+  }
+
+  function canonicalTagKey(value) {
+    return (norm(value).match(/[A-Z]+|\d+/g) || [])
+      .map((token) => /^\d+$/.test(token) ? String(Number(token)) : token)
+      .join("");
+  }
+
+  function expandedCompactTagAliases(value) {
+    const clean = cleanSpaces(value);
+    const aliases = [clean];
+    const compact = clean.match(/^(.*?)(\d+)([A-Z])((?:[-/][A-Z])+)$/i);
+    if (compact) {
+      const prefix = `${compact[1]}${compact[2]}`;
+      const suffixes = [compact[3], ...compact[4].split(/[-/]/).filter(Boolean)];
+      suffixes.forEach((suffix) => aliases.push(`${prefix}${suffix}`));
+    }
+    return [...new Map(aliases.filter(Boolean).map((alias) => [normalizedTagKey(alias), alias])).values()];
+  }
+
+  function leadingTechnicalIdentifier(value) {
+    const clean = usableDescription(value);
+    const match = clean.match(/^(.+?)\s+[-–—]\s+/);
+    return match ? validatedTag(match[1]) : "";
+  }
+
+  function sconEntryTagAliases(entry) {
+    const aliases = [];
+    const group7 = reportGroup7Info(entry && entry.document);
+    if (group7.tag && looksLikeTechnicalTag(group7.tag)) aliases.push({ value: group7.tag, source: "Grupo 7 do código SGP" });
+    const descriptionTag = leadingTechnicalIdentifier(entry && entry.titleComplement);
+    if (descriptionTag) aliases.push({ value: descriptionTag, source: "início da descrição SCON" });
+    const sconCode = usableDescription(entry && entry.sconTag);
+    technicalIdentifiers(sconCode).forEach((value) => aliases.push({ value, source: "CÓDIGO SGP do SCON" }));
+    sconCode.split(/[_\s]+/).filter(looksLikeTechnicalTag)
+      .forEach((value) => aliases.push({ value, source: "CÓDIGO SGP do SCON" }));
+    return [...new Map(aliases.map((item) => [normalizedTagKey(item.value), item])).values()];
+  }
+
+  function addNormalizedTagCandidate(index, alias, entry, source) {
+    const key = normalizedTagKey(alias);
+    if (!key || key.length < 4) return;
+    if (!index.has(key)) index.set(key, []);
+    index.get(key).push({ entry, alias, aliasKey: key, aliasSource: source || "" });
+  }
+
+  function containedTagKeys(value) {
+    const tokens = norm(value).split(/[^A-Z0-9]+/).filter(Boolean);
+    const fullKey = normalizedTagKey(value);
+    const keys = new Set();
+    for (let start = 0; start < tokens.length; start += 1) {
+      let candidate = "";
+      for (let end = start; end < tokens.length; end += 1) {
+        candidate += tokens[end];
+        if (candidate === fullKey || candidate.length < 6 || !/\d/.test(candidate)) continue;
+        keys.add(candidate);
+      }
+    }
+    return [...keys].sort((left, right) => right.length - left.length);
+  }
+
+  function normalizedTagMatches(index, tag, discipline, allowContained) {
+    if (!index || !tag) return null;
+    const wantedDiscipline = sconEscopoDisciplineKey(discipline);
+    const exactKey = normalizedTagKey(tag);
+    const sameDiscipline = (items) => {
+      const filtered = (items || []).filter((item) => sconEscopoDisciplineKey(item.entry && item.entry.discipline) === wantedDiscipline);
+      return wantedDiscipline ? filtered : items || [];
+    };
+    const exact = sameDiscipline(index.get(exactKey) || []);
+    if (exact.length) return { candidates: exact, exactNormalized: true, contained: false, matchedKeys: [exactKey] };
+    if (!allowContained) return null;
+
+    const hits = [];
+    containedTagKeys(tag).forEach((key) => {
+      sameDiscipline(index.get(key) || []).forEach((item) => hits.push(item));
+    });
+    if (!hits.length) return null;
+    const uniqueKeys = [...new Set(hits.map((item) => item.aliasKey))];
+    const maximalKeys = uniqueKeys.filter((key) => !uniqueKeys.some((other) => other !== key && other.includes(key)));
+    const candidates = hits.filter((item) => maximalKeys.includes(item.aliasKey));
+    return candidates.length
+      ? { candidates, exactNormalized: false, contained: true, matchedKeys: maximalKeys }
+      : null;
+  }
+
+  function progressiveTagFragmentMatches(index, tag, discipline) {
+    if (!index || !tag) return null;
+    const lookupKey = normalizedTagKey(tag);
+    if (lookupKey.length < 8) return null;
+    const wantedDiscipline = sconEscopoDisciplineKey(discipline);
+    const hits = [];
+    index.forEach((items, aliasKey) => {
+      if (
+        aliasKey.length < 4
+        || aliasKey === lookupKey
+        || !lookupKey.includes(aliasKey)
+      ) return;
+      (items || []).forEach((item) => hits.push(item));
+    });
+    if (!hits.length) return null;
+    const sameDiscipline = wantedDiscipline
+      ? hits.filter((item) => sconEscopoDisciplineKey(item.entry && item.entry.discipline) === wantedDiscipline)
+      : [];
+    const scopedHits = sameDiscipline.length ? sameDiscipline : hits;
+    const uniqueKeys = [...new Set(scopedHits.map((item) => item.aliasKey))];
+    return scopedHits.length
+      ? { candidates: scopedHits, exactNormalized: false, contained: true, fragment: true, matchedKeys: uniqueKeys }
+      : null;
+  }
+
+  function mergeContainedTagMatches(primary, progressive) {
+    const matches = [primary, progressive].filter(Boolean);
+    const hits = [...new Map(matches
+      .flatMap((match) => match.candidates || [])
+      .map((item) => [
+        `${item.aliasKey}|${strictTagKey(item.entry && item.entry.tag)}|${item.entry && item.entry.row || 0}`,
+        item,
+      ])).values()];
+    if (!hits.length) return null;
+    const uniqueKeys = [...new Set(hits.map((item) => item.aliasKey))];
+    const progressiveKeys = new Set(progressive && progressive.matchedKeys || []);
+    return hits.length
+      ? {
+        candidates: hits,
+        exactNormalized: false,
+        contained: true,
+        fragment: uniqueKeys.some((key) => progressiveKeys.has(key)),
+        matchedKeys: uniqueKeys,
+      }
+      : null;
+  }
+
+  function containedTagMatchLabel(count) {
+    return count === 1 ? "1 TAG principal localizada dentro do Grupo 7" : `${count} TAGs principais localizadas dentro do Grupo 7`;
+  }
+
   function buildSconReferenceIndex(entries, metadata) {
     const cleanEntries = (entries || []).map((entry) => ({
       ...entry,
@@ -617,7 +835,7 @@
       documentKey: entry.documentKey || C.key(entry.document),
       looseDocumentKey: entry.looseDocumentKey || C.looseKey(entry.document),
       titleComplement: usableDescription(entry.titleComplement),
-      fullDescription: cleanSpaces(entry.fullDescription),
+      fullDescription: stripSpreadsheetErrors(entry.fullDescription),
       verifiedCatalog: true,
       confidence: entry.confidence || "alta",
       sourceFile: entry.sourceFile || metadata && metadata.sourceFile || "SCON - TAG SGP",
@@ -626,7 +844,9 @@
 
     const byDocument = new Map();
     const byLooseDocument = new Map();
+    const byNormalizedTag = new Map();
     cleanEntries.forEach((entry) => {
+      entry.tagAliases = sconEntryTagAliases(entry);
       const existing = byDocument.get(entry.documentKey);
       if (!existing) byDocument.set(entry.documentKey, { ...entry, sourceRows: [entry.row].filter(Boolean) });
       else {
@@ -637,6 +857,8 @@
         existing.sourceRows = [...new Set([...(existing.sourceRows || []), entry.row].filter(Boolean))];
         if (descriptions.size > 1) {
           existing.titleComplement = "";
+          existing.candidateTitles = [...descriptions.values()];
+          existing.candidateCount = descriptions.size;
           existing.ambiguousDescription = true;
           existing.manualReview = true;
         }
@@ -646,12 +868,14 @@
         if (!byLooseDocument.has(looseKey)) byLooseDocument.set(looseKey, []);
         byLooseDocument.get(looseKey).push(entry);
       }
+      entry.tagAliases.forEach((item) => addNormalizedTagCandidate(byNormalizedTag, item.value, entry, item.source));
     });
     return {
       kind: "scon",
       entries: cleanEntries,
       byDocument,
       byLooseDocument,
+      byNormalizedTag,
       metadata: metadata || {},
     };
   }
@@ -664,15 +888,765 @@
       document: at(row, "document"),
       titleComplement: at(row, "titleComplement"),
       fullDescription: at(row, "fullDescription"),
-      sconTag: at(row, "sconTag"),
-      discipline: at(row, "discipline"),
-      itemType: at(row, "itemType"),
-      drawingReference: at(row, "drawingReference"),
+      sconTag: usableDescription(at(row, "sconTag")),
+      discipline: usableDescription(at(row, "discipline")),
+      itemType: usableDescription(at(row, "itemType")),
+      drawingReference: usableDescription(at(row, "drawingReference")),
       row: Number(at(row, "row")) || 0,
       sourceFile: catalog && catalog.sourceFile || "SCON - TAG SGP",
       sourceSheet: catalog && catalog.sheet || "",
     }));
     return buildSconReferenceIndex(entries, catalog || {});
+  }
+
+  function strictTagKey(value) {
+    return text(value).toUpperCase();
+  }
+
+  function normalizeSconEap(value) {
+    return norm(value)
+      .replace(/^EAP\s*[:\-]?\s*/i, "")
+      .replace(/\s+/g, "")
+      .replace(/,/g, ".");
+  }
+
+  function sconEapLookupVariants(value) {
+    const exact = normalizeSconEap(value);
+    if (!exact) return [];
+    const variants = [{ key: exact, removedTrailingOne: false, removedTrailingSegment: false }];
+    const segments = exact.split(".").filter(Boolean);
+    if (segments.length >= 4 && /^\d+$/.test(segments[segments.length - 1])) {
+      const parent = segments.slice(0, -1).join(".");
+      if (parent) variants.push({
+        key: parent,
+        removedTrailingOne: segments[segments.length - 1] === "1",
+        removedTrailingSegment: true,
+      });
+    }
+    return variants;
+  }
+
+  function documentEapFromGroup4(document) {
+    const group7 = reportGroup7Info(document);
+    return group7.isReport ? cleanSpaces(group7.groups[3]) : "";
+  }
+
+  function sconEscopoLookupTag(record, tagEvidence) {
+    const group7 = reportGroup7Info(record && record.document);
+    const confirmedTag = tagEvidence && tagEvidence.confirmed ? cleanSpaces(tagEvidence.tag) : "";
+    if (confirmedTag) {
+      return {
+        tag: confirmedTag,
+        source: group7.unitPrefixRemoved
+          ? `TAG confirmada no Grupo 7 após retirar o prefixo redundante ${group7.removedUnitPrefix}`
+          : "TAG confirmada no Grupo 7",
+        strippedNt: false,
+        strippedUnit: group7.unitPrefixRemoved,
+      };
+    }
+    const identifier = cleanSpaces(group7.identifier);
+    const withoutNt = group7.lookupIdentifier || identifier.replace(/^NT[-./_]+/i, "").trim();
+    if (group7.isNonTagged && withoutNt && withoutNt !== identifier) {
+      return {
+        tag: withoutNt,
+        source: group7.unitPrefixRemoved
+          ? `Grupo 7 consultado no SCON ESCOPO sem os prefixos nt- e ${group7.removedUnitPrefix}`
+          : "Grupo 7 consultado no SCON ESCOPO sem o prefixo nt-",
+        strippedNt: true,
+        strippedUnit: group7.unitPrefixRemoved,
+      };
+    }
+    return { tag: "", source: "", strippedNt: false, strippedUnit: false };
+  }
+
+  function sconEscopoDisciplineKey(value) {
+    const clean = disciplineKey(value);
+    const aliases = {
+      CVL: "CIVIL",
+      CIV: "CIVIL",
+      CIVIL: "CIVIL",
+      ELE: "ELETRICA",
+      ELETRICA: "ELETRICA",
+      EST: "EST METALICA",
+      "EST MET": "EST METALICA",
+      "EST METALICA": "EST METALICA",
+      TUB: "TUBULACAO",
+      TUBULACAO: "TUBULACAO",
+      HVAC: "HVAC",
+      DIN: "EQP DINAMICO",
+      DINAMICOS: "EQP DINAMICO",
+      "EQP DINAMICO": "EQP DINAMICO",
+      MEC: "EQP ESTATICO",
+      ESTATICO: "EQP ESTATICO",
+      ESTATICOS: "EQP ESTATICO",
+      "EQP ESTATICO": "EQP ESTATICO",
+    };
+    return aliases[clean] || clean;
+  }
+
+  function cleanSconEscopoTitle(value) {
+    return cleanTitlePart(
+      removeParentheticalContent(usableDescription(value))
+        .replace(/^\s*\d+(?:\.\d+)+\s*[-–—]\s*/, ""),
+    );
+  }
+
+  function sconEscopoSubjectTitle(entry) {
+    const itemType = cleanTitlePart(usableDescription(entry && entry.itemType).replace(/\(each\)/gi, ""));
+    const area = cleanTitlePart(usableDescription(entry && entry.area));
+    if (itemType && area) return `${itemType} - ÁREA: ${area}`;
+    if (itemType) return itemType;
+    const clean = cleanSconEscopoTitle(entry && (entry.cleanTitle || entry.title));
+    const stage = cleanTitlePart(usableDescription(entry && entry.stage));
+    if (stage && clean) {
+      const pattern = stage.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const withoutStage = clean.replace(new RegExp(`^${pattern}\\s+(?:DE|DA|DO|DAS|DOS)?\\s*`, "i"), "");
+      if (withoutStage && norm(withoutStage) !== norm(clean)) return cleanTitlePart(withoutStage);
+    }
+    return clean;
+  }
+
+  function sconEscopoActivityEap(value) {
+    const title = cleanSpaces(value);
+    const match = title.match(/^(\d+(?:\.\d+)+)\s*[-–—]\s*/);
+    return match ? normalizeSconEap(match[1]) : "";
+  }
+
+  function combineSconEscopoTitles(values) {
+    const titles = [...new Map((values || []).map(cleanSconEscopoTitle).filter(Boolean).map((value) => [norm(value), value])).values()];
+    if (titles.length < 2) return titles[0] || "";
+    const structured = titles.map((title) => {
+      const match = title.match(/^(.*?)\s+[-–—]\s+((?:DISCIPLINA|[ÁA]REA)\s*:.*)$/iu);
+      return match
+        ? { activity: cleanTitlePart(match[1]), metadata: cleanTitlePart(match[2]) }
+        : null;
+    });
+    if (structured.every(Boolean)) {
+      const groups = new Map();
+      structured.forEach((item) => {
+        const key = norm(item.metadata);
+        if (!groups.has(key)) groups.set(key, { metadata: item.metadata, activities: [] });
+        const group = groups.get(key);
+        if (!group.activities.some((activity) => norm(activity) === norm(item.activity))) group.activities.push(item.activity);
+      });
+      return [...groups.values()]
+        .map((group) => `${group.activities.join(" · ")} - ${group.metadata}`)
+        .join(" · ");
+    }
+    const split = titles.map((title) => {
+      const match = title.match(/^(.*)\s+[-–—]\s+(.+)$/u);
+      return match ? { activity: cleanTitlePart(match[1]), location: cleanTitlePart(match[2]) } : null;
+    });
+    const commonLocation = split.every(Boolean) && split.every((item) => norm(item.location) === norm(split[0].location))
+      ? split[0].location
+      : "";
+    if (!commonLocation) return titles.join(" · ");
+    return `${split.map((item) => item.activity).join(" · ")} - ${commonLocation}`;
+  }
+
+
+  function titleSearchWords(value) {
+    const stop = new Set(["RELATORIO", "RELATÓRIO", "DE", "DA", "DO", "DAS", "DOS", "E", "PARA", "EM", "NA", "NO", "DISCIPLINA", "AREA", "ÁREA", "UNIDADE", "U32", "EACH"]);
+    return [...new Set(norm(value).split(/[^A-Z0-9]+/).filter((word) => word.length >= 3 && !stop.has(word)))];
+  }
+
+  function documentActivityWords(record) {
+    const group7 = reportGroup7Info(record && record.document);
+    const group6 = cleanSpaces(group7.isReport ? group7.groups[5] : "");
+    const aliases = {
+      GRACIM: ["GRAUTE", "GRAUTEAMENTO", "CIMENTICIO", "CIMENTÍCIO"],
+      LARM: ["LIBERACAO", "LIBERAÇÃO", "ARMADURA"],
+      REP: ["REPARO"],
+      RIR: ["RECEBIMENTO", "INSPECAO", "INSPEÇÃO"],
+      CONTROLTUB: ["CONTROLE", "TUBULACAO", "TUBULAÇÃO", "MONTAGEM", "PREMONTAGEM"],
+      INSMOB: ["INSTALACAO", "INSTALAÇÃO", "MOBILIARIO", "MOBILIÁRIO"],
+      DESMONT: ["DESMONTAGEM"],
+      MONT: ["MONTAGEM"],
+      TESTE: ["TESTE"],
+    };
+    return titleSearchWords([
+      record && record.title,
+      group6,
+      ...(aliases[norm(group6)] || []),
+    ].filter(Boolean).join(" "));
+  }
+
+  function commonEapPrefixLength(left, right) {
+    const a = normalizeSconEap(left).split(".").filter(Boolean);
+    const b = normalizeSconEap(right).split(".").filter(Boolean);
+    let count = 0;
+    while (count < a.length && count < b.length && a[count] === b[count]) count += 1;
+    return count;
+  }
+
+  function tagStemTokens(value) {
+    const ignored = new Set(["NT", "RNEST", "U", "U32", "SE", "AREA"]);
+    return (norm(value).match(/[A-Z]{3,}|\d{2,}/g) || [])
+      .filter((token) => !ignored.has(token));
+  }
+
+  function commonTokenPrefixLength(left, right) {
+    const size = Math.min(left.length, right.length);
+    let count = 0;
+    while (count < size && left[count] === right[count]) count += 1;
+    return count;
+  }
+
+  function tagStemSimilarity(lookupTag, candidateTag) {
+    const lookupTokens = tagStemTokens(lookupTag);
+    const candidateTokens = tagStemTokens(candidateTag);
+    let score = 0;
+    lookupTokens.forEach((left) => {
+      candidateTokens.forEach((right) => {
+        if (/^\d+$/.test(left) && /^\d+$/.test(right)) {
+          if (String(Number(left)) === String(Number(right))) score = Math.max(score, 10);
+          return;
+        }
+        if (/^\d+$/.test(left) || /^\d+$/.test(right)) return;
+        const prefix = commonTokenPrefixLength(left, right);
+        if (prefix >= 5) score = Math.max(score, 20 + prefix);
+      });
+    });
+    return score;
+  }
+
+  function activityOverlapScore(record, entry) {
+    const wanted = documentActivityWords(record);
+    if (!wanted.length) return 0;
+    const candidate = new Set(titleSearchWords(`${entry && entry.stage || ""} ${entry && entry.cleanTitle || ""}`));
+    return wanted.reduce((score, word) => score + (candidate.has(word) ? (word.length >= 6 ? 12 : 7) : 0), 0);
+  }
+
+  function subjectCompatibilityScore(record, entry) {
+    const currentTokens = titleSearchWords(record && record.title);
+    const subject = usableDescription(entry && entry.itemType)
+      || cleanSpaces(entry && (entry.subjectTitle || sconEscopoSubjectTitle(entry))).split(/\s+[-–—]\s+(?:[ÁA]REA|DISCIPLINA)\s*:/i)[0];
+    const subjectTokens = titleSearchWords(subject);
+    let score = 0;
+    currentTokens.forEach((left) => {
+      subjectTokens.forEach((right) => {
+        const prefix = commonTokenPrefixLength(left, right);
+        if (prefix >= 5) score = Math.max(score, prefix);
+      });
+    });
+    return score;
+  }
+
+  function resolveSconEscopoByEapAndContext(record, catalog, lookupTag, eapLookups) {
+    if (!catalog || !catalog.byEap || !lookupTag || !eapLookups || !eapLookups.length) return null;
+    const wantedDiscipline = sconEscopoDisciplineKey(record && record.discipline);
+    const entries = [...new Map(eapLookups.flatMap((lookup) => catalog.byEap.get(lookup.key) || []).map((entry) => [
+      `${entry.row}|${norm(entry.tag)}|${norm(entry.cleanTitle)}`,
+      entry,
+    ])).values()].filter((entry) => !wantedDiscipline || sconEscopoDisciplineKey(entry.discipline) === wantedDiscipline);
+    if (!entries.length) return null;
+
+    const stemRanked = entries
+      .map((entry) => ({ entry, score: tagStemSimilarity(lookupTag, entry.tag) }))
+      .filter((item) => item.score >= 25)
+      .sort((left, right) => right.score - left.score || left.entry.row - right.entry.row);
+    if (stemRanked.length) {
+      const topScore = stemRanked[0].score;
+      const selected = stemRanked.filter((item) => item.score === topScore).map((item) => item.entry);
+      const titleSelection = chooseSconEscopoTitle(record, selected, eapLookups[0].key);
+      if (titleSelection.title) {
+        return {
+          entries: selected,
+          items: selected.map((entry) => ({ entry, alias: entry.tag, aliasKey: normalizedTagKey(entry.tag) })),
+          strictExact: false,
+          normalizedMatch: false,
+          canonicalMatch: false,
+          containedMatch: true,
+          fragmentMatch: true,
+          eapStemFallback: true,
+          eapActivityFallback: false,
+          contextTitle: titleSelection.title,
+        };
+      }
+    }
+
+    // O fallback sem TAG exata é restrito a relatórios de reparo (REP).
+    // Em outros tipos documentais, como RUFF, o título atual pode já estar específico;
+    // sugerir apenas por EAP + atividade criaria uma alteração desnecessária.
+    const group7 = reportGroup7Info(record && record.document);
+    const documentTypeGroup = norm(group7 && group7.isReport ? group7.groups[5] : "");
+    if (documentTypeGroup !== "REP") return null;
+
+    const activityRanked = entries
+      .map((entry) => ({
+        entry,
+        score: activityOverlapScore(record, entry),
+        subjectScore: subjectCompatibilityScore(record, entry),
+      }))
+      .filter((item) => item.score > 0 && item.subjectScore >= 5)
+      .sort((left, right) => right.score - left.score || left.entry.row - right.entry.row);
+    if (!activityRanked.length) return null;
+    const topScore = activityRanked[0].score;
+    const topEntries = activityRanked.filter((item) => item.score === topScore).map((item) => item.entry);
+    const titleSelection = chooseSconEscopoTitle(record, topEntries, eapLookups[0].key);
+    if (!titleSelection.title) return null;
+    const distinctSubjects = [...new Set(topEntries.map((entry) => norm(entry.subjectTitle || sconEscopoSubjectTitle(entry))).filter(Boolean))];
+    if (distinctSubjects.length !== 1) return null;
+    return {
+      entries: topEntries,
+      items: topEntries.map((entry) => ({ entry, alias: entry.tag, aliasKey: normalizedTagKey(entry.tag) })),
+      strictExact: false,
+      normalizedMatch: false,
+      canonicalMatch: false,
+      containedMatch: false,
+      fragmentMatch: false,
+      eapStemFallback: false,
+      eapActivityFallback: true,
+      contextTitle: titleSelection.title,
+    };
+  }
+
+  function scoreSconEscopoEntry(record, entry, wantedEap) {
+    const activityWords = documentActivityWords(record);
+    const candidateWords = new Set(titleSearchWords(`${entry && entry.stage || ""} ${entry && entry.itemType || ""} ${entry && entry.cleanTitle || ""}`));
+    let score = 0;
+    if (wantedEap && entry && entry.activityEapKey === wantedEap) score += 100;
+    if (wantedEap && entry && entry.eapKey === wantedEap) score += 60;
+    if (wantedEap && entry && entry.eapKey) score += commonEapPrefixLength(wantedEap, entry.eapKey) * 12;
+    activityWords.forEach((word) => { if (candidateWords.has(word)) score += word.length >= 6 ? 8 : 4; });
+    return score;
+  }
+
+  function chooseSconEscopoTitle(record, candidates, wantedEap) {
+    const groups = new Map();
+    (candidates || []).forEach((entry) => {
+      const recommendationTitle = entry && (entry.subjectTitle || sconEscopoSubjectTitle(entry));
+      const key = norm(recommendationTitle);
+      if (!key) return;
+      if (!groups.has(key)) groups.set(key, { title: recommendationTitle, entries: [], score: -Infinity });
+      const group = groups.get(key);
+      group.entries.push(entry);
+      group.score = Math.max(group.score, scoreSconEscopoEntry(record, entry, wantedEap));
+    });
+    const ranked = [...groups.values()].sort((left, right) => right.score - left.score || left.title.localeCompare(right.title, "pt-BR"));
+    if (!ranked.length) return { title: "", entries: [], alternatives: [], combined: false, score: 0 };
+    if (ranked.length === 1) return { title: ranked[0].title, entries: ranked[0].entries, alternatives: [ranked[0].title], combined: false, score: ranked[0].score };
+    const top = ranked[0];
+    const second = ranked[1];
+    if (top.score > second.score && top.score > 0) {
+      return { title: top.title, entries: top.entries, alternatives: ranked.map((item) => item.title), combined: false, score: top.score };
+    }
+    return {
+      title: combineSconEscopoTitles(ranked.map((item) => item.title)),
+      entries: ranked.flatMap((item) => item.entries),
+      alternatives: ranked.map((item) => item.title),
+      combined: true,
+      score: top.score,
+    };
+  }
+
+  function resolveCatalogTagCandidates(catalog, lookupTag, discipline) {
+    if (!catalog || !lookupTag || !catalog.byExactTag) return null;
+    const variants = expandedCompactTagAliases(lookupTag);
+    const wantedDiscipline = sconEscopoDisciplineKey(discipline);
+    const scopeEntries = (entries) => {
+      const clean = entries || [];
+      if (!wantedDiscipline) return clean;
+      const matched = clean.filter((entry) => sconEscopoDisciplineKey(entry && entry.discipline) === wantedDiscipline);
+      return matched.length ? matched : clean;
+    };
+    const itemsFromEntries = (entries) => scopeEntries(entries).map((entry) => ({
+      entry,
+      alias: entry.tag,
+      aliasKey: normalizedTagKey(entry.tag),
+    }));
+    const uniqueItems = (items) => [...new Map((items || []).map((item) => [
+      `${canonicalTagKey(item.alias)}|${item.entry && item.entry.row || 0}|${norm(item.entry && (item.entry.cleanTitle || item.entry.description))}`,
+      item,
+    ])).values()];
+
+    const strictItems = uniqueItems(variants.flatMap((variant) => itemsFromEntries(catalog.byExactTag.get(strictTagKey(variant)) || [])));
+    if (strictItems.length) {
+      return {
+        entries: strictItems.map((item) => item.entry),
+        items: strictItems,
+        strictExact: variants.length === 1,
+        normalizedMatch: false,
+        canonicalMatch: false,
+        containedMatch: variants.length > 1,
+        fragmentMatch: false,
+        expandedCompactTag: variants.length > 1,
+      };
+    }
+
+    const canonicalItems = catalog.byCanonicalTag
+      ? uniqueItems(variants.flatMap((variant) => itemsFromEntries(catalog.byCanonicalTag.get(canonicalTagKey(variant)) || [])))
+      : [];
+    if (canonicalItems.length) {
+      return {
+        entries: canonicalItems.map((item) => item.entry),
+        items: canonicalItems,
+        strictExact: false,
+        normalizedMatch: false,
+        canonicalMatch: true,
+        containedMatch: variants.length > 1,
+        fragmentMatch: false,
+        expandedCompactTag: variants.length > 1,
+      };
+    }
+
+    const tryResolve = (variant, wanted) => {
+      const normalized = normalizedTagMatches(catalog.byNormalizedTag, variant, wanted, true);
+      const progressive = !normalized || !normalized.exactNormalized
+        ? progressiveTagFragmentMatches(catalog.byNormalizedTag, variant, wanted)
+        : null;
+      return normalized && normalized.exactNormalized ? normalized : mergeContainedTagMatches(normalized, progressive);
+    };
+    let resolvedMatches = variants.map((variant) => tryResolve(variant, discipline)).filter(Boolean);
+    if (!resolvedMatches.length) resolvedMatches = variants.map((variant) => tryResolve(variant, "")).filter(Boolean);
+    if (!resolvedMatches.length) return null;
+    const unique = uniqueItems(resolvedMatches.flatMap((resolved) => resolved.candidates || []));
+    const keys = [...new Set(unique.map((item) => item.aliasKey).filter(Boolean))];
+    const maximalKeys = keys.filter((key) => !keys.some((other) => other !== key && other.includes(key)));
+    const items = unique.filter((item) => maximalKeys.includes(item.aliasKey));
+    return items.length ? {
+      entries: items.map((item) => item.entry),
+      items,
+      strictExact: false,
+      normalizedMatch: resolvedMatches.some((resolved) => Boolean(resolved.exactNormalized)),
+      canonicalMatch: false,
+      containedMatch: variants.length > 1 || resolvedMatches.some((resolved) => Boolean(resolved.contained)),
+      fragmentMatch: resolvedMatches.some((resolved) => Boolean(resolved.fragment)),
+      expandedCompactTag: variants.length > 1,
+    } : null;
+  }
+
+  function parseTagReferenceCatalog(catalog) {
+    const meta = catalog && catalog.meta || {};
+    const entries = (catalog && catalog.entries || []).map((entry, index) => ({
+      tag: cleanSpaces(entry && entry.tag),
+      description: cleanTitlePart(usableDescription(entry && entry.description)),
+      discipline: cleanSpaces(entry && entry.discipline),
+      unit: cleanSpaces(entry && entry.unit),
+      equipmentArea: cleanSpaces(entry && entry.equipmentArea),
+      row: Number(entry && entry.row) || index + 1,
+      sourceFile: meta.source || "Apêndice 3 - Fornecimento de Bens Tagueados Rev.B",
+      sourceSheet: meta.sheet || "Apêndice",
+    })).filter((entry) => entry.tag && entry.description && /\d/.test(entry.tag) && normalizedTagKey(entry.tag).length >= 5);
+    const byExactTag = new Map();
+    const byNormalizedTag = new Map();
+    const byCanonicalTag = new Map();
+    entries.forEach((entry) => {
+      const key = strictTagKey(entry.tag);
+      if (!byExactTag.has(key)) byExactTag.set(key, []);
+      byExactTag.get(key).push(entry);
+      const canonicalKey = canonicalTagKey(entry.tag);
+      if (canonicalKey) {
+        if (!byCanonicalTag.has(canonicalKey)) byCanonicalTag.set(canonicalKey, []);
+        byCanonicalTag.get(canonicalKey).push(entry);
+      }
+      addNormalizedTagCandidate(byNormalizedTag, entry.tag, entry, "TAG do Apêndice 3 Rev.B");
+    });
+    return {
+      kind: "tag-reference-catalog",
+      entries,
+      byExactTag,
+      byNormalizedTag,
+      byCanonicalTag,
+      uniqueTagCount: byExactTag.size,
+      sourceFile: meta.source || "Apêndice 3 - Fornecimento de Bens Tagueados Rev.B",
+      sourceSheet: meta.sheet || "Apêndice",
+    };
+  }
+
+  function tagReferenceFor(record, references, tagEvidence) {
+    const catalog = references && references.tagReference;
+    const lookup = sconEscopoLookupTag(record, tagEvidence);
+    if (!catalog || !lookup.tag) return null;
+    const resolved = resolveCatalogTagCandidates(catalog, lookup.tag, record && record.discipline);
+    if (!resolved || !resolved.items.length) return null;
+    const grouped = new Map();
+    resolved.items.forEach((item) => {
+      if (!grouped.has(item.aliasKey)) grouped.set(item.aliasKey, []);
+      grouped.get(item.aliasKey).push(item.entry);
+    });
+    const chosen = [];
+    grouped.forEach((entries) => {
+      const descriptions = [...new Map(entries.map((entry) => [norm(entry.description), entry.description]).filter(([key]) => key)).values()];
+      if (!descriptions.length) return;
+      chosen.push({
+        tag: entries[0].tag,
+        description: combineTitleDescriptions(...descriptions),
+        entries,
+      });
+    });
+    const descriptions = [...new Map(chosen.map((item) => [norm(item.description), item.description])).values()];
+    if (!descriptions.length) return null;
+    const matchedAliases = chosen.map((item) => item.tag);
+    const sourceRows = [...new Set(chosen.flatMap((item) => item.entries.map((entry) => entry.row)).filter(Boolean))];
+    const tagMode = resolved.strictExact
+      ? "TAG exata"
+      : resolved.canonicalMatch
+        ? "TAG equivalente após normalizar zeros e pontuação"
+        : resolved.expandedCompactTag
+          ? `${matchedAliases.length} TAGs expandidas do código compacto no Grupo 7`
+          : resolved.fragmentMatch
+            ? "TAG localizada por busca progressiva em partes do Grupo 7"
+            : resolved.containedMatch
+              ? containedTagMatchLabel(matchedAliases.length)
+              : "TAG equivalente após normalizar pontuação";
+    return {
+      ...chosen[0].entries[0],
+      tag: matchedAliases.length === 1 ? matchedAliases[0] : "",
+      description: combineTitleDescriptions(...descriptions),
+      title: combineTitleDescriptions(...descriptions),
+      trusted: true,
+      exactTag: resolved.strictExact,
+      normalizedTag: resolved.normalizedMatch,
+      containedTag: resolved.containedMatch,
+      fragmentTag: resolved.fragmentMatch,
+      matchedAliases,
+      lookupTag: lookup.tag,
+      lookupTagSource: lookup.source,
+      lookupTagFromNt: lookup.strippedNt,
+      candidateCount: descriptions.length,
+      candidateTitles: descriptions,
+      sourceRows,
+      ambiguousDescription: false,
+      matchMode: `${tagMode}; descrição de equipamento localizada no Apêndice 3 Rev.B`,
+    };
+  }
+
+  function parseSconEscopoTitleCatalog(catalog) {
+    const columns = catalog && catalog.columns || [];
+    const position = new Map(columns.map((name, index) => [name, index]));
+    const at = (row, name) => position.has(name) ? row[position.get(name)] : "";
+    const entries = (catalog && catalog.rows || []).map((row) => {
+      const sourceTitle = usableDescription(at(row, "title"));
+      return {
+        tag: cleanSpaces(at(row, "tag")),
+        title: sourceTitle,
+        cleanTitle: cleanSconEscopoTitle(sourceTitle),
+        discipline: cleanSpaces(at(row, "discipline")),
+        row: Number(at(row, "row")) || 0,
+        area: cleanSpaces(at(row, "area")),
+        itemType: cleanSpaces(at(row, "type")),
+        stage: cleanSpaces(at(row, "stage")),
+        eap: cleanSpaces(at(row, "eap")),
+        eapKey: normalizeSconEap(at(row, "eap")),
+        activityEapKey: sconEscopoActivityEap(sourceTitle),
+        subjectTitle: sconEscopoSubjectTitle({
+          itemType: at(row, "type"),
+          area: at(row, "area"),
+          stage: at(row, "stage"),
+          title: sourceTitle,
+        }),
+        sourceFile: catalog && catalog.sourceFile || "SCON ESCOPO",
+        sourceSheet: catalog && catalog.sheet || "MAPA",
+      };
+    }).filter((entry) => entry.tag && entry.cleanTitle);
+
+    const byExactTag = new Map();
+    const byNormalizedTag = new Map();
+    const byCanonicalTag = new Map();
+    const byEap = new Map();
+    entries.forEach((entry) => {
+      const key = strictTagKey(entry.tag);
+      if (!byExactTag.has(key)) byExactTag.set(key, []);
+      byExactTag.get(key).push(entry);
+      const canonicalKey = canonicalTagKey(entry.tag);
+      if (canonicalKey) {
+        if (!byCanonicalTag.has(canonicalKey)) byCanonicalTag.set(canonicalKey, []);
+        byCanonicalTag.get(canonicalKey).push(entry);
+      }
+      addNormalizedTagCandidate(byNormalizedTag, entry.tag, entry, "TAG da SCON ESCOPO");
+      if (entry.eapKey) {
+        if (!byEap.has(entry.eapKey)) byEap.set(entry.eapKey, []);
+        byEap.get(entry.eapKey).push(entry);
+      }
+    });
+    return {
+      kind: "scon-escopo-title-catalog",
+      entries,
+      byExactTag,
+      byNormalizedTag,
+      byCanonicalTag,
+      byEap,
+      uniqueTagCount: byExactTag.size,
+      uniqueEapCount: new Set(entries.map((entry) => entry.eapKey).filter(Boolean)).size,
+      sourceFile: catalog && catalog.sourceFile || "SCON ESCOPO",
+      sourceSheet: catalog && catalog.sheet || "MAPA",
+      matchPolicy: catalog && catalog.matchPolicy || "TAG exata",
+    };
+  }
+
+  function sconEscopoReferenceFor(record, references, tagEvidence, options) {
+    const catalog = references && references.sconEscopo;
+    const lookup = sconEscopoLookupTag(record, tagEvidence);
+    const lookupTag = lookup.tag;
+    if (!catalog || !lookupTag) return null;
+    const documentEap = documentEapFromGroup4(record && record.document);
+    const eapLookups = sconEapLookupVariants(documentEap);
+    let resolved = resolveCatalogTagCandidates(catalog, lookupTag, record && record.discipline);
+    if ((!resolved || !resolved.items.length) && catalog.entries && eapLookups.length) {
+      const lookupCanonical = canonicalTagKey(lookupTag);
+      const wantedEaps = new Set(eapLookups.map((item) => item.key));
+      const wantedDiscipline = sconEscopoDisciplineKey(record && record.discipline);
+      const extended = catalog.entries.filter((entry) => {
+        const entryCanonical = canonicalTagKey(entry && entry.tag);
+        if (!lookupCanonical || !entryCanonical.startsWith(lookupCanonical)) return false;
+        const suffix = entryCanonical.slice(lookupCanonical.length);
+        if (!/^(?:EL|L)?\d{1,2}$/.test(suffix)) return false;
+        if (!wantedEaps.has(entry.eapKey)) return false;
+        return !wantedDiscipline || sconEscopoDisciplineKey(entry.discipline) === wantedDiscipline;
+      });
+      if (extended.length) {
+        resolved = {
+          entries: extended,
+          items: extended.map((entry) => ({ entry, alias: entry.tag, aliasKey: normalizedTagKey(entry.tag) })),
+          strictExact: false,
+          normalizedMatch: false,
+          canonicalMatch: false,
+          containedMatch: true,
+          fragmentMatch: true,
+          prefixExtensionMatch: true,
+          expandedCompactTag: false,
+        };
+      }
+    }
+    if ((!resolved || !resolved.items.length) && (!options || options.allowContextFallback !== false)) {
+      resolved = resolveSconEscopoByEapAndContext(record, catalog, lookupTag, eapLookups);
+    }
+    if (!resolved || !resolved.items.length) return null;
+
+    const wantedEap = eapLookups[0] && eapLookups[0].key || "";
+    const allCandidates = [...new Map(resolved.items.map((item) => [
+      `${item.aliasKey}|${item.entry.row}|${norm(item.entry.cleanTitle)}`,
+      item,
+    ])).values()];
+    const candidateEaps = [...new Set(allCandidates.map((item) => cleanSpaces(item.entry.eap)).filter(Boolean))];
+    let matchedEapLookup = null;
+    let eapItems = [];
+    for (const eapLookup of eapLookups) {
+      const matches = allCandidates.filter((item) => item.entry.eapKey === eapLookup.key);
+      if (!matches.length) continue;
+      matchedEapLookup = eapLookup;
+      eapItems = matches;
+      break;
+    }
+    const eapMatched = Boolean(matchedEapLookup && eapItems.length);
+    const matchedEap = matchedEapLookup && matchedEapLookup.key || "";
+    const eapMatchedWithoutTrailingOne = Boolean(matchedEapLookup && matchedEapLookup.removedTrailingOne);
+    const eapMatchedByParent = Boolean(matchedEapLookup && matchedEapLookup.removedTrailingSegment);
+    let scopedItems = eapMatched ? eapItems : allCandidates;
+    let activityEapMatched = false;
+    if (eapMatchedByParent && wantedEap) {
+      const activityMatches = scopedItems.filter((item) => item.entry.activityEapKey === wantedEap);
+      if (activityMatches.length) {
+        scopedItems = activityMatches;
+        activityEapMatched = true;
+      }
+    }
+
+    const wantedDiscipline = sconEscopoDisciplineKey(record && record.discipline);
+    const sameDiscipline = wantedDiscipline
+      ? scopedItems.filter((item) => sconEscopoDisciplineKey(item.entry.discipline) === wantedDiscipline)
+      : [];
+    if (sameDiscipline.length) scopedItems = sameDiscipline;
+
+    const groupedByTag = new Map();
+    scopedItems.forEach((item) => {
+      if (!groupedByTag.has(item.aliasKey)) groupedByTag.set(item.aliasKey, []);
+      groupedByTag.get(item.aliasKey).push(item.entry);
+    });
+    const selectedGroups = [];
+    groupedByTag.forEach((entries, key) => {
+      const selection = chooseSconEscopoTitle(record, entries, wantedEap);
+      if (!selection.title) return;
+      selectedGroups.push({ key, tag: entries[0].tag, selection });
+    });
+    if (!selectedGroups.length) return null;
+
+    const distinctTitles = [...new Map(selectedGroups.map((group) => [norm(group.selection.title), group.selection.title])).values()];
+    let combinedTitle = combineSconEscopoTitles(distinctTitles);
+    if (!combinedTitle) return null;
+    // No fallback EAP + atividade, o prefixo do título já informa o objeto
+    // (por exemplo, "REPARO DE VÁLVULAS"). Retira o item repetido da base
+    // para evitar resultados como "... VÁLVULAS - VALVULA - ÁREA ...".
+    if (resolved.eapActivityFallback) {
+      const firstFallbackEntry = selectedGroups[0] && selectedGroups[0].selection && selectedGroups[0].selection.entries
+        ? selectedGroups[0].selection.entries[0]
+        : null;
+      const itemType = cleanTitlePart(usableDescription(firstFallbackEntry && firstFallbackEntry.itemType).replace(/\(each\)/gi, ""));
+      if (itemType) {
+        const escapedItemType = itemType.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const withoutRepeatedSubject = cleanTitlePart(combinedTitle.replace(new RegExp(`^${escapedItemType}\\s*[-–—]\\s*`, "i"), ""));
+        if (withoutRepeatedSubject) combinedTitle = withoutRepeatedSubject;
+      }
+    }
+    const catalogAliases = selectedGroups.map((group) => group.tag);
+    const matchedAliases = resolved.eapActivityFallback ? [] : catalogAliases;
+    const chosenEntries = selectedGroups.flatMap((group) => group.selection.entries);
+    const sourceRows = [...new Set(chosenEntries.map((entry) => entry.row).filter(Boolean))];
+    const first = chosenEntries[0] || scopedItems[0].entry;
+    const tagMode = resolved.eapActivityFallback
+      ? "fallback seguro por EAP + atividade documental, sem equivaler o critério de medição à TAG"
+      : resolved.eapStemFallback
+        ? "parte textual da TAG localizada no mesmo EAP"
+        : resolved.strictExact
+      ? "TAG exata"
+      : resolved.prefixExtensionMatch
+        ? "TAG principal localizada em códigos derivados com o mesmo EAP"
+        : resolved.canonicalMatch
+          ? "TAG equivalente após normalizar zeros e pontuação"
+          : resolved.expandedCompactTag
+            ? `${matchedAliases.length} TAGs expandidas do código compacto no Grupo 7`
+            : resolved.fragmentMatch
+              ? "TAG localizada por busca progressiva em partes do Grupo 7"
+              : resolved.containedMatch
+                ? containedTagMatchLabel(matchedAliases.length)
+                : "TAG equivalente após normalizar pontuação";
+    const eapMode = activityEapMatched
+      ? ` + EAP-base ${matchedEap} e atividade exata ${documentEap}`
+      : eapMatchedWithoutTrailingOne
+        ? ` + EAP ${matchedEap} após retirar o .1 final de ${documentEap}`
+        : eapMatchedByParent
+          ? ` + EAP-base ${matchedEap}`
+          : eapMatched
+            ? ` + EAP ${documentEap} do 4º grupo`
+            : wantedEap
+              ? ` + fallback pela mesma TAG em outro EAP (o EAP ${documentEap} representa outro critério de medição)`
+              : "";
+    const normalization = [lookup.strippedNt ? "nt-" : "", lookup.strippedUnit ? "U32" : ""].filter(Boolean);
+    const baseMode = `${normalization.length ? `${tagMode} após retirar ${normalization.join(" e ")} do Grupo 7` : tagMode}${eapMode}`;
+    return {
+      ...first,
+      tag: matchedAliases.length === 1 ? matchedAliases[0] : "",
+      description: combinedTitle,
+      title: combinedTitle,
+      trusted: true,
+      exactTag: resolved.strictExact,
+      normalizedTag: resolved.normalizedMatch,
+      containedTag: resolved.containedMatch,
+      fragmentTag: resolved.fragmentMatch,
+      matchedAliases,
+      catalogAliases,
+      tagFallback: Boolean(resolved.eapActivityFallback),
+      tagStemFallback: Boolean(resolved.eapStemFallback),
+      lookupTag,
+      lookupTagSource: lookup.source,
+      lookupTagFromNt: lookup.strippedNt,
+      documentEap,
+      eapMatched,
+      eapFallback: Boolean(wantedEap && !eapMatched),
+      matchedEap,
+      eapMatchedWithoutTrailingOne,
+      eapMatchedByParent,
+      activityEapMatched,
+      candidateEaps,
+      disciplineMatched: Boolean(sameDiscipline.length),
+      ambiguousDescription: false,
+      candidateCount: distinctTitles.length,
+      candidateTitles: distinctTitles,
+      combinedActivities: distinctTitles.length > 1 || selectedGroups.some((group) => group.selection.combined),
+      sourceRows,
+      matchMode: `${baseMode}${sameDiscipline.length ? " + disciplina" : ""}${distinctTitles.length > 1 ? `; ${distinctTitles.length} títulos compatíveis combinados` : ""}`,
+    };
   }
 
   function parseTitleReferenceWorkbook(workbook, XLSX) {
@@ -759,10 +1733,10 @@
             fullDescription: parsedDescription.full,
             descriptionArea: parsedDescription.area,
             descriptionDiscipline: parsedDescription.discipline,
-            sconTag: sconColumns.tag >= 0 ? text(row[sconColumns.tag]) : "",
-            discipline: sconColumns.discipline >= 0 ? text(row[sconColumns.discipline]) : "",
-            itemType: sconColumns.itemType >= 0 ? text(row[sconColumns.itemType]) : "",
-            drawingReference: sconColumns.drawingReference >= 0 ? text(row[sconColumns.drawingReference]) : "",
+            sconTag: sconColumns.tag >= 0 ? usableDescription(row[sconColumns.tag]) : "",
+            discipline: sconColumns.discipline >= 0 ? usableDescription(row[sconColumns.discipline]) : "",
+            itemType: sconColumns.itemType >= 0 ? usableDescription(row[sconColumns.itemType]) : "",
+            drawingReference: sconColumns.drawingReference >= 0 ? usableDescription(row[sconColumns.drawingReference]) : "",
             sourceFile: "SCON - TAG SGP",
             sourceSheet: sheetName,
             row: index + 1,
@@ -865,9 +1839,14 @@
   function titleLooksGeneric(title, type) {
     const n = norm(title);
     if (n === "RESERVADO") return false;
-    if (!n || ["0", "-", "N/A", "A DEFINIR"].includes(n)) return true;
+    if (isUnavailableValue(title)) return true;
     const residual = stripKnownParts(title, type, "");
     const words = norm(residual).split(/[^A-Z0-9]+/).filter((item) => item.length >= 3);
+    const typeWords = norm(type).split(/[^A-Z0-9]+/).filter((item) => item.length >= 4 && !["RELATORIO", "INSPECAO", "LIBERACAO"].includes(item));
+    // Um título operacional já é específico quando informa claramente a atividade/objeto
+    // e termina com um identificador técnico (por exemplo VM-327724 ou NF-112973).
+    // Nesses casos não existe ganho em inventar uma descrição que não está nas bases.
+    if (technicalIdentifiers(residual).length && typeWords.length >= 2) return false;
     return words.length < 2 || norm(residual) === norm(type);
   }
 
@@ -883,21 +1862,110 @@
   }
 
   function cleanTitlePart(value) {
-    return cleanSpaces(value)
+    if (isUnavailableValue(value)) return "";
+    let result = stripSpreadsheetErrors(value)
       .replace(/^TAG\s*[:\-]?\s*/i, "")
+      .replace(/\bDE\s+IDENTIFICA[CÇ][AÃ]O\s+DE\b/gi, "DE")
+      .replace(/\bDE\s+IDENTIFICA[CÇ][AÃ]O\s+D([OA]S?)\b/gi, "D$1")
+      .replace(/\bIDENTIFICA[CÇ][AÃ]O\s+DE\b/gi, "")
       .replace(/\bIDENTIFICA[CÇ][AÃ]O\b/gi, "")
+      .replace(/\bDE\s+DE\b/gi, "DE")
       .replace(/\s+[-–—]\s+/g, " - ")
       .replace(/(?:\s+-\s+){2,}/g, " - ")
       .replace(/\s{2,}/g, " ")
       .replace(/^\s*-\s*|\s*-\s*$/g, "");
+    if ((result.match(/"/g) || []).length % 2) result = result.replace(/"/g, "");
+    return result;
+  }
+
+  function removeParentheticalContent(value) {
+    let result = text(value);
+    let previous = "";
+    while (result !== previous) {
+      previous = result;
+      result = result.replace(/\([^()]*\)/g, " ");
+    }
+    return cleanSpaces(result)
+      .replace(/\s+([,.;:])/g, "$1")
+      .replace(/([,.;:])(?:\s*[,.;:])+/g, "$1");
+  }
+
+  function combineTitleDescriptions(...values) {
+    const parts = [];
+    values
+      .flatMap((value) => text(value).split(/\s*·\s*/))
+      .map(cleanTitlePart)
+      .filter(Boolean)
+      .forEach((part) => {
+        const partNorm = norm(part);
+        if (parts.some((current) => norm(current) === partNorm || norm(current).includes(partNorm))) return;
+        const genericIndex = parts.findIndex((current) => partNorm.includes(norm(current)));
+        if (genericIndex >= 0) parts.splice(genericIndex, 1, part);
+        else parts.push(part);
+      });
+    return parts.join(" · ");
+  }
+
+  function flexibleTagPattern(value) {
+    const tokens = norm(value).split(/[^A-Z0-9]+/).filter(Boolean);
+    return tokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[\\s,._/\\-]*");
+  }
+
+  function stripLeadingTitleTags(value, tags) {
+    let result = cleanTitlePart(value);
+    const candidates = [...new Map((tags || [])
+      .filter(Boolean)
+      .map((tag) => [normalizedTagKey(tag), tag])).values()]
+      .sort((left, right) => normalizedTagKey(right).length - normalizedTagKey(left).length);
+    candidates.forEach((tag) => {
+      const pattern = flexibleTagPattern(tag);
+      if (pattern) result = result.replace(new RegExp(`^${pattern}\\s*[-–—:]\\s*`, "i"), "");
+    });
+    return cleanTitlePart(result);
+  }
+
+  function trimTypeDescriptionOverlap(type, description) {
+    const cleanType = cleanTitlePart(type);
+    const cleanDescription = cleanTitlePart(description);
+    if (!cleanType || !cleanDescription) return cleanType;
+    const tokens = (value) => [...value.matchAll(/[\p{L}\p{N}]+/gu)].map((match) => ({
+      key: norm(match[0]),
+      index: match.index,
+    }));
+    const typeTokens = tokens(cleanType);
+    const descriptionTokens = tokens(cleanDescription);
+    if (descriptionTokens.length < 2) return cleanType;
+    for (let start = 0; start < typeTokens.length; start += 1) {
+      let matched = 0;
+      while (
+        start + matched < typeTokens.length
+        && matched < descriptionTokens.length
+        && typeTokens[start + matched].key === descriptionTokens[matched].key
+      ) matched += 1;
+      if (matched < 2) continue;
+      const prefix = cleanType
+        .slice(0, typeTokens[start].index)
+        .replace(/\b(?:DE|DO|DA|DOS|DAS|PARA|E)\s*$/i, "")
+        .replace(/\s*[-–—:]\s*$/, "");
+      return cleanTitlePart(prefix) || cleanType;
+    }
+    return cleanType;
   }
 
   function buildTitle(type, description, tag) {
+    const cleanTag = cleanTitlePart(tag);
+    let cleanDescription = stripLeadingTitleTags(removeParentheticalContent(description), [cleanTag]);
+    if (cleanTag) {
+      const trailingPattern = flexibleTagPattern(cleanTag);
+      cleanDescription = cleanDescription.replace(new RegExp(`\\s*[-–—:]?\\s*${trailingPattern}\\s*$`, "i"), "");
+    }
+    const cleanType = trimTypeDescriptionOverlap(removeParentheticalContent(type), cleanDescription);
     const parts = [];
-    [type, description, tag].map(cleanTitlePart).filter(Boolean).forEach((part) => {
+    [cleanType, cleanDescription].map(cleanTitlePart).filter(Boolean).forEach((part) => {
       if (!parts.some((current) => norm(current) === norm(part) || norm(current).includes(norm(part)))) parts.push(part);
     });
-    return parts.join(" - ").replace(/\bTAG\s*[:\-]?\s*/gi, "").replace(/\s+/g, " ").trim();
+    if (cleanTag) parts.push(cleanTag);
+    return parts.join(" - ").replace(/\s+/g, " ").trim();
   }
 
   function referenceFor(record, references) {
@@ -914,6 +1982,65 @@
     return null;
   }
 
+  function sconReferenceFromTagMatch(match, targetTag, disciplineMismatch) {
+    if (!match || !match.candidates || !match.candidates.length) return null;
+    const groups = new Map();
+    match.candidates.forEach((item) => {
+      if (!groups.has(item.aliasKey)) groups.set(item.aliasKey, []);
+      groups.get(item.aliasKey).push(item);
+    });
+    const descriptions = [];
+    let ambiguousDescription = false;
+    groups.forEach((items) => {
+      const distinct = [...new Map(items
+        .map((item) => item.entry)
+        .filter((entry) => entry.titleComplement)
+        .map((entry) => [norm(entry.titleComplement), entry.titleComplement])).values()];
+      if (distinct.length !== 1) ambiguousDescription = true;
+      else descriptions.push(distinct[0]);
+    });
+    const entries = match.candidates.map((item) => item.entry);
+    const first = entries[0];
+    const matchedAliases = [...new Set(match.candidates.map((item) => item.alias))];
+    const matchSources = [...new Set(match.candidates.map((item) => item.aliasSource).filter(Boolean))];
+    const sourceRows = [...new Set(entries.map((entry) => entry.row).filter(Boolean))];
+    const containedLabel = containedTagMatchLabel(matchedAliases.length);
+    const onlySconCode = matchSources.length === 1 && matchSources[0] === "CÓDIGO SGP do SCON";
+    const baseMode = onlySconCode
+      ? match.contained
+        ? `${containedLabel} no CÓDIGO SGP do SCON`
+        : "TAG equivalente localizada no CÓDIGO SGP do SCON"
+      : match.contained
+        ? containedLabel
+        : "TAG equivalente após normalizar pontuação";
+    if (disciplineMismatch || ambiguousDescription || !descriptions.length) {
+      return {
+        ...first,
+        titleComplement: "",
+        ambiguousDescription: true,
+        manualReview: true,
+        matchMode: disciplineMismatch ? `${baseMode}; disciplina diferente da LD` : `${baseMode}; descrições diferentes na base`,
+        candidates: entries.length,
+        candidateTitles: [...new Set(entries.map((entry) => entry.titleComplement).filter(Boolean))].slice(0, 12),
+        matchedAliases,
+        sourceRows,
+        trusted: false,
+        tagMatch: true,
+      };
+    }
+    return {
+      ...first,
+      titleComplement: combineTitleDescriptions(...descriptions),
+      sourceRows,
+      matchedAliases,
+      matchedTag: targetTag,
+      matchMode: baseMode,
+      trusted: true,
+      normalizedMatch: true,
+      containedTag: match.contained,
+      tagMatch: true,
+    };
+  }
 
   function sconReferenceFor(record, references) {
     const scon = references && references.scon;
@@ -928,28 +2055,47 @@
     }
     const looseKey = C.looseKey(record && record.document);
     const candidates = looseKey && scon.byLooseDocument && scon.byLooseDocument.get(looseKey) || [];
-    if (!candidates.length) return null;
-    const descriptions = [...new Map(candidates.filter((item) => item.titleComplement).map((item) => [norm(item.titleComplement), item.titleComplement])).values()];
-    if (descriptions.length !== 1) {
+    if (candidates.length) {
+      const descriptions = [...new Map(candidates.filter((item) => item.titleComplement).map((item) => [norm(item.titleComplement), item.titleComplement])).values()];
+      if (descriptions.length !== 1) {
+        return {
+          ambiguousDescription: true,
+          manualReview: true,
+          matchMode: "Código normalizado sem pontuação",
+          candidates: candidates.length,
+          candidateCount: descriptions.length,
+          candidateTitles: descriptions,
+          sourceFile: candidates[0] && candidates[0].sourceFile || "SCON - TAG SGP",
+          sourceSheet: candidates[0] && candidates[0].sourceSheet || "",
+          sourceRows: candidates.map((item) => item.row).filter(Boolean),
+          trusted: false,
+        };
+      }
       return {
-        ambiguousDescription: true,
-        manualReview: true,
+        ...candidates[0],
+        titleComplement: descriptions[0],
+        sourceRows: [...new Set(candidates.map((item) => item.row).filter(Boolean))],
         matchMode: "Código normalizado sem pontuação",
-        candidates: candidates.length,
-        sourceFile: candidates[0] && candidates[0].sourceFile || "SCON - TAG SGP",
-        sourceSheet: candidates[0] && candidates[0].sourceSheet || "",
-        sourceRows: candidates.map((item) => item.row).filter(Boolean),
-        trusted: false,
+        trusted: true,
+        normalizedMatch: true,
       };
     }
-    return {
-      ...candidates[0],
-      titleComplement: descriptions[0],
-      sourceRows: [...new Set(candidates.map((item) => item.row).filter(Boolean))],
-      matchMode: "Código normalizado sem pontuação",
-      trusted: true,
-      normalizedMatch: true,
-    };
+
+    const groupTag = extractTagFromDocument(record && record.document);
+    if (!groupTag || !scon.byNormalizedTag) return null;
+    const tagMatch = normalizedTagMatches(scon.byNormalizedTag, groupTag, record && record.discipline, true);
+    if (tagMatch) return sconReferenceFromTagMatch(tagMatch, groupTag, false);
+
+    const otherDiscipline = scon.byNormalizedTag.get(normalizedTagKey(groupTag)) || [];
+    if (otherDiscipline.length) {
+      return sconReferenceFromTagMatch({
+        candidates: otherDiscipline,
+        exactNormalized: true,
+        contained: false,
+        matchedKeys: [normalizedTagKey(groupTag)],
+      }, groupTag, true);
+    }
+    return null;
   }
 
   function auditTitles(index, references, options) {
@@ -958,7 +2104,6 @@
     return sourceRecords.map((record) => {
       if (record._ldConflict) return conflictAuditResult(record, "title");
       const reference = referenceFor(record, references);
-      const sconReference = sconReferenceFor(record, references);
       const current = unwrapTitle(record.title);
       const sourceColumn = recordColumn(record, ["TÍTULO", "TITULO", "TÍTULO DO DOCUMENTO", "TITULO DO DOCUMENTO", "NOME DO DOCUMENTO"]);
       const inferredType = inferType(record) || reference && reference.documentType || "";
@@ -966,44 +2111,103 @@
       const drawing = isDrawingRecord(record, prefix, inferredType);
       const type = prefix || inferredType;
       const tagEvidence = resolveTagEvidence(record, reference);
-      const tag = tagEvidence.tag;
       const possibleIdentifier = tagEvidence.possibleTag;
-      const nonTaggedRule = N && N.resolve ? N.resolve(record.document) : null;
+      const sconReference = sconReferenceFor(record, references);
+      const sconEscopoReference = sconEscopoReferenceFor(record, references, tagEvidence, {
+        allowContextFallback: !(sconReference && sconReference.trusted),
+      });
+      const tagReference = tagReferenceFor(record, references, tagEvidence);
+      const sconEscopoConfirmsLookupTag = Boolean(
+        sconEscopoReference
+        && sconEscopoReference.trusted
+        && sconEscopoReference.lookupTagFromNt
+        && sconEscopoReference.lookupTag
+      );
+      const appendixConfirmsLookupTag = Boolean(
+        tagReference
+        && tagReference.trusted
+        && tagReference.lookupTagFromNt
+        && tagReference.lookupTag
+      );
+      const matchedExternalTags = [...new Map([
+        ...((sconEscopoReference && sconEscopoReference.matchedAliases) || []),
+        ...((tagReference && tagReference.matchedAliases) || []),
+      ].filter(Boolean).map((value) => [normalizedTagKey(value), value])).values()];
+      const singleExternalTag = matchedExternalTags.length === 1 ? matchedExternalTags[0] : "";
+      const tag = tagEvidence.tag || singleExternalTag;
+      const resolvedNonTaggedRule = N && N.resolve ? N.resolve(record.document) : null;
+      const externalTagDescriptionFound = Boolean(sconEscopoReference && sconEscopoReference.trusted || tagReference && tagReference.trusted);
+      const nonTaggedRule = externalTagDescriptionFound ? null : resolvedNonTaggedRule;
+      const titleTagConfirmed = Boolean(tagEvidence.confirmed || singleExternalTag);
       const explicitTitle = extractTagFromTitle(record.title);
       const explicitDescription = usableDescription(recordValue(record, DESCRIPTION_HEADERS));
       const explicitComplementary = usableDescription(recordValue(record, COMPLEMENTARY_HEADERS));
       const explicitScon = referenceDescriptionCandidate(recordValue(record, SCON_HEADERS));
       const referenceDescription = reference && (referenceDescriptionCandidate(reference.description) || referenceDescriptionCandidate(reference.title));
-      const sconTitleComplement = sconReference && sconReference.trusted ? usableDescription(sconReference.titleComplement) : "";
+      const sconTitleComplement = sconReference && sconReference.trusted
+        ? stripLeadingTitleTags(
+          usableDescription(sconReference.titleComplement),
+          [tag, ...(sconReference.matchedAliases || []), ...((sconReference.tagAliases || []).map((item) => item.value))],
+        )
+        : "";
       const trustedScon = Boolean(sconTitleComplement && sconReference && sconReference.trusted);
+      const sconEscopoTitle = sconEscopoReference && sconEscopoReference.trusted ? usableDescription(sconEscopoReference.description || sconEscopoReference.title) : "";
+      const trustedSconEscopo = Boolean(sconEscopoTitle && sconEscopoReference && sconEscopoReference.trusted);
+      const appendixTitle = tagReference && tagReference.trusted ? usableDescription(tagReference.description || tagReference.title) : "";
+      const trustedAppendix = Boolean(appendixTitle && tagReference && tagReference.trusted);
+      const externalTagDescription = combineTitleDescriptions(trustedAppendix ? appendixTitle : "", trustedSconEscopo ? sconEscopoTitle : "");
       const trustedDescription = Boolean(referenceDescription && reference && !reference.manualReview && !reference.ambiguousDescription);
       const trustedNonTagged = Boolean(nonTaggedRule && nonTaggedRule.description && (nonTaggedRule.exact || nonTaggedRule.confidence === "alta"));
+      // O SCON TAG SGP representa o documento específico e, quando encontrado, dirige sozinho
+      // o texto recomendado. SCON ESCOPO e Apêndice continuam visíveis como evidência,
+      // evitando concatenar assuntos diferentes no mesmo título.
+      const sconCombinedDescription = trustedScon ? sconTitleComplement : "";
+      const sconEscopoEnrichesScon = false;
+      const externalTagDrivesDescription = Boolean(
+        externalTagDescription
+        && !trustedNonTagged
+        && !trustedScon
+        && !trustedDescription
+      );
+      const sconEscopoDrivesDescription = Boolean(externalTagDrivesDescription && trustedSconEscopo);
       const currentDescription = stripKnownParts(current, type, tag);
       const description = nonTaggedRule && nonTaggedRule.description
-        || sconTitleComplement
+        || sconCombinedDescription
+        || trustedDescription && referenceDescription
+        || externalTagDrivesDescription && externalTagDescription
         || explicitComplementary
-        || referenceDescription
         || explicitDescription
         || explicitScon
         || currentDescription;
       const descriptionIdentifiers = technicalIdentifiers(description);
-      const titleTag = nonTaggedRule ? "" : (descriptionIdentifiers.length ? "" : tag);
+      const titleTag = nonTaggedRule ? "" : tag;
       const isCv = norm(record.sheet) === "CV" || /-C1O-CV-/.test(norm(record.document));
-      const empty = !current || ["0", "-", "N/A"].includes(norm(current));
+      const empty = isUnavailableValue(current);
       const literalTag = /\bTAG\b\s*[:\-]?\s*[A-Z0-9]/i.test(current);
       const formatting = /\s{2,}|--|[-–—]\s*[-–—]|^\s*[-–—]|[-–—]\s*$/.test(current) || literalTag;
       const generic = titleLooksGeneric(current, type);
-      const needsTag = tagRequired(record, drawing ? "DESENHO" : type, titleTag) && tagEvidence.confirmed && Boolean(titleTag) && !norm(current).includes(norm(titleTag));
-      const descriptionMismatch = Boolean(
+      const needsTag = tagRequired(record, drawing ? "DESENHO" : type, titleTag) && titleTagConfirmed && Boolean(titleTag) && !norm(current).includes(norm(titleTag));
+      const controlledDescriptionMismatch = Boolean(
         description
         && (trustedNonTagged || trustedScon || trustedDescription)
         && !norm(current).includes(norm(description))
       );
+      const sconEscopoDescriptionMismatch = Boolean(
+        externalTagDescription
+        && externalTagDrivesDescription
+        && !norm(current).includes(norm(externalTagDescription))
+      );
+      const descriptionMismatch = controlledDescriptionMismatch || sconEscopoDescriptionMismatch;
       let issue = "ok";
       let classification = "ok";
       let reason = "Título claro e sem divergência identificada";
-      if (empty) { issue = "empty"; classification = trustedScon || trustedDescription || tagEvidence.confirmed ? "confirmed_error" : "insufficient"; reason = "Título vazio"; }
-      else if (needsTag) { issue = "missing_tag"; classification = "confirmed_error"; reason = `A TAG comprovada por ${tagEvidence.source.toLowerCase()} não aparece no título`; }
+      if (empty) { issue = "empty"; classification = trustedScon || trustedSconEscopo || trustedAppendix || trustedDescription || titleTagConfirmed ? "confirmed_error" : "insufficient"; reason = "Título vazio"; }
+      else if (needsTag) {
+        issue = "missing_tag";
+        classification = "confirmed_error";
+        const confirmationSource = sconEscopoConfirmsLookupTag ? "cruzamento da TAG com o SCON ESCOPO" : appendixConfirmsLookupTag ? "cruzamento da TAG com o Apêndice 3 Rev.B" : tagEvidence.source.toLowerCase();
+        reason = `A TAG comprovada pelo ${confirmationSource} não aparece no título`;
+      }
       else if (descriptionMismatch) {
         issue = "description_mismatch";
         classification = trustedNonTagged && nonTaggedRule.exact
@@ -1012,7 +2216,15 @@
         reason = nonTaggedRule
           ? "O título não representa completamente O QUÊ e ONDE/QUANDO do Campo 7 nt-"
           : trustedScon
-            ? "O terceiro campo da DESCRIÇÃO do SCON não aparece no título"
+            ? sconEscopoEnrichesScon
+              ? "O título não contém a descrição específica indicada pelo SCON TAG SGP e pelo SCON ESCOPO"
+              : "O terceiro campo da DESCRIÇÃO do SCON TAG SGP não aparece no título"
+            : externalTagDrivesDescription
+              ? trustedSconEscopo && trustedAppendix
+                ? "As descrições localizadas no SCON ESCOPO e no Apêndice 3 Rev.B não aparecem no título atual"
+                : trustedSconEscopo
+                  ? "A descrição localizada no SCON ESCOPO não aparece no título atual"
+                  : "A descrição localizada no Apêndice 3 Rev.B não aparece no título atual"
             : "A descrição validada não aparece no título";
       }
       else if (possibleIdentifier && !norm(current).includes(norm(possibleIdentifier))) { issue = "possible_identifier"; classification = "insufficient"; reason = `O código contém “${possibleIdentifier}”, mas não existe fonte suficiente para confirmar que seja uma TAG`; }
@@ -1020,7 +2232,7 @@
       else if (formatting) { issue = "format"; classification = "suggestion"; reason = literalTag ? "Remover a palavra TAG e manter somente o código" : "Padronizar espaços e separadores"; }
       let proposed = "";
       let confidence = "nenhuma";
-      if (issue !== "ok" && reference && reference.manualReview && !trustedScon) {
+      if (issue !== "ok" && reference && reference.manualReview && !trustedScon && !externalTagDrivesDescription) {
         classification = "insufficient";
         reason = "A base marcou esta descrição para revisão humana; nenhuma sugestão foi aplicada";
       } else if (issue !== "ok" && issue !== "possible_identifier") {
@@ -1031,7 +2243,7 @@
           }
         } else if ((description || tag) && (type || description || tag)) {
           proposed = buildTitle(type, description, titleTag);
-          const hasExternal = Boolean(sconTitleComplement || explicitComplementary || explicitDescription || explicitScon || referenceDescription || nonTaggedRule && nonTaggedRule.description);
+          const hasExternal = Boolean(sconTitleComplement || externalTagDescription || explicitComplementary || explicitDescription || explicitScon || referenceDescription || nonTaggedRule && nonTaggedRule.description);
           confidence = trustedScon
             ? "alta"
             : nonTaggedRule && nonTaggedRule.exact
@@ -1040,7 +2252,9 @@
               ? nonTaggedRule.confidence || "media"
               : reference && reference.verifiedCatalog && trustedDescription
                 ? (reference.confidence === "alta" ? "alta" : "media")
-                : hasExternal && tagEvidence.confirmed ? "alta" : hasExternal || (tagEvidence.confirmed && type) ? "media" : "baixa";
+                : externalTagDrivesDescription
+                  ? sconEscopoReference && sconEscopoReference.eapMatched && !sconEscopoReference.eapFallback && !sconEscopoReference.tagFallback ? "alta" : "media"
+                : hasExternal && titleTagConfirmed ? "alta" : hasExternal || (titleTagConfirmed && type) ? "media" : "baixa";
           if (!proposed || norm(proposed) === norm(current)) { proposed = ""; confidence = "nenhuma"; }
         }
       }
@@ -1053,10 +2267,21 @@
           ? `${sconReference.sourceFile || "SCON - TAG SGP"} · correspondência ambígua após normalização · linhas ${(sconReference.sourceRows || []).join(", ") || "não identificadas"}`
           : `${sconReference.sourceFile || "SCON - TAG SGP"} · aba ${sconReference.sourceSheet || "não identificada"} · linha(s) ${(sconReference.sourceRows || [sconReference.row]).filter(Boolean).join(", ") || "não identificada"} · ${sconReference.matchMode || "código exato"} · 3º campo da DESCRIÇÃO`
         : "";
+      const sconEscopoEvidence = sconEscopoReference
+        ? sconEscopoReference.ambiguousDescription
+          ? `${sconEscopoReference.sourceFile || "SCON ESCOPO"} · aba ${sconEscopoReference.sourceSheet || "MAPA"} · ${sconEscopoReference.matchMode} · ${sconEscopoReference.candidateCount || 0} títulos diferentes; nenhuma sugestão aplicada pelo SCON ESCOPO`
+          : `${sconEscopoReference.sourceFile || "SCON ESCOPO"} · aba ${sconEscopoReference.sourceSheet || "MAPA"} · linha(s) ${(sconEscopoReference.sourceRows || [sconEscopoReference.row]).filter(Boolean).join(", ") || "não identificada"} · ${sconEscopoReference.matchMode || "TAG exata"}`
+        : "";
+      const appendixEvidence = tagReference
+        ? `${tagReference.sourceFile || "Apêndice 3 Rev.B"} · aba ${tagReference.sourceSheet || "Apêndice"} · registro(s) ${(tagReference.sourceRows || [tagReference.row]).filter(Boolean).join(", ") || "não identificado"} · ${tagReference.matchMode || "TAG exata"}`
+        : "";
       const evidence = [
         tagEvidence.source,
+        sconEscopoReference && sconEscopoReference.lookupTagSource,
         nonTaggedRule && nonTaggedRule.source,
         sconEvidence,
+        sconEscopoEvidence,
+        appendixEvidence,
         referenceEvidence || (explicitComplementary ? "Complementar da própria LD" : explicitDescription ? "Descrição da própria LD" : explicitScon ? "SCON da própria LD" : explicitTitle ? "TAG escrita no título" : ""),
       ].filter(Boolean).join(" · ");
       const result = {
@@ -1076,9 +2301,32 @@
         possibleIdentifier,
         tagEvidence,
         description,
-        descriptionSource: trustedScon ? "SCON · 3º campo da DESCRIÇÃO" : nonTaggedRule ? "Catálogo controlado nt-" : referenceDescription ? "Base controlada de títulos" : explicitComplementary ? "Complementar da LD" : explicitDescription ? "Descrição da LD" : explicitScon ? "SCON da LD" : "Título atual",
+        descriptionSource: nonTaggedRule
+          ? "Catálogo controlado nt-"
+          : trustedScon
+            ? "SCON TAG SGP · 3º campo da DESCRIÇÃO"
+            : explicitComplementary
+              ? "Complementar da LD"
+              : trustedDescription
+                ? "Base controlada de títulos"
+                : externalTagDrivesDescription
+                  ? trustedSconEscopo && trustedAppendix
+                    ? "SCON ESCOPO + Apêndice 3 Rev.B"
+                    : trustedSconEscopo
+                      ? sconEscopoReference && sconEscopoReference.tagFallback
+                        ? "SCON ESCOPO · EAP + atividade documental"
+                        : sconEscopoReference && sconEscopoReference.eapFallback
+                          ? "SCON ESCOPO · mesma TAG em outro EAP"
+                          : sconEscopoReference && sconEscopoReference.exactTag
+                            ? "SCON ESCOPO · TAG + EAP"
+                            : "SCON ESCOPO · busca progressiva"
+                      : "Apêndice 3 Rev.B · TAG do equipamento"
+                  : explicitDescription ? "Descrição da LD" : explicitScon ? "SCON da LD" : "Título atual",
         sconMatch: sconReference && !sconReference.ambiguousDescription ? "SIM" : sconReference ? "AMBÍGUO" : "NÃO",
         sconMatchMode: sconReference && sconReference.matchMode || "",
+        sconMatchedTags: sconReference && sconReference.matchedAliases || [],
+        sconCandidateCount: sconReference && (sconReference.candidateCount || sconReference.candidates) || 0,
+        sconCandidateTitles: sconReference && sconReference.candidateTitles || [],
         sconTitleComplement,
         sconFullDescription: sconReference && sconReference.fullDescription || "",
         sconTag: sconReference && sconReference.sconTag || "",
@@ -1087,6 +2335,37 @@
         sconSourceFile: sconReference && sconReference.sourceFile || "",
         sconSourceSheet: sconReference && sconReference.sourceSheet || "",
         sconSourceRows: sconReference && (sconReference.sourceRows || [sconReference.row]).filter(Boolean) || [],
+        sconEscopoMatch: sconEscopoReference && (sconEscopoReference.ambiguousDescription ? "AMBÍGUO" : "SIM") || "NÃO",
+        sconEscopoMatchMode: sconEscopoReference && sconEscopoReference.matchMode || "",
+        sconEscopoMatchedTags: sconEscopoReference && sconEscopoReference.matchedAliases || [],
+        sconEscopoLookupTag: sconEscopoReference && sconEscopoReference.lookupTag || "",
+        sconEscopoLookupTagSource: sconEscopoReference && sconEscopoReference.lookupTagSource || "",
+        sconEscopoLookupTagFromNt: Boolean(sconEscopoReference && sconEscopoReference.lookupTagFromNt),
+        sconEscopoDocumentEap: sconEscopoReference && sconEscopoReference.documentEap || documentEapFromGroup4(record.document),
+        sconEscopoEapMatched: Boolean(sconEscopoReference && sconEscopoReference.eapMatched),
+        sconEscopoEapFallback: Boolean(sconEscopoReference && sconEscopoReference.eapFallback),
+        sconEscopoMatchedEap: sconEscopoReference && sconEscopoReference.matchedEap || "",
+        sconEscopoEapMatchedWithoutTrailingOne: Boolean(sconEscopoReference && sconEscopoReference.eapMatchedWithoutTrailingOne),
+        sconEscopoFragmentTagMatched: Boolean(sconEscopoReference && sconEscopoReference.fragmentTag),
+        sconEscopoTagFallback: Boolean(sconEscopoReference && sconEscopoReference.tagFallback),
+        sconEscopoTagStemFallback: Boolean(sconEscopoReference && sconEscopoReference.tagStemFallback),
+        sconEscopoCatalogTags: sconEscopoReference && sconEscopoReference.catalogAliases || [],
+        sconEscopoCandidateEaps: sconEscopoReference && sconEscopoReference.candidateEaps || [],
+        sconEscopoTitle,
+        sconEscopoCandidateCount: sconEscopoReference && sconEscopoReference.candidateCount || 0,
+        sconEscopoCandidateTitles: sconEscopoReference && sconEscopoReference.candidateTitles || [],
+        sconEscopoSourceFile: sconEscopoReference && sconEscopoReference.sourceFile || "",
+        sconEscopoSourceSheet: sconEscopoReference && sconEscopoReference.sourceSheet || "",
+        sconEscopoSourceRows: sconEscopoReference && (sconEscopoReference.sourceRows || [sconEscopoReference.row]).filter(Boolean) || [],
+        appendixMatch: tagReference && tagReference.trusted ? "SIM" : "NÃO",
+        appendixMatchMode: tagReference && tagReference.matchMode || "",
+        appendixMatchedTags: tagReference && tagReference.matchedAliases || [],
+        appendixTitle,
+        appendixCandidateCount: tagReference && tagReference.candidateCount || 0,
+        appendixCandidateTitles: tagReference && tagReference.candidateTitles || [],
+        appendixSourceFile: tagReference && tagReference.sourceFile || "",
+        appendixSourceSheet: tagReference && tagReference.sourceSheet || "",
+        appendixSourceRows: tagReference && (tagReference.sourceRows || [tagReference.row]).filter(Boolean) || [],
         nonTaggedRule,
         nonTaggedIdentifier: nonTaggedRule && nonTaggedRule.identifier || "",
         nonTaggedWhat: nonTaggedRule && nonTaggedRule.what || "",
@@ -1137,6 +2416,8 @@
     choosePeerEvidence,
     auditDatabook,
     usableDescription,
+    stripSpreadsheetErrors,
+    isUnavailableValue,
     looksLikeTechnicalTag,
     validatedTag,
     looksLikeDocumentTag,
@@ -1150,12 +2431,35 @@
     stableTitlePrefix,
     referenceDescriptionCandidate,
     parseSconDescription,
+    normalizedTagKey,
+    leadingTechnicalIdentifier,
+    sconEntryTagAliases,
+    containedTagKeys,
+    normalizedTagMatches,
+    progressiveTagFragmentMatches,
     buildSconReferenceIndex,
     parseSconTitleCatalog,
     sconReferenceFor,
+    strictTagKey,
+    normalizeSconEap,
+    sconEapLookupVariants,
+    documentEapFromGroup4,
+    sconEscopoLookupTag,
+    sconEscopoDisciplineKey,
+    cleanSconEscopoTitle,
+    sconEscopoSubjectTitle,
+    sconEscopoActivityEap,
+    combineSconEscopoTitles,
+    parseSconEscopoTitleCatalog,
+    parseTagReferenceCatalog,
+    tagReferenceFor,
+    sconEscopoReferenceFor,
     technicalIdentifiers,
     parseTitleReferenceWorkbook,
     titleLooksGeneric,
+    combineTitleDescriptions,
+    stripLeadingTitleTags,
+    trimTypeDescriptionOverlap,
     buildTitle,
     auditTitles,
     summarize,
