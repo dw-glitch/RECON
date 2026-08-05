@@ -35,6 +35,7 @@
     sconTitleReferences: null,
     titleBaseLoading: true,
     titleScopeMode: "all",
+    titleSourceMode: "auto",
     titleCodeFile: null,
     titleCodeFileEntries: [],
     titleRequestedCodes: [],
@@ -63,7 +64,7 @@
     dbSelectVisible: $("#databook-select-visible"), dbSelectedCount: $("#databook-selected-count"), dbApproveSelected: $("#databook-approve-selected"), dbKeepSelected: $("#databook-keep-selected"),
     titleReference: $("#title-reference"), titleReferenceMeta: $("#title-reference-meta"), titleBaseStatus: $("#title-base-status"),
     titleSconReference: $("#title-scon-reference"), titleSconReferenceMeta: $("#title-scon-reference-meta"),
-    titleScopeRadios: [...document.querySelectorAll('input[name="title-scope-mode"]')], titleCodeLoader: $("#title-code-loader"), titleCodeText: $("#title-code-text"), titleCodeFile: $("#title-code-file"), titleCodeFileMeta: $("#title-code-file-meta"), titleCodeMeta: $("#title-code-meta"), titleCodeClear: $("#title-code-clear"), titleCodePrepare: $("#title-code-prepare"),
+    titleScopeRadios: [...document.querySelectorAll('input[name="title-scope-mode"]')], titleSourceRadios: [...document.querySelectorAll('input[name="title-source-mode"]')], titleCodeLoader: $("#title-code-loader"), titleCodeText: $("#title-code-text"), titleCodeFile: $("#title-code-file"), titleCodeFileMeta: $("#title-code-file-meta"), titleCodeMeta: $("#title-code-meta"), titleCodeClear: $("#title-code-clear"), titleCodePrepare: $("#title-code-prepare"),
     titleAnalyze: $("#title-analyze"), titleReady: $("#title-ready-name"), titleProgress: $("#title-progress"), titleProgressBar: $("#title-progress-bar"), titleProgressText: $("#title-progress-text"),
     titleResults: $("#title-results"), titleExport: $("#title-export"), titleApplyLd: $("#title-apply-ld"), titleSearch: $("#title-search"), titleIssue: $("#title-issue"), titleSheet: $("#title-sheet"), titleSource: $("#title-source-filter"), titleConfidence: $("#title-confidence"), titleMeta: $("#title-result-meta"), titleBody: $("#title-body"), titleEmpty: $("#title-empty"),
     titleSelectVisible: $("#title-select-visible"), titleSelectedCount: $("#title-selected-count"), titleApproveSelected: $("#title-approve-selected"), titleKeepSelected: $("#title-keep-selected"),
@@ -498,6 +499,25 @@
     return `${escapeHtml(start)}<mark>${escapeHtml(changed || after)}</mark>${escapeHtml(end)}`;
   }
 
+  // O título recomendado é editável sempre que existe uma decisão a tomar:
+  // o texto aprovado (editado ou não) é o mesmo que vai para o Excel e para a
+  // cópia da LD, então o que a Qualidade vê aqui é exatamente o que sai depois.
+  function titleEditable(row) {
+    return Boolean(row) && !(row.ldConflict && row.ldConflict.hasConflict) && row.issue !== "ok";
+  }
+
+  function titleProposedHtml(row) {
+    if (row.ldConflict && row.ldConflict.hasConflict) {
+      return `<p>${row.proposed ? titleDiffHtml(row.current, row.proposed) : "Resolva o conflito na LD antes de revisar o título"}</p>`;
+    }
+    if (row.issue === "ok") return "<p>Nenhuma mudança necessária</p>";
+    const edited = Boolean(row.autoProposed) && Q.norm(row.autoProposed) !== Q.norm(row.proposed || "");
+    const auto = edited
+      ? `<div class="title-proposed-auto"><small>Sugestão automática</small><span>${titleDiffHtml(row.current, row.autoProposed)}</span><button type="button" data-restore-proposed="${escapeHtml(row.id)}">Usar sugestão automática</button></div>`
+      : "";
+    return `<label class="title-review-edit"><textarea class="title-proposed-input" data-proposed-edit="${escapeHtml(row.id)}" rows="2" spellcheck="false" aria-label="Título recomendado para ${escapeHtml(row.document)}" placeholder="Digite o título que deseja aprovar…">${escapeHtml(row.proposed || "")}</textarea></label>${auto}`;
+  }
+
   function cleanTitleReportValue(value) {
     if (Q && typeof Q.stripSpreadsheetErrors === "function") return Q.stripSpreadsheetErrors(value);
     return String(value == null ? "" : value).replace(/#(?:N\/A|N\/D|VALUE!|VALOR!|REF!|NAME\?|NOME\?|DIV\/0!)/giu, " ").replace(/\s+/g, " ").trim();
@@ -582,7 +602,7 @@
       <div class="title-review-comparison">
         <section class="title-review-block current"><span>Título atual na LD</span><p>${escapeHtml(row.current || "Título vazio")}</p></section>
         <section class="title-review-block evidence"><span>O que as bases informam</span>${titleEvidenceHtml(row)}</section>
-        <section class="title-review-block proposed"><span>Título recomendado</span><p>${row.proposed ? titleDiffHtml(row.current, row.proposed) : row.issue === "ok" ? "Nenhuma mudança necessária" : "Sem sugestão segura"}</p></section>
+        <section class="title-review-block proposed"><span>Título recomendado</span>${titleProposedHtml(row)}</section>
       </div>
       <footer class="title-review-card-footer"><div class="title-review-guidance">${messageHtml(row)}</div><div class="title-review-decision">${decisionHtml(row)}</div></footer>
     </article>`).join("");
@@ -649,7 +669,8 @@
       setProgress("title", 32, "Carregando evidências SCON TAG SGP, SCON ESCOPO e Apêndice 3 Rev.B…");
       await ensureSconForTitles(requestedKeys);
       setProgress("title", 48, "Verificando especificidade e padronização…"); if (Tasks) Tasks.update(taskId, 48, "Conferindo documento exato, tag e disciplina"); await yieldFrame();
-      const titleOptions = requestedKeys ? { documentKeys: requestedKeys } : null;
+      const titleOptions = { titleSourceMode: state.titleSourceMode };
+      if (requestedKeys) titleOptions.documentKeys = requestedKeys;
       state.titleRows = window.RECONCompute ? await window.RECONCompute.run("title", "audit-titles", { index: state.index, references: mergedTitleReferences(), options: titleOptions }) : Q.auditTitles(state.index, mergedTitleReferences(), titleOptions);
       if (titlePager) titlePager.reset();
       state.titleSelected.clear();
@@ -673,12 +694,38 @@
   }
 
   function handleBodyClick(kind, event) {
+    if (kind === "title") {
+      const restore = event.target.closest("button[data-restore-proposed]");
+      if (restore) {
+        const row = rowById(kind, restore.dataset.restoreProposed);
+        if (row) {
+          row.proposed = row.autoProposed || "";
+          row.decision = undefined;
+          renderTitles();
+        }
+        return;
+      }
+    }
     const button = event.target.closest("button[data-action][data-id]");
     if (!button) return;
     const row = rowById(kind, button.dataset.id);
     if (!row || !row.proposed) return;
     storeDecision(row, button.dataset.action === "approve" ? "approved" : "kept");
     (kind === "databook" ? renderDatabook : renderTitles)();
+  }
+
+  function handleTitleProposedEdit(event) {
+    const textarea = event.target.closest("textarea[data-proposed-edit]");
+    if (!textarea) return;
+    const row = rowById("title", textarea.dataset.proposedEdit);
+    if (!row || !titleEditable(row)) return;
+    const value = textarea.value.trim();
+    if (value === (row.proposed || "").trim()) return;
+    row.proposed = value;
+    // Uma aprovação anterior valia para o texto antigo; editar o título exige
+    // uma nova confirmação explícita antes de valer para o Excel e para a LD.
+    row.decision = undefined;
+    renderTitles();
   }
 
   function handleSelection(kind, event) {
@@ -1100,6 +1147,16 @@
     if (titleScopeSpecific() && state.index) resolveTitleScope();
     updateReady();
   }));
+  els.titleSourceRadios.forEach((radio) => radio.addEventListener("change", () => {
+    if (!radio.checked) return;
+    state.titleSourceMode = ["scon_only", "appendix_only"].includes(radio.value) ? radio.value : "auto";
+    // A fonte muda o texto do título recomendado; uma análise já feita com a
+    // fonte anterior não pode continuar visível como se já refletisse a nova escolha.
+    state.titleRows = [];
+    state.titleSelected.clear();
+    if (els.titleResults) els.titleResults.hidden = true;
+    updateReady();
+  }));
   if (els.titleCodeText) els.titleCodeText.addEventListener("input", () => { state.titleRows = []; if (els.titleResults) els.titleResults.hidden = true; updateReady(); });
   if (els.titleCodeFile) els.titleCodeFile.addEventListener("change", () => loadTitleCodeFile(els.titleCodeFile.files && els.titleCodeFile.files[0]));
   if (els.titleCodePrepare) els.titleCodePrepare.addEventListener("click", () => {
@@ -1114,7 +1171,7 @@
   [els.dbSearch, els.dbIssue, els.dbConfidence].forEach((input) => input.addEventListener(input.tagName === "SELECT" ? "change" : "input", () => { if (dbPager) dbPager.reset(); renderDatabook(); }));
   [els.titleSearch, els.titleIssue, els.titleSource, els.titleConfidence].filter(Boolean).forEach((input) => input.addEventListener(input.tagName === "SELECT" ? "change" : "input", () => { saveTitleFilters(); if (titlePager) titlePager.reset(); renderTitles(); }));
   els.dbBody.addEventListener("click", (event) => handleBodyClick("databook", event)); els.dbBody.addEventListener("change", (event) => handleSelection("databook", event));
-  els.titleBody.addEventListener("click", (event) => handleBodyClick("title", event)); els.titleBody.addEventListener("change", (event) => handleSelection("title", event));
+  els.titleBody.addEventListener("click", (event) => handleBodyClick("title", event)); els.titleBody.addEventListener("change", (event) => { handleSelection("title", event); handleTitleProposedEdit(event); });
   els.dbSelectVisible.addEventListener("change", () => selectVisible("databook", els.dbSelectVisible.checked)); els.titleSelectVisible.addEventListener("change", () => selectVisible("title", els.titleSelectVisible.checked));
   els.dbApproveSelected.addEventListener("click", () => decideSelected("databook", "approved")); els.dbKeepSelected.addEventListener("click", () => decideSelected("databook", "kept"));
   els.titleApproveSelected.addEventListener("click", () => decideSelected("title", "approved")); els.titleKeepSelected.addEventListener("click", () => decideSelected("title", "kept"));

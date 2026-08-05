@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html data-app="RECON" data-ops-ui="enabled" data-ui-architecture="scoped-components-v3" data-ui-generation="3" data-ui-version="1.26.28" data-version="1.26.28" data-functional-generation="5" lang="pt-BR">
+<html data-app="RECON" data-ops-ui="enabled" data-ui-architecture="scoped-components-v3" data-ui-generation="3" data-ui-version="1.26.28" data-version="1.26.28" data-functional-generation="4" lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
@@ -375,6 +375,14 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <label class="file-source compact-source title-code-file"><input accept=".xlsx,.xls,.xlsm,.csv,.txt" id="title-code-file" type="file"/><span class="file-icon">X</span><span><strong>Carregar relação de códigos</strong><small id="title-code-file-meta">Excel, CSV ou TXT</small></span></label>
 </div>
 <div class="title-code-actions"><span id="title-code-meta">Nenhum código preparado</span><button class="text-button danger" id="title-code-clear" type="button">Limpar códigos</button><button class="secondary-button" id="title-code-prepare" type="button">Preparar códigos</button></div>
+</div>
+</section>
+<section aria-labelledby="title-source-heading" class="title-scope-card">
+<header><div><span>FONTE</span><div><strong id="title-source-heading">Qual base deve descrever o título?</strong><small>Vale para toda a análise. Trocar a fonte exige analisar novamente.</small></div></div></header>
+<div class="title-source-mode" role="radiogroup" aria-label="Fonte da descrição do título" id="title-source-mode">
+<label><input checked="" name="title-source-mode" type="radio" value="auto"/><span><strong>Automático (combinar bases)</strong><small>Usa o SCON TAG SGP e soma o que o SCON ESCOPO e o Apêndice 3 Rev.B acrescentam, sem repetir texto.</small></span></label>
+<label><input name="title-source-mode" type="radio" value="scon_only"/><span><strong>Somente SCON TAG SGP</strong><small>Ignora o Apêndice 3 Rev.B e o SCON ESCOPO na descrição, mesmo quando também encontram a TAG.</small></span></label>
+<label><input name="title-source-mode" type="radio" value="appendix_only"/><span><strong>Somente Apêndice 3 Rev.B</strong><small>Ignora o SCON TAG SGP e o SCON ESCOPO na descrição, mesmo quando também encontram a TAG.</small></span></label>
 </div>
 </section>
 <div class="tag-policy-note"><strong>Regra de TAG</strong><span>O Campo 7 começa depois do sexto underline. Sem nt-, ele é tratado como TAG. Com nt-, o RECON interpreta O QUÊ + ONDE/QUANDO usando os prefixos do guia de documentação e o histórico controlado; o identificador nt- nunca é inserido como TAG.</span></div>

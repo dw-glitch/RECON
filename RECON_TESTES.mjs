@@ -199,4 +199,51 @@ check("o logo do relatório não é carregado no caminho crítico", () => {
     "recon-brand.js embute 178 KB de logo em base64 e só é usado ao exportar");
 });
 
+check("a camada final de CSS (recon-final.css) não fica órfã por versão", () => {
+  // 134 regras em recon-final.css só valem com data-functional-generation="4"
+  // (inclui todo o layout dos cards de título e o dimensionamento da tabela
+  // de alocação). Se o atributo no <html> não bater, essas regras nunca
+  // aplicam e a tabela quebra ao rolar na horizontal.
+  assert.match(html, /data-functional-generation="4"/, "html raiz não declara a geração funcional 4");
+  assert.doesNotMatch(html, /data-functional-generation="(?!4")/, "html raiz aponta para uma geração sem CSS correspondente");
+  const finalCss = read("recon-final.css");
+  assert.doesNotMatch(finalCss, /data-functional-generation="5"/, "recon-final.css não tem regras para a geração 5");
+});
+
+check("as colunas fixas da tabela de alocação usam a mesma largura das colunas reais", () => {
+  const finalCss = read("recon-final.css");
+  const width1 = finalCss.match(/\.allocation-decision-table th:nth-child\(1\) \{ width: (\d+)px; \}/);
+  const width2 = finalCss.match(/\.allocation-decision-table th:nth-child\(2\) \{ width: (\d+)px; \}/);
+  assert.ok(width1 && width2, "larguras das colunas 1 e 2 não encontradas");
+  const left2 = Number(width1[1]);
+  const left3 = Number(width1[1]) + Number(width2[1]);
+  assert.match(finalCss, new RegExp(`allocation-decision-table td:nth-child\\(2\\) \\{ left: ${left2}px; \\}`),
+    "deslocamento sticky da coluna 2 não bate com a largura real da coluna 1");
+  assert.match(finalCss, new RegExp(`allocation-decision-table td:nth-child\\(3\\) \\{ left: ${left3}px; \\}`),
+    "deslocamento sticky da coluna 3 não bate com a soma das larguras reais");
+});
+
+check("o título recomendado combina SCON TAG SGP com Apêndice/SCON ESCOPO quando ambos confirmam a TAG", () => {
+  const source = read("audit_core.js");
+  assert.match(source, /sconCombinesWithSconEscopo\s*=\s*Boolean\(trustedScon/, "combinação com SCON ESCOPO não está gerada a partir de trustedScon");
+  assert.match(source, /sconCombinesWithAppendix\s*=\s*Boolean\(trustedScon/, "combinação com Apêndice não está gerada a partir de trustedScon");
+  assert.match(source, /"SCON TAG SGP \+ Apêndice 3 Rev\.B/, "categoria de origem combinada SCON+Apêndice nunca é gerada");
+  assert.match(source, /"SCON TAG SGP \+ SCON ESCOPO \+ Apêndice 3 Rev\.B/, "categoria de origem combinada com as três bases nunca é gerada");
+});
+
+check("existe uma opção global para restringir a fonte do título a Apêndice ou SCON", () => {
+  assert.match(read("audit_core.js"), /titleSourceMode/, "auditTitles não recebe titleSourceMode");
+  assert.match(read("audit_app.js"), /titleSourceMode/, "audit_app.js não lê o seletor de fonte");
+  assert.match(html, /name="title-source-mode"/, "seletor de fonte (Automático\\/Apêndice\\/SCON) ausente do HTML");
+  assert.match(html, /value="appendix_only"/);
+  assert.match(html, /value="scon_only"/);
+});
+
+check("o título recomendado é editável antes da exportação e a edição exige nova aprovação", () => {
+  const source = read("audit_app.js");
+  assert.match(source, /data-proposed-edit/, "campo de título recomendado não é editável");
+  assert.match(source, /autoProposed/, "sugestão automática original não é preservada para comparação");
+  assert.match(source, /row\.decision = undefined/, "editar o título recomendado não invalida uma aprovação anterior");
+});
+
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));

@@ -2155,21 +2155,41 @@
       const trustedSconEscopo = Boolean(sconEscopoTitle && sconEscopoReference && sconEscopoReference.trusted);
       const appendixTitle = tagReference && tagReference.trusted ? usableDescription(tagReference.description || tagReference.title) : "";
       const trustedAppendix = Boolean(appendixTitle && tagReference && tagReference.trusted);
-      const externalTagDescription = combineTitleDescriptions(trustedAppendix ? appendixTitle : "", trustedSconEscopo ? sconEscopoTitle : "");
+      // Filtro global de fonte (options.titleSourceMode): restringe qual base pode
+      // efetivamente entrar na descrição recomendada. As três bases continuam
+      // sendo pesquisadas e mostradas como evidência — a restrição vale só para
+      // o texto usado no título, nunca para a confirmação da TAG.
+      const titleSourceMode = (options && options.titleSourceMode) || "auto";
+      const sconDescriptionAllowed = titleSourceMode !== "appendix_only";
+      const appendixDescriptionAllowed = titleSourceMode !== "scon_only";
+      const sconEscopoDescriptionAllowed = titleSourceMode === "auto";
+      const sconEscopoInDescription = Boolean(trustedSconEscopo && sconEscopoDescriptionAllowed);
+      const appendixInDescription = Boolean(trustedAppendix && appendixDescriptionAllowed);
+      const externalTagDescription = combineTitleDescriptions(appendixInDescription ? appendixTitle : "", sconEscopoInDescription ? sconEscopoTitle : "");
       const trustedDescription = Boolean(referenceDescription && reference && !reference.manualReview && !reference.ambiguousDescription);
       const trustedNonTagged = Boolean(nonTaggedRule && nonTaggedRule.description && (nonTaggedRule.exact || nonTaggedRule.confidence === "alta"));
-      // O SCON TAG SGP representa o documento específico e, quando encontrado, dirige sozinho
-      // o texto recomendado. SCON ESCOPO e Apêndice continuam visíveis como evidência,
-      // evitando concatenar assuntos diferentes no mesmo título.
-      const sconCombinedDescription = trustedScon ? sconTitleComplement : "";
-      const sconEscopoEnrichesScon = false;
+      // O SCON TAG SGP descreve o documento específico e sempre entra primeiro na
+      // descrição recomendada. Quando a mesma TAG também é confirmada pelo SCON
+      // ESCOPO e/ou pelo Apêndice 3 Rev.B, o texto de cada base é somado ao do
+      // SCON TAG SGP: combineTitleDescriptions descarta qualquer parte já contida
+      // na anterior, então a mesma informação não se repete no título, apenas o
+      // que cada base acrescenta de fato.
+      const sconCombinesWithSconEscopo = Boolean(trustedScon && sconEscopoInDescription);
+      const sconCombinesWithAppendix = Boolean(trustedScon && appendixInDescription);
+      const sconCombinedDescription = trustedScon && sconDescriptionAllowed
+        ? combineTitleDescriptions(
+          sconTitleComplement,
+          sconCombinesWithSconEscopo ? sconEscopoTitle : "",
+          sconCombinesWithAppendix ? appendixTitle : "",
+        )
+        : "";
       const externalTagDrivesDescription = Boolean(
         externalTagDescription
         && !trustedNonTagged
-        && !trustedScon
+        && !(trustedScon && sconDescriptionAllowed)
         && !trustedDescription
       );
-      const sconEscopoDrivesDescription = Boolean(externalTagDrivesDescription && trustedSconEscopo);
+      const sconEscopoDrivesDescription = Boolean(externalTagDrivesDescription && sconEscopoInDescription);
       const currentDescription = stripKnownParts(current, type, tag);
       const description = nonTaggedRule && nonTaggedRule.description
         || sconCombinedDescription
@@ -2215,14 +2235,18 @@
           : trustedScon || reference && reference.verifiedCatalog ? "confirmed_error" : "suggestion";
         reason = nonTaggedRule
           ? "O título não representa completamente O QUÊ e ONDE/QUANDO do Campo 7 nt-"
-          : trustedScon
-            ? sconEscopoEnrichesScon
-              ? "O título não contém a descrição específica indicada pelo SCON TAG SGP e pelo SCON ESCOPO"
-              : "O terceiro campo da DESCRIÇÃO do SCON TAG SGP não aparece no título"
+          : trustedScon && sconDescriptionAllowed
+            ? sconCombinesWithSconEscopo && sconCombinesWithAppendix
+              ? "A descrição combinada do SCON TAG SGP, do SCON ESCOPO e do Apêndice 3 Rev.B não aparece completa no título"
+              : sconCombinesWithSconEscopo
+                ? "A descrição combinada do SCON TAG SGP e do SCON ESCOPO não aparece completa no título"
+                : sconCombinesWithAppendix
+                  ? "A descrição combinada do SCON TAG SGP e do Apêndice 3 Rev.B não aparece completa no título"
+                  : "O terceiro campo da DESCRIÇÃO do SCON TAG SGP não aparece no título"
             : externalTagDrivesDescription
-              ? trustedSconEscopo && trustedAppendix
+              ? sconEscopoInDescription && appendixInDescription
                 ? "As descrições localizadas no SCON ESCOPO e no Apêndice 3 Rev.B não aparecem no título atual"
-                : trustedSconEscopo
+                : sconEscopoInDescription
                   ? "A descrição localizada no SCON ESCOPO não aparece no título atual"
                   : "A descrição localizada no Apêndice 3 Rev.B não aparece no título atual"
             : "A descrição validada não aparece no título";
@@ -2300,19 +2324,26 @@
         descriptionIdentifiers,
         possibleIdentifier,
         tagEvidence,
+        titleSourceMode,
         description,
         descriptionSource: nonTaggedRule
           ? "Catálogo controlado nt-"
-          : trustedScon
-            ? "SCON TAG SGP · 3º campo da DESCRIÇÃO"
+          : trustedScon && sconDescriptionAllowed
+            ? sconCombinesWithSconEscopo && sconCombinesWithAppendix
+              ? "SCON TAG SGP + SCON ESCOPO + Apêndice 3 Rev.B · 3º campo da DESCRIÇÃO"
+              : sconCombinesWithAppendix
+                ? "SCON TAG SGP + Apêndice 3 Rev.B · 3º campo da DESCRIÇÃO"
+                : sconCombinesWithSconEscopo
+                  ? "SCON TAG SGP + SCON ESCOPO"
+                  : "SCON TAG SGP · 3º campo da DESCRIÇÃO"
             : explicitComplementary
               ? "Complementar da LD"
               : trustedDescription
                 ? "Base controlada de títulos"
                 : externalTagDrivesDescription
-                  ? trustedSconEscopo && trustedAppendix
+                  ? sconEscopoInDescription && appendixInDescription
                     ? "SCON ESCOPO + Apêndice 3 Rev.B"
-                    : trustedSconEscopo
+                    : sconEscopoInDescription
                       ? sconEscopoReference && sconEscopoReference.tagFallback
                         ? "SCON ESCOPO · EAP + atividade documental"
                         : sconEscopoReference && sconEscopoReference.eapFallback
@@ -2378,6 +2409,10 @@
             ? "CAMPO 7 nt- — construir O QUÊ + ONDE/QUANDO"
             : "PREFIXO PRESERVADO — completar somente descrição e TAG",
         proposed,
+        // Cópia imutável da sugestão calculada pelo RECON. "proposed" pode ser
+        // reescrito na revisão em tela antes da aprovação; "autoProposed" guarda
+        // o que a análise automática realmente encontrou, para comparação.
+        autoProposed: proposed,
         issue,
         classification,
         confidence,
