@@ -246,4 +246,20 @@ check("o título recomendado é editável antes da exportação e a edição exi
   assert.match(source, /row\.decision = undefined/, "editar o título recomendado não invalida uma aprovação anterior");
 });
 
+check("a base SCON TAG SGP embutida tolera falha de rede em uma disciplina sem derrubar a análise inteira", () => {
+  const loader = read("scon_catalog_loader.js");
+  assert.doesNotMatch(loader, /await Promise\.all\(/, "ensureDisciplines ainda usa Promise.all: uma disciplina falhando derruba todas as outras");
+  assert.match(loader, /Promise\.allSettled/, "carregamento das disciplinas SCON não tolera falha parcial");
+
+  const app = read("audit_app.js");
+  const start = app.indexOf("async function ensureSconForTitles");
+  const end = app.indexOf("async function analyzeTitles");
+  assert.ok(start >= 0 && end > start, "ensureSconForTitles não encontrada antes de analyzeTitles");
+  const body = app.slice(start, end);
+  assert.match(body, /try \{/, "ensureSconForTitles não protege o carregamento embutido com try/catch");
+  assert.match(body, /catch \(error\) \{/, "ensureSconForTitles não trata a falha do carregamento embutido");
+  assert.match(body, /falha ao carregar a base SCON TAG SGP embutida/,
+    "falha ao carregar a base embutida ainda pode abortar analyzeTitles inteiro, como se nada tivesse sido gerado");
+});
+
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));

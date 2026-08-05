@@ -642,9 +642,25 @@
     if (state.sconReferenceFile && state.sconTitleReferences) return state.sconTitleReferences;
     if (!window.RECONSconCatalog) return state.sconTitleReferences;
     if (els.titleSconReferenceMeta) els.titleSconReferenceMeta.textContent = "Carregando somente as disciplinas necessárias…";
-    const catalog = await window.RECONSconCatalog.ensureForIndex(state.index, requestedKeys || null);
-    state.sconTitleReferences = Q.parseSconTitleCatalog(catalog);
-    if (els.titleSconReferenceMeta) els.titleSconReferenceMeta.textContent = `${state.sconTitleReferences.entries.length.toLocaleString("pt-BR")} códigos SCON carregados por disciplina`;
+    // A base embutida é buscada pela rede, em pedaços por disciplina. Uma falha
+    // de rede aqui não pode derrubar a análise inteira (antes derrubava): o
+    // usuário fica sem nenhum resultado só porque um arquivo não baixou,
+    // quando o restante das disciplinas já carregadas continua utilizável.
+    try {
+      const catalog = await window.RECONSconCatalog.ensureForIndex(state.index, requestedKeys || null);
+      state.sconTitleReferences = Q.parseSconTitleCatalog(catalog);
+      const count = state.sconTitleReferences.entries.length.toLocaleString("pt-BR");
+      if (catalog.failedDisciplines && catalog.failedDisciplines.length) {
+        if (els.titleSconReferenceMeta) els.titleSconReferenceMeta.textContent = `${count} códigos SCON carregados · ${catalog.failedDisciplines.length} disciplina(s) indisponível(is)`;
+        showToast(`Não foi possível baixar a base SCON TAG SGP de ${catalog.failedDisciplines.length} disciplina(s) (${catalog.failedDisciplines.join(", ")}). A análise continua com as demais disciplinas já carregadas; se a rede estabilizar, analise novamente para completar a base.`, "warn");
+      } else if (els.titleSconReferenceMeta) {
+        els.titleSconReferenceMeta.textContent = `${count} códigos SCON carregados por disciplina`;
+      }
+    } catch (error) {
+      console.error("RECON: falha ao carregar a base SCON TAG SGP embutida", error);
+      if (els.titleSconReferenceMeta) els.titleSconReferenceMeta.textContent = "Base incorporada indisponível nesta tentativa";
+      showToast("Não foi possível baixar a base SCON TAG SGP embutida. A análise vai continuar sem ela; carregue o arquivo manualmente ou tente novamente.", "warn");
+    }
     updateTitleReferenceStatus();
     return state.sconTitleReferences;
   }

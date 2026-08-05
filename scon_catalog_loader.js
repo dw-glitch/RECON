@@ -29,11 +29,22 @@
   }
   async function ensureDisciplines(names) {
     const wanted = [...new Set((names || []).filter((name) => manifest.chunks[name]))];
-    await Promise.all(wanted.map(async (name) => {
-      if (loaded.has(name)) return;
-      await script(manifest.chunks[name][0]); loaded.add(name);
-    }));
-    return catalog();
+    // Cada disciplina é um arquivo independente buscado pela rede. Antes, um
+    // único arquivo falhando (timeout, instabilidade de conexão) derrubava
+    // Promise.all inteiro e a base SCON TAG SGP embutida virava nula para
+    // TODAS as disciplinas — mesmo as que já tinham carregado com sucesso.
+    // allSettled preserva o que deu certo e só avisa sobre o que faltou.
+    const pending = wanted.filter((name) => !loaded.has(name));
+    const results = await Promise.allSettled(pending.map((name) => script(manifest.chunks[name][0])));
+    const failed = [];
+    results.forEach((result, index) => {
+      const name = pending[index];
+      if (result.status === "fulfilled") loaded.add(name);
+      else failed.push(name);
+    });
+    const result = catalog();
+    result.failedDisciplines = failed;
+    return result;
   }
   function catalog() {
     const rows = [];
