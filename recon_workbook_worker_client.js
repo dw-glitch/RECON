@@ -88,6 +88,8 @@
         if (task.worker) task.worker.terminate();
         callback(value);
       };
+      // Infraestrutura: o Worker não subiu. Vale reler o arquivo na thread
+      // principal, mesmo travando a interface, porque não há alternativa.
       const fallback = (cause) => {
         if (task.settled || task.cancelled) return;
         if (task.worker) { task.worker.terminate(); task.worker = null; }
@@ -95,6 +97,15 @@
           (value) => finish(resolve, value),
           (error) => finish(reject, error)
         );
+      };
+
+      // Arquivo inválido ou layout inesperado: o Worker leu e falhou. Reler tudo
+      // fora dele apenas congelaria a interface para chegar ao mesmo erro, e
+      // ainda marcaria o aplicativo como "modo compatível" para sempre.
+      const failLogic = (message) => {
+        if (task.settled || task.cancelled) return;
+        if (task.worker) { task.worker.terminate(); task.worker = null; }
+        finish(reject, new Error(message || "Falha ao ler planilha"));
       };
 
       if (root.location && root.location.protocol === "file:") { fallback(new Error("Modo local: leitura direta habilitada.")); return; }
@@ -109,10 +120,11 @@
         const data = event.data || {};
         if (data.id !== id || task.settled) return;
         if (data.progress !== undefined) dispatchProgress(id, mode, data.progress, data.message || "");
-        // Worker responded successfully; data.error is a caught business-logic exception,
-        // not an infrastructure failure. Reject directly — don't fall back and re-read the
-        // same buffer on the main thread, and don't mark the worker itself as unavailable.
-        if (data.error) { finish(reject, new Error(data.error)); return; }
+        if (data.error) {
+          if (data.infrastructure) fallback(new Error(data.error));
+          else failLogic(data.error);
+          return;
+        }
         if (data.result) finish(resolve, data.result);
       };
       task.worker.onerror = (event) => fallback(new Error(event.message || "Falha de infraestrutura no Worker da planilha."));

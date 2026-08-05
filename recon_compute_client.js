@@ -38,8 +38,28 @@
     });
   }
 
+  // Operações cujo término representa uma análise concluída pelo usuário.
+  // "relations-filter" e "relations-resolve" ficam de fora porque disparam a
+  // cada digitação no filtro e inflariam o histórico.
+  const ANALYSIS_MODULES = {
+    "audit-titles": "titles",
+    "audit-databook": "databook",
+    "allocation-analyze": "allocation",
+    "relations-catalog": "relations",
+    "tag-analyze": "tags",
+  };
+
+  function announceAnalysis(type, startedAt) {
+    const module = ANALYSIS_MODULES[type];
+    if (!module) return;
+    root.dispatchEvent(new CustomEvent("recon:analysis-complete", {
+      detail: { module, data: { operation: type, durationMs: Math.round(performance.now() - startedAt) } },
+    }));
+  }
+
   function run(scope, type, payload) {
     cancel(scope);
+    const startedAt = performance.now();
     const id = `${scope}-${++sequence}`;
     const task = { id, scope, worker: null, reject: null, cancelled: false, directTimer: 0, settled: false };
     const promise = new Promise((resolve, reject) => {
@@ -54,13 +74,29 @@
         callback(value);
       };
 
+      const succeed = (result) => {
+        finish(resolve, result);
+        announceAnalysis(type, startedAt);
+      };
+
+      // Falha de infraestrutura: o Worker não existe, não carregou ou morreu.
+      // Só aqui faz sentido repetir o cálculo na thread principal.
       const fallback = (cause) => {
         if (task.settled || task.cancelled) return;
         if (task.worker) { task.worker.terminate(); task.worker = null; }
         runDirect(task, type, payload, cause).then(
-          (result) => finish(resolve, result),
+          (result) => { finish(resolve, result); announceAnalysis(type, startedAt); },
           (error) => finish(reject, error)
         );
+      };
+
+      // Erro de regra de negócio: o Worker rodou e a própria análise lançou.
+      // Repetir na thread principal apenas congelaria a interface para chegar
+      // exatamente ao mesmo erro, além de marcar o app como "modo compatível".
+      const failLogic = (message) => {
+        if (task.settled || task.cancelled) return;
+        if (task.worker) { task.worker.terminate(); task.worker = null; }
+        finish(reject, new Error(message || "Falha no processamento"));
       };
 
       if (root.location && root.location.protocol === "file:") { fallback(new Error("Modo local: processamento direto habilitado.")); return; }
@@ -74,12 +110,14 @@
       task.worker.onmessage = (event) => {
         const data = event.data || {};
         if (data.id !== id || task.settled) return;
-        // The worker responded, so its infrastructure is fine — data.error here means
-        // the business logic itself threw. Reject directly instead of falling back to
-        // the main thread, which would just reproduce the same error while also
-        // permanently (and incorrectly) marking the worker as unavailable.
-        if (data.error) finish(reject, new Error(data.error));
-        else finish(resolve, data.result);
+        // `infrastructure` marca as falhas em que o Worker não conseguiu montar
+        // suas dependências; nesse caso vale repetir na thread principal.
+        if (data.error) {
+          if (data.infrastructure) fallback(new Error(data.error));
+          else failLogic(data.error);
+          return;
+        }
+        succeed(data.result);
       };
       task.worker.onerror = (event) => fallback(new Error(event.message || "Falha de infraestrutura no Worker de análise."));
       try { task.worker.postMessage({ id, type, payload }); }

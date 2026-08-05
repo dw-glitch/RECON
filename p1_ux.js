@@ -146,7 +146,9 @@
     }
     els.confirmTitle.textContent = config.title;
     els.confirmMessage.textContent = config.message;
-    els.confirmFacts.innerHTML = (config.facts || []).map((fact) => `<li>${fact}</li>`).join("");
+    // Os fatos incluem nome de arquivo e nome de aba vindos da planilha aberta
+    // pelo usuário, então precisam do mesmo escape aplicado no resto do app.
+    els.confirmFacts.innerHTML = (config.facts || []).map((fact) => `<li>${escapeHtml(fact)}</li>`).join("");
     els.confirm.textContent = config.confirmLabel || "Confirmar";
     const auditSource = typeof config.audit === "function" ? config.audit() : config.audit;
     renderOutputAudit(auditSource);

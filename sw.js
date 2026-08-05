@@ -1,26 +1,21 @@
-// RECON Service Worker v1.26.27
+// RECON Service Worker v1.26.28
 // Provides offline support, caching, and PWA installation capabilities
-const CACHE_NAME = "recon-cache-v1.26.27";
-const STATIC_CACHE = "recon-static-v1.26.27";
-const DATA_CACHE = "recon-data-v1.26.27";
+const VERSION = "1.26.28";
+const CACHE_NAME = `recon-cache-v${VERSION}`;
+const STATIC_CACHE = `recon-static-v${VERSION}`;
+const DATA_CACHE = `recon-data-v${VERSION}`;
 
-const PRECACHE_URLS = [
-  // App shell: HTML, CSS, icons, manifest
+// Casca do aplicativo: precisa estar disponível para a primeira abertura offline.
+// Falhas aqui impedem o RECON de abrir, por isso são tratadas como obrigatórias.
+const SHELL_URLS = [
   "index.html",
+  "manifest.json",
   "design-system.css",
   "legacy-compat.css",
   "recon-ui.css",
   "recon-final.css",
-  "recon-favicon.ico",
-  "recon-icon.png",
-  "recon-icon-192.png",
-  "recon-logo-app.png",
-  "manifest.json",
-
-  // App shell: scripts loaded on every visit (see <script defer> tags in index.html)
   "output_audit.js",
   "pending_core.js",
-  "recon-brand.js",
   "recon_contracts.js",
   "task_center.js",
   "file_access.js",
@@ -34,88 +29,79 @@ const PRECACHE_URLS = [
   "productivity_center.js",
   "recon_enhancements.js",
   "allocation_databook_finder.js",
+  "recon-favicon.ico",
+  "recon-icon.png",
+  "recon-icon-192.png",
+  "recon-logo-app.png",
+  "recon-logo-report.png"
+];
 
-  // Common group (recon_module_loader.js): required by relations/allocation/databook/titles
+// Código dos módulos e bibliotecas de planilha: sem isto, a casca abre mas
+// nenhum módulo funciona offline. É o que realmente faltava no precache antigo.
+const MODULE_URLS = [
+  "recon-brand.js",
   "core.js",
   "ld_conflicts.js",
-  "recon_export_guard.js",
   "ld_compatibility.js",
-  "timeline_core.js",
-
-  // xlsx + export groups: reading the LD and writing every Excel/ZIP download
-  "xlsx.full.min.js",
-  "recon_workbook_worker_client.js",
-  "exceljs.min.js",
-  "jszip.min.js",
-
-  // Compute/workbook web workers and everything they importScripts()
-  "recon_compute_worker.js",
-  "recon_workbook_worker.js",
-
-  // offline:* groups: hard dependencies of allocation / audit / renamer, not optional extras
-  "offline_resources.js",
-  "offline_recon_audit_bases.js",
-  "offline_recon_databook_b.js",
-  "offline_recon_pdf_worker.js",
-
-  // Relations module
-  "relations_core.js",
-  "relations_app.js",
-
-  // Allocation module
-  "allocation_confirmation_sources.js",
-  "allocation_core.js",
-  "allocation_batches.js",
-  "databook_catalog.js",
-  "databook_allocation_sources.js",
-  "offline_recon_allocation_template.js",
-  "allocation_workbook.js",
-  "allocation_title_quality.js",
-  "allocation_app.js",
-
-  // Audit module (databook + titles). scon_escopo_title_catalog.js is an unconditional
-  // dependency of this group (unlike the per-discipline scon_*.js chunks below), so it
-  // belongs here, not with the excluded catalogs.
-  "non_tagged_title_rules.js",
-  "scon_catalog_loader.js",
-  "scon_escopo_title_catalog.js",
-  "tag_reference_catalog.js",
-  "audit_core.js",
   "ld_preservation.js",
   "ld_databook_writer.js",
   "ld_title_writer.js",
+  "recon_export_guard.js",
+  "timeline_core.js",
+  "offline_resources.js",
+  "scon_catalog_loader.js",
+  "xlsx.full.min.js",
+  "recon_workbook_worker.js",
+  "recon_workbook_worker_client.js",
+  "recon_compute_worker.js",
+  "relations_core.js",
+  "relations_app.js",
+  "allocation_confirmation_sources.js",
+  "allocation_core.js",
+  "allocation_batches.js",
+  "allocation_workbook.js",
+  "allocation_title_quality.js",
+  "allocation_app.js",
+  "databook_catalog.js",
+  "databook_allocation_sources.js",
+  "non_tagged_title_rules.js",
+  "audit_core.js",
   "audit_app.js",
-
-  // Tags module
   "tag_conference_core.js",
   "tag_conference_app.js",
-
-  // Renamer module
-  "pdf.min.js",
   "renamer_core.js",
-  "renamer_app.js"
-
-  // Deliberately NOT precached: scon_civil.js, scon_eletrica.js, scon_eqp_dinamico.js,
-  // scon_eqp_estatico.js, scon_est_metalica.js, scon_hvac.js, scon_instrumentacao.js,
-  // scon_seguranca.js, scon_tubulacao.js (~4.9 MB total). scon_catalog_loader.js loads
-  // these on demand, one discipline at a time, only for disciplines actually present in
-  // the LD being analyzed — networkFirst() below caches each one the first time it's
-  // really used instead of downloading all nine up front on every install.
+  "renamer_app.js",
+  "exceljs.min.js",
+  "jszip.min.js"
 ];
 
-// Install: cache static assets. Promise.allSettled (not addAll/all-or-nothing) so one
-// missing or renamed file can't abort the whole precache and leave offline mode disabled.
+// Catálogos de referência (scon_*, tag_reference_catalog, bases offline) NÃO são
+// precacheados: somam mais de 10 MB e o carregamento já é sob demanda, por
+// disciplina, em scon_catalog_loader.js e offline_resources.js. Eles entram no
+// cache naturalmente na primeira vez que forem usados, via networkFirst.
+
+// Install: cache the shell first, then the module code, tolerating individual failures
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then(async (cache) => {
-      const results = await Promise.allSettled(PRECACHE_URLS.map((url) => cache.add(url)));
-      results.forEach((result, index) => {
-        if (result.status === "rejected") {
-          console.warn(`RECON Service Worker: falha ao pré-cachear "${PRECACHE_URLS[index]}".`, result.reason);
+    caches.open(STATIC_CACHE)
+      .then(async (cache) => {
+        // A casca é obrigatória: se algum item falhar, a instalação falha e o
+        // Service Worker antigo continua no ar, em vez de ficar meio instalado.
+        await cache.addAll(SHELL_URLS);
+
+        // O código dos módulos é best-effort: um arquivo indisponível não pode
+        // derrubar a instalação inteira nem deixar o app sem offline nenhum.
+        const results = await Promise.allSettled(
+          MODULE_URLS.map((url) => cache.add(url))
+        );
+        const failed = results
+          .map((result, index) => (result.status === "rejected" ? MODULE_URLS[index] : null))
+          .filter(Boolean);
+        if (failed.length) {
+          console.warn(`RECON SW: ${failed.length} recurso(s) fora do cache inicial:`, failed);
         }
-      });
-      return self.skipWaiting();
-    })
+      })
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -129,6 +115,7 @@ self.addEventListener("activate", (event) => {
           if (!validCaches.includes(name)) {
             return caches.delete(name);
           }
+          return undefined;
         })
       );
     }).then(() => {
@@ -205,8 +192,8 @@ self.addEventListener("message", (event) => {
     self.skipWaiting();
   }
   if (event.data && event.data.type === "CLEAR_CACHE") {
-    caches.delete(DATA_CACHE);
-    caches.delete(STATIC_CACHE);
-    event.ports[0]?.postMessage({ success: true });
+    Promise.all([caches.delete(DATA_CACHE), caches.delete(STATIC_CACHE)])
+      .then(() => event.ports[0]?.postMessage({ success: true }))
+      .catch((error) => event.ports[0]?.postMessage({ success: false, error: String(error) }));
   }
 });

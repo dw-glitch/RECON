@@ -78,9 +78,59 @@
     });
   }
 
+  // ===================== DIALOG HELPERS =====================
+
+  // Reabertura, Escape e devolução de foco ficavam a cargo de cada diálogo e
+  // divergiam entre eles: o de atalhos não restaurava o fundo escurecido nem o
+  // foco, e o Escape só respondia com o foco já dentro do diálogo.
+  function openDialog(overlay, dialog) {
+    dialog.dataset.reconReturnFocus = "";
+    var active = document.activeElement;
+    if (active && active.id) dialog.dataset.reconReturnFocus = active.id;
+
+    overlay.style.display = "block";
+    dialog.hidden = false;
+    dialog.removeAttribute("aria-hidden");
+
+    var focusable = qs("button, [href], input, select, textarea", dialog);
+    if (focusable) focusable.focus();
+  }
+
+  function closeDialog(overlay, dialog) {
+    dialog.hidden = true;
+    dialog.setAttribute("aria-hidden", "true");
+    overlay.style.display = "none";
+
+    var returnId = dialog.dataset.reconReturnFocus;
+    var target = returnId ? $(returnId) : null;
+    if (target) target.focus();
+  }
+
+  function bindDialog(overlay, dialog, closeSelectors) {
+    function close() { closeDialog(overlay, dialog); }
+
+    (closeSelectors || []).forEach(function (id) {
+      var button = $(id);
+      if (button) button.addEventListener("click", close);
+    });
+    overlay.addEventListener("click", close);
+
+    // No documento, e não no diálogo: o Escape precisa funcionar mesmo quando o
+    // foco escapou para fora (não há focus trap nesta camada).
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !dialog.hidden) { e.preventDefault(); close(); }
+    });
+
+    return close;
+  }
+
   function showShortcutsHelp() {
-    var existing = $("recon-shortcuts-dialog");
-    if (existing) { existing.hidden = false; existing.removeAttribute("aria-hidden"); return; }
+    var existingDialog = $("recon-shortcuts-dialog");
+    var existingOverlay = $("recon-shortcuts-overlay");
+    if (existingDialog && existingOverlay) {
+      openDialog(existingOverlay, existingDialog);
+      return;
+    }
 
     var overlay = document.createElement("div");
     overlay.className = "recon-preferences-overlay";
@@ -108,16 +158,8 @@
       '<footer class="drawer-footer" style="justify-content:flex-end;padding:0.75rem 1rem"><button class="primary-button" id="recon-shortcuts-ok" type="button">Fechar</button></footer>';
     document.body.appendChild(dialog);
 
-    function close() {
-      dialog.hidden = true;
-      dialog.setAttribute("aria-hidden", "true");
-      overlay.style.display = "none";
-    }
-    $("recon-shortcuts-close").addEventListener("click", close);
-    $("recon-shortcuts-ok").addEventListener("click", close);
-    overlay.addEventListener("click", close);
-    dialog.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
-    qs("button", dialog).focus();
+    bindDialog(overlay, dialog, ["recon-shortcuts-close", "recon-shortcuts-ok"]);
+    openDialog(overlay, dialog);
   }
 
   // ===================== DRAG & DROP FOR ALL UPLOADS =====================
@@ -164,7 +206,10 @@
       label.addEventListener("dragleave", function (e) {
         e.preventDefault();
         e.stopPropagation();
-        dragCounter--;
+        // Sem o Math.max o contador fica negativo quando um "dragleave" chega
+        // sem o "dragenter" correspondente (borbulhamento vindo dos filhos) e o
+        // indicador "Solte o arquivo aqui" nunca mais some da tela.
+        dragCounter = Math.max(0, dragCounter - 1);
         if (dragCounter === 0) {
           indicator.style.display = "none";
           label.style.borderColor = "";
@@ -179,17 +224,26 @@
         label.style.borderColor = "";
         label.style.background = "";
         var files = e.dataTransfer && e.dataTransfer.files;
-        if (files && files.length) {
-          // If input supports multiple
-          if (input.multiple) {
-            input.files = files;
-          } else {
-            input.files = files;
+        if (!files || !files.length) return;
+
+        if (input.multiple) {
+          input.files = files;
+        } else if (files.length === 1) {
+          input.files = files;
+        } else {
+          // Campo de arquivo único: aproveita apenas o primeiro item solto,
+          // em vez de atribuir a lista inteira e depender do navegador.
+          try {
+            var transfer = new DataTransfer();
+            transfer.items.add(files[0]);
+            input.files = transfer.files;
+          } catch (_) {
+            return;
           }
-          // Trigger change event
-          var evt = new Event("change", { bubbles: true });
-          input.dispatchEvent(evt);
+          showToast("Este campo aceita um arquivo por vez. Foi usado \"" + files[0].name + "\".", 4000, "warn");
         }
+
+        input.dispatchEvent(new Event("change", { bubbles: true }));
       });
     });
   }
@@ -226,7 +280,15 @@
     open: function () {
       return new Promise(function (resolve, reject) {
         if (RECONDB.db) { resolve(RECONDB.db); return; }
+        if (typeof indexedDB === "undefined" || !indexedDB) {
+          reject(new Error("IndexedDB indisponível neste navegador."));
+          return;
+        }
         var request = indexedDB.open(RECONDB.DB_NAME, RECONDB.DB_VERSION);
+        // Sem isto, uma aba antiga segurando a base faz a promessa nunca resolver.
+        request.onblocked = function () {
+          reject(new Error("Há outra aba do RECON aberta com uma versão anterior dos dados."));
+        };
         request.onupgradeneeded = function (e) {
           var db = e.target.result;
           // Stores
@@ -247,6 +309,11 @@
         };
         request.onsuccess = function (e) {
           RECONDB.db = e.target.result;
+          // Outra aba pedindo upgrade não pode ficar presa por esta conexão.
+          RECONDB.db.onversionchange = function () {
+            try { RECONDB.db.close(); } catch (_) { /* já fechada */ }
+            RECONDB.db = null;
+          };
           resolve(RECONDB.db);
         };
         request.onerror = function (e) { reject(e.target.error); };
@@ -314,23 +381,6 @@
     }
   };
 
-  // Cache LD data in IndexedDB
-  function cacheLDData(ldId, data) {
-    return RECONDB.put("ld_cache", { id: ldId, data: data, timestamp: Date.now() });
-  }
-
-  function getCachedLD(ldId) {
-    return RECONDB.get("ld_cache", ldId).then(function (entry) {
-      if (!entry) return null;
-      // Cache valid for 1 hour
-      if (Date.now() - entry.timestamp > 3600000) {
-        RECONDB.delete("ld_cache", ldId);
-        return null;
-      }
-      return entry.data;
-    });
-  }
-
   // Save session state
   function saveSessionState(key, value) {
     return RECONDB.put("session", { key: key, value: value, timestamp: Date.now() });
@@ -343,12 +393,28 @@
   }
 
   // Save analysis to history
+  var MAX_HISTORY_ENTRIES = 300;
+
   function saveAnalysisToHistory(module, data) {
     return RECONDB.put("analysis_history", {
       module: module,
       data: data,
       timestamp: Date.now(),
       date: new Date().toISOString()
+    }).then(pruneAnalysisHistory);
+  }
+
+  // O histórico crescia sem limite. Mantém apenas as entradas mais recentes.
+  function pruneAnalysisHistory() {
+    return RECONDB.getAll("analysis_history").then(function (history) {
+      if (!history || history.length <= MAX_HISTORY_ENTRIES) return;
+      var excess = history
+        .slice()
+        .sort(function (a, b) { return (a.timestamp || 0) - (b.timestamp || 0); })
+        .slice(0, history.length - MAX_HISTORY_ENTRIES);
+      return Promise.all(excess.map(function (item) {
+        return RECONDB.delete("analysis_history", item.id);
+      }));
     });
   }
 
@@ -370,7 +436,9 @@
       a.click();
       document.body.removeChild(a);
       setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-      showToast("Sessão exportada com sucesso.");
+      showToast("Sessão exportada com sucesso.", 4000, "success");
+    }).catch(function (error) {
+      showToast("Não foi possível exportar a sessão: " + (error && error.message || error), 5000, "error");
     });
   }
 
@@ -379,7 +447,7 @@
     reader.onload = function (e) {
       try {
         var data = JSON.parse(e.target.result);
-        if (!data || !data.version) { showToast("Arquivo de sessão inválido."); return; }
+        if (!data || !data.version) { showToast("Arquivo de sessão inválido.", 4000, "error"); return; }
         var promises = [];
         if (data.sessions) {
           data.sessions.forEach(function (item) { promises.push(RECONDB.put("session", item)); });
@@ -388,28 +456,41 @@
           data.preferences.forEach(function (item) { promises.push(RECONDB.put("preferences", item)); });
         }
         Promise.all(promises).then(function () {
-          showToast("Sessão restaurada com sucesso. Recarregue a página para aplicar.");
+          showToast("Sessão restaurada com sucesso. Recarregue a página para aplicar.", 6000, "success");
+        }).catch(function (error) {
+          showToast("Falha ao gravar a sessão restaurada: " + (error && error.message || error), 5000, "error");
         });
       } catch (err) {
-        showToast("Erro ao importar sessão: " + err.message);
+        showToast("Erro ao importar sessão: " + err.message, 5000, "error");
       }
     };
+    reader.addEventListener("error", function () {
+      showToast("Não foi possível ler o arquivo de sessão.", 5000, "error");
+    });
     reader.readAsText(file);
   }
 
   // ===================== TOAST NOTIFICATION =====================
 
-  function showToast(message, duration) {
+  // O estado visível do toast é `.toast.show` (legacy-compat.css / design-system.css).
+  // A classe `.visible` usada antes não existe em nenhuma folha de estilo, por isso
+  // nenhuma destas mensagens chegava a aparecer.
+  var toastTimer = null;
+
+  function showToast(message, duration, tone) {
     var toast = $("toast") || document.querySelector("app-toast");
     if (!toast) {
       toast = document.createElement("app-toast");
       toast.id = "toast";
-      toast.className = "toast recon-toast";
+      toast.className = "toast";
+      toast.setAttribute("role", "status");
+      toast.setAttribute("aria-live", "polite");
       document.body.appendChild(toast);
     }
     toast.textContent = message;
-    toast.classList.add("show");
-    setTimeout(function () { toast.classList.remove("show"); }, duration || 4000);
+    toast.className = ("toast show " + (tone || "")).trim();
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toast.className = "toast"; }, duration || 4000);
   }
 
   // ===================== MICRO-INTERACTIONS & ANIMATIONS =====================
@@ -437,7 +518,7 @@
       "  transform: translateY(120%); opacity: 0;" +
       "  transition: transform 0.3s ease, opacity 0.3s ease;" +
       "}" +
-      ".recon-toast.show, app-toast.toast.show {" +
+      ".recon-toast.visible, app-toast.toast.visible {" +
       "  transform: translateY(0); opacity: 1;" +
       "}" +
 
@@ -538,13 +619,19 @@
   // ===================== DASHBOARD ANALYTICS =====================
 
   function installDashboardAnalytics() {
-    // Listen for analysis results and save to history
-    document.addEventListener("recon:analysis-complete", function (e) {
+    // Listen for analysis results and save to history.
+    // O evento é emitido por recon_compute_client.js, que é o ponto único por
+    // onde passam as análises dos cinco módulos. Antes nada o disparava e o
+    // dashboard abria sempre vazio.
+    var record = function (e) {
       var detail = e.detail;
-      if (detail && detail.module && detail.data) {
-        saveAnalysisToHistory(detail.module, detail.data);
-      }
-    });
+      if (!detail || !detail.module) return;
+      saveAnalysisToHistory(detail.module, detail.data || {}).catch(function (error) {
+        console.warn("RECON: não foi possível registrar a análise.", error);
+      });
+    };
+    document.addEventListener("recon:analysis-complete", record);
+    window.addEventListener("recon:analysis-complete", record);
 
     // Enhance preferences panel with dashboard
     var preferencesLink = $("recon-preferences-open");
@@ -571,13 +658,18 @@
     }
   }
 
+  var MODULE_LABELS = {
+    "relations": "Relações", "allocation": "Alocação", "tags": "TAGs",
+    "databook": "Databook", "titles": "Títulos", "renamer": "Renomeador"
+  };
+
   function showDashboard() {
-    var existing = $("recon-dashboard-overlay");
-    if (existing) {
-      existing.style.display = "block";
-      var dialog = $("recon-dashboard-dialog");
-      if (dialog) { dialog.hidden = false; dialog.removeAttribute("aria-hidden"); }
-      return;
+    var existingOverlay = $("recon-dashboard-overlay");
+    var existingDialog = $("recon-dashboard-dialog");
+    if (existingOverlay && existingDialog) {
+      // O conteúdo é remontado a cada abertura para refletir as análises novas.
+      existingOverlay.remove();
+      existingDialog.remove();
     }
 
     var overlay = document.createElement("div");
@@ -599,7 +691,10 @@
       '<button aria-label="Fechar" class="icon-button" id="recon-dashboard-close" type="button">×</button></header>' +
       '<div class="recon-preferences-body" style="padding:1rem;max-height:70vh;overflow:auto">';
 
-    RECONDB.getAll("analysis_history").then(function (history) {
+    RECONDB.getAll("analysis_history").catch(function (error) {
+      console.warn("RECON: histórico de análises indisponível.", error);
+      return [];
+    }).then(function (history) {
       if (!history || !history.length) {
         content += '<div class="empty" style="text-align:center;padding:2rem"><strong>Nenhuma análise registrada</strong><span style="display:block;margin-top:0.5rem;color:var(--text-2)">As análises serão registradas automaticamente conforme você utilizar os módulos.</span></div>';
       } else {
@@ -611,10 +706,7 @@
 
         content += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:0.75rem;margin-bottom:1.5rem">';
         content += '<div style="padding:1rem;background:var(--surface-2);border-radius:var(--radius-md);text-align:center"><strong style="font-size:1.5rem;display:block">' + history.length + '</strong><span style="color:var(--text-3);font-size:0.82rem">Total de análises</span></div>';
-        var modules = {
-          "relations": "Relações", "allocation": "Alocação", "tags": "TAGs",
-          "databook": "Databook", "titles": "Títulos", "renamer": "Renomeador"
-        };
+        var modules = MODULE_LABELS;
         Object.keys(modules).forEach(function (key) {
           var count = moduleCounts[key] || 0;
           if (count > 0) {
@@ -638,30 +730,44 @@
       }
 
       content += '</div>' +
-        '<footer class="drawer-footer" style="justify-content:space-between;padding:0.75rem 1rem">' +
+        '<footer class="drawer-footer" style="justify-content:space-between;gap:0.5rem;padding:0.75rem 1rem;flex-wrap:wrap">' +
+        '<div style="display:flex;gap:0.5rem;flex-wrap:wrap">' +
         '<button class="secondary-button" id="recon-dashboard-export" type="button">Exportar relatório CSV</button>' +
+        '<button class="secondary-button" id="recon-dashboard-session-export" type="button">Exportar sessão (JSON)</button>' +
+        '<button class="secondary-button" id="recon-dashboard-session-import" type="button">Restaurar sessão</button>' +
+        '<input accept="application/json,.json" hidden id="recon-dashboard-session-file" type="file"/>' +
+        '</div>' +
         '<button class="primary-button" id="recon-dashboard-ok" type="button">Fechar</button></footer>';
 
       dialog.innerHTML = content;
       document.body.appendChild(dialog);
 
-      function close() {
-        dialog.hidden = true;
-        dialog.setAttribute("aria-hidden", "true");
-        overlay.style.display = "none";
+      bindDialog(overlay, dialog, ["recon-dashboard-close", "recon-dashboard-ok"]);
+      openDialog(overlay, dialog);
+
+      // Exportar/restaurar sessão: as funções já existiam, mas nenhum elemento
+      // da interface as acionava — eram alcançáveis apenas pelo console.
+      var sessionExportBtn = $("recon-dashboard-session-export");
+      if (sessionExportBtn) sessionExportBtn.addEventListener("click", exportSession);
+
+      var sessionImportBtn = $("recon-dashboard-session-import");
+      var sessionFileInput = $("recon-dashboard-session-file");
+      if (sessionImportBtn && sessionFileInput) {
+        sessionImportBtn.addEventListener("click", function () { sessionFileInput.click(); });
+        sessionFileInput.addEventListener("change", function () {
+          var file = sessionFileInput.files && sessionFileInput.files[0];
+          if (file) importSession(file);
+          sessionFileInput.value = "";
+        });
       }
-      $("recon-dashboard-close").addEventListener("click", close);
-      $("recon-dashboard-ok").addEventListener("click", close);
-      overlay.addEventListener("click", close);
-      dialog.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
 
       // Export button
       var exportBtn = $("recon-dashboard-export");
       if (exportBtn) {
         exportBtn.addEventListener("click", function () {
           var csv = "Módulo,Data\n";
-          history.forEach(function (item) {
-            csv += (modules[item.module] || item.module) + "," + (item.date || "") + "\n";
+          (history || []).forEach(function (item) {
+            csv += (MODULE_LABELS[item.module] || item.module) + "," + (item.date || "") + "\n";
           });
           var blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
           var url = URL.createObjectURL(blob);
@@ -679,88 +785,97 @@
 
   // ===================== SESSION AUTO-SAVE =====================
 
-  function installAutoSave() {
-    // Real per-module filter keys (relations_app.js, audit_app.js, tag_conference_app.js, renamer_app.js).
-    // "allocation" and "databook" have no equivalent filters key today, so they're intentionally omitted.
-    var FILTER_KEYS = {
-      relations: "recon.relations.filters.v2",
-      tags: "recon.tags.filters.v2",
-      titles: "recon.titles.filters.v2",
-      renamer: "recon.renamer.filters.v2"
-    };
-    // Auto-save preferences every 30 seconds
-    setInterval(function () {
-      try {
-        var prefs = {};
-        Object.keys(FILTER_KEYS).forEach(function (mod) {
-          var key = FILTER_KEYS[mod];
-          var val = localStorage.getItem(key);
-          if (val) prefs[key] = val;
-        });
-        saveSessionState("auto_preferences", prefs);
-      } catch (_) { /* silent */ }
-    }, 30000);
-  }
+  // Chaves reais gravadas pelos módulos. A versão anterior montava os nomes com
+  // "recon." + módulo + ".filters", sem o sufixo de versão, então nenhuma chave
+  // batia e o auto-save gravava um objeto vazio a cada 30 segundos.
+  var AUTOSAVE_KEYS = [
+    "recon.relations.filters.v2",   // relations_app.js
+    "recon.titles.filters.v2",      // audit_app.js
+    "recon.tags.filters.v2",        // tag_conference_app.js
+    "recon.renamer.filters.v2",     // renamer_app.js
+    "recon.renamer.presets.v1"      // renamer_app.js
+  ];
 
-  // ===================== GLOBAL ERROR SAFETY NET =====================
-
-  // Stops spinners/disabled buttons from being stuck forever after an uncaught error.
-  // Only re-enables an analyze button when its own progress indicator was visible,
-  // i.e. there is direct evidence that module's operation was actually in flight.
-  function resetStuckUI() {
-    document.body.classList.remove("recon-module-loading");
-    delete document.body.dataset.reconLoadingCount;
-    ["relations", "allocation", "databook", "title", "renamer"].forEach(function (prefix) {
-      var progress = $(prefix + "-progress");
-      if (progress && !progress.hidden) {
-        progress.hidden = true;
-        var analyzeBtn = $(prefix + "-analyze");
-        if (analyzeBtn) analyzeBtn.disabled = false;
-      }
+  function collectFilterState() {
+    var prefs = {};
+    AUTOSAVE_KEYS.forEach(function (key) {
+      var value = null;
+      try { value = localStorage.getItem(key); } catch (_) { return; }
+      if (value) prefs[key] = value;
     });
-    var status = $("runtime-status-text");
-    if (status) status.textContent = "Pronto para uso";
+    // Preferências da Alocação usam um prefixo por campo, não uma chave única.
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var name = localStorage.key(i);
+        if (name && name.indexOf("recon.allocation.preference.") === 0) {
+          prefs[name] = localStorage.getItem(name);
+        }
+      }
+    } catch (_) { /* armazenamento opcional */ }
+    return prefs;
   }
 
-  function installGlobalErrorHandler() {
-    var lastToastAt = 0;
+  // Restaura o que o auto-save gravou. Sem isto o backup nunca era lido de volta.
+  function restoreFilterState() {
+    return loadSessionState("auto_preferences").then(function (prefs) {
+      if (!prefs) return false;
+      var restored = 0;
+      Object.keys(prefs).forEach(function (key) {
+        try {
+          if (localStorage.getItem(key) === null) {
+            localStorage.setItem(key, prefs[key]);
+            restored++;
+          }
+        } catch (_) { /* armazenamento opcional */ }
+      });
+      return restored > 0;
+    }).catch(function () { return false; });
+  }
 
-    function notifyFatalError(error) {
-      console.error("RECON: erro não tratado.", error);
-      resetStuckUI();
-      var now = Date.now();
-      if (now - lastToastAt < 4000) return; // avoid stacking toasts for cascading errors
-      lastToastAt = now;
-      showToast("Ocorreu um erro inesperado nesta operação. Verifique os dados e tente novamente.", 6000);
+  function installAutoSave() {
+    var lastSaved = "";
+
+    function persist() {
+      var prefs = collectFilterState();
+      var serialized = JSON.stringify(prefs);
+      // Não reescreve o IndexedDB quando nada mudou desde o ciclo anterior.
+      if (serialized === lastSaved) return;
+      lastSaved = serialized;
+      saveSessionState("auto_preferences", prefs).catch(function (error) {
+        console.warn("RECON: auto-save indisponível.", error);
+      });
     }
 
-    window.addEventListener("error", function (event) {
-      notifyFatalError(event.error || event.message);
+    var timer = setInterval(persist, 30000);
+    // Um fechamento de aba entre dois ciclos perdia os últimos 30 segundos.
+    window.addEventListener("pagehide", persist);
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") persist();
     });
-
-    window.addEventListener("unhandledrejection", function (event) {
-      var reason = event.reason;
-      if (reason && reason.name === "AbortError") return; // user-initiated cancellations aren't errors
-      notifyFatalError(reason);
-    });
+    window.addEventListener("unload", function () { clearInterval(timer); });
   }
 
   // ===================== INIT ALL =====================
 
-  function init() {
-    installGlobalErrorHandler();
+  // Cada recurso é instalado isoladamente. Antes todos compartilhavam um único
+  // try/catch: uma falha no primeiro deixava os outros seis sem instalar.
+  function install(name, fn) {
     try {
-      installKeyboardShortcuts();
-      installDragAndDrop();
-      installDebouncedSearch();
-      installMicroInteractions();
-      installPwaPrompt();
-      installDashboardAnalytics();
-      installAutoSave();
-      showToast("RECON aprimorado — atalhos, arrastar e soltar e dashboard disponíveis.", 3000);
+      fn();
     } catch (err) {
-      console.warn("RECON Enhancements: " + err.message);
+      console.warn("RECON Enhancements: falha ao instalar \"" + name + "\".", err);
     }
+  }
+
+  function init() {
+    install("atalhos de teclado", installKeyboardShortcuts);
+    install("arrastar e soltar", installDragAndDrop);
+    install("busca com atraso", installDebouncedSearch);
+    install("microinterações", installMicroInteractions);
+    install("instalação do PWA", installPwaPrompt);
+    install("dashboard", installDashboardAnalytics);
+    install("auto-save", installAutoSave);
+    install("restauração de filtros", function () { restoreFilterState(); });
   }
 
   if (document.readyState === "loading") {

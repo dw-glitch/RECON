@@ -1,6 +1,14 @@
 "use strict";
 self.window = self;
-importScripts("xlsx.full.min.js", "recon_contracts.js", "core.js");
+
+// Falha de carregamento é infraestrutura: o cliente deve repetir fora do Worker.
+// Um erro lançado depois, ao ler a planilha, é do arquivo — repetir não resolve.
+let bootError = null;
+try {
+  importScripts("xlsx.full.min.js", "recon_contracts.js", "core.js");
+} catch (error) {
+  bootError = String(error && error.message || error || "Falha ao carregar a biblioteca de planilhas");
+}
 
 function serializeWorkbook(workbook) {
   const sheets = {};
@@ -15,8 +23,26 @@ function readWorkbook(buffer, options) {
   return self.XLSX.read(buffer, { type: "array", cellDates: true, cellFormula: true, dense: false, ...(options || {}) });
 }
 
+function fail(id, error, infrastructure) {
+  self.postMessage({
+    id,
+    error: String(error && error.message || error || "Falha ao ler planilha"),
+    infrastructure: Boolean(infrastructure),
+  });
+}
+
 self.onmessage = (event) => {
   const { id, buffer, options, mode, meta } = event.data || {};
+
+  if (bootError) { fail(id, bootError, true); return; }
+
+  const missing = ["XLSX", "TriagemCore"].filter((name) => self[name] == null);
+  if (mode === "ld" && missing.length) {
+    fail(id, `Componente(s) ausente(s) no Worker: ${missing.join(", ")}.`, true);
+    return;
+  }
+  if (self.XLSX == null) { fail(id, "Componente ausente no Worker: XLSX.", true); return; }
+
   try {
     self.postMessage({ id, progress: 15, message: "Abrindo planilha" });
     const workbook = readWorkbook(buffer, options);
@@ -37,6 +63,6 @@ self.onmessage = (event) => {
     const serialized = serializeWorkbook(workbook);
     self.postMessage({ id, progress: 100, result: serialized });
   } catch (error) {
-    self.postMessage({ id, error: String(error && error.message || error || "Falha ao ler planilha") });
+    fail(id, error, false);
   }
 };
