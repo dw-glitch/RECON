@@ -262,4 +262,55 @@ check("a base SCON TAG SGP embutida tolera falha de rede em uma disciplina sem d
     "falha ao carregar a base embutida ainda pode abortar analyzeTitles inteiro, como se nada tivesse sido gerado");
 });
 
+check("é possível abrir a LD e salvar a revisão direto no arquivo original (File System Access API)", () => {
+  assert.ok(exists("recon_file_handles.js"), "módulo recon_file_handles.js ausente");
+  const handles = read("recon_file_handles.js");
+  assert.match(handles, /showOpenFilePicker/, "não usa showOpenFilePicker para obter permissão de escrita");
+  assert.match(handles, /createWritable/, "não usa createWritable para gravar no arquivo original");
+  assert.match(handles, /isSupported/, "sem checagem de suporte do navegador — quebraria em Firefox/Safari");
+
+  assert.match(html, /id="relations-ld-open-editable"/, "botão de abrir com edição direta ausente do HTML");
+  assert.match(html, /id="title-apply-ld-inplace"/, "botão de salvar título no arquivo original ausente do HTML");
+  assert.match(html, /id="databook-apply-ld-inplace"/, "botão de salvar databook no arquivo original ausente do HTML");
+
+  const relations = read("relations_app.js");
+  assert.match(relations, /ldFileHandle/, "relations_app.js não guarda o handle do arquivo aberto");
+  assert.match(relations, /fileHandle: state\.ldFileHandle/, "o handle não é propagado no evento recon:ld-ready");
+
+  const app = read("audit_app.js");
+  assert.match(app, /async function applyTitlesToLd\(options\)/, "applyTitlesToLd não aceita o modo inPlace");
+  assert.match(app, /RECONFileHandles\.writeBuffer/, "gravação no arquivo original não usa RECONFileHandles.writeBuffer");
+
+  const p1ux = read("p1_ux.js");
+  assert.match(p1ux, /protect\("title-apply-ld-inplace"/, "botão de salvar título original sem confirmação explícita");
+  assert.match(p1ux, /protect\("databook-apply-ld-inplace"/, "botão de salvar databook original sem confirmação explícita");
+  assert.match(p1ux, /substitui o conteúdo do arquivo/i, "confirmação de salvar no original não avisa que o arquivo será substituído");
+});
+
+check("o RECON lembra correções de título manuais e sugere de novo quando faltar sugestão segura", () => {
+  const enhancements = read("recon_enhancements.js");
+  assert.match(enhancements, /title_corrections/, "object store title_corrections não foi criada no IndexedDB");
+  assert.match(enhancements, /DB_VERSION:\s*2/, "versão do banco não foi incrementada para criar a nova store");
+
+  const app = read("audit_app.js");
+  assert.match(app, /function titleMemoryKey/, "sem chave de memória por TAG/documento");
+  assert.match(app, /function shouldRememberCorrection/, "sem checagem para só aprender edições reais, não sugestões aceitas sem alteração");
+  assert.match(app, /function applyTitleMemory/, "sem aplicação da memória na análise");
+
+  // A memória só pode preencher lacunas, nunca substituir uma sugestão que já
+  // veio confiável da base controlada (SCON/Apêndice/SCON ESCOPO).
+  const applyStart = app.indexOf("function applyTitleMemory");
+  const applyEnd = app.indexOf("\n  }", applyStart);
+  const applyBody = app.slice(applyStart, applyEnd);
+  assert.match(applyBody, /if \(row\.issue === "ok" \|\| row\.proposed\) return;/,
+    "memória de correções pode sobrescrever uma sugestão já confiável da base controlada");
+
+  assert.match(app, /storeDecision[\s\S]{0,200}rememberTitleCorrection/, "aprovar um título não aciona o aprendizado da correção");
+  assert.match(app, /await loadTitleMemory\(\)/, "analyzeTitles não carrega a memória de correções salva");
+
+  assert.match(html, /id="title-memory-count"/, "sem indicador de quantas correções estão guardadas");
+  assert.match(html, /id="title-memory-clear"/, "sem forma de apagar a memória de correções");
+  assert.match(html, /value="learned_memory"/, "filtro de origem sem a categoria de memória de correções");
+});
+
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));

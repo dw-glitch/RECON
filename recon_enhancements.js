@@ -275,7 +275,7 @@
   var RECONDB = {
     db: null,
     DB_NAME: "RECONStorage",
-    DB_VERSION: 1,
+    DB_VERSION: 2,
 
     open: function () {
       return new Promise(function (resolve, reject) {
@@ -305,6 +305,12 @@
             var store = db.createObjectStore("analysis_history", { keyPath: "id", autoIncrement: true });
             store.createIndex("timestamp", "timestamp", { unique: false });
             store.createIndex("module", "module", { unique: false });
+          }
+          // Memória de correções de título (v2): guarda o texto final que o
+          // usuário aprovou manualmente, para sugerir de novo quando a mesma
+          // TAG ou o mesmo documento aparecer numa análise futura.
+          if (!db.objectStoreNames.contains("title_corrections")) {
+            db.createObjectStore("title_corrections", { keyPath: "key" });
           }
         };
         request.onsuccess = function (e) {

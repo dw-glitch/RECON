@@ -26,6 +26,7 @@
   const state = {
     mode: "filter",
     ldFile: null,
+    ldFileHandle: null,
     parsed: null,
     index: null,
     catalogRows: [],
@@ -46,6 +47,7 @@
   const els = {
     ld: $("#relations-ld"),
     ldMeta: $("#relations-ld-meta"),
+    ldOpenEditable: $("#relations-ld-open-editable"),
     sourceState: $("#relations-source-state"),
     sourceCount: $("#relations-source-count"),
     compatibilityOpen: $("#ld-compatibility-open"),
@@ -391,11 +393,13 @@
       populateFilters(draft);
       renderFieldOptions(draft);
       setProgress(100, "LD pronta para consulta");
-      setSourceState("LD pronta", "ready", `${state.catalogRows.length.toLocaleString("pt-BR")} documentos · ${parsed.history.length.toLocaleString("pt-BR")} registros SIGEM`);
+      const editableSuffix = state.ldFileHandle ? " · Edição direta ativa" : "";
+      setSourceState("LD pronta", "ready", `${state.catalogRows.length.toLocaleString("pt-BR")} documentos · ${parsed.history.length.toLocaleString("pt-BR")} registros SIGEM${editableSuffix}`);
       window.setTimeout(hideProgress, 500);
       updateControls();
       window.dispatchEvent(new CustomEvent("recon:ld-ready", { detail: {
         file: state.ldFile,
+        fileHandle: state.ldFileHandle || null,
         parsed: state.parsed,
         index: state.index,
         catalogRows: state.catalogRows,
@@ -406,6 +410,7 @@
       state.parsed = null;
       state.index = null;
       state.catalogRows = [];
+      state.ldFileHandle = null;
       hideProgress();
       setSourceState("Falha na leitura", "error", error.message || "Arquivo inválido");
       updateControls();
@@ -872,7 +877,33 @@
     autoTimer = window.setTimeout(() => { if (!els.analyze.disabled) analyze(); }, delay || 160);
   }
 
-  els.ld.addEventListener("change", () => loadLd(els.ld.files && els.ld.files[0] || null, true));
+  els.ld.addEventListener("change", () => {
+    // Upload comum não tem permissão de escrita associada; qualquer edição
+    // direta que estivesse ativa deixa de valer para o arquivo escolhido agora.
+    state.ldFileHandle = null;
+    loadLd(els.ld.files && els.ld.files[0] || null, true);
+  });
+
+  if (els.ldOpenEditable) {
+    if (window.RECONFileHandles && window.RECONFileHandles.isSupported()) {
+      els.ldOpenEditable.hidden = false;
+      els.ldOpenEditable.addEventListener("click", async () => {
+        try {
+          const { handle, file } = await window.RECONFileHandles.pickForEdit();
+          state.ldFileHandle = handle;
+          const ok = await loadLd(file, true);
+          if (ok) showToast("LD aberta com permissão de salvar direto no arquivo original.", "success");
+          else state.ldFileHandle = null;
+        } catch (error) {
+          if (error && error.name === "AbortError") return;
+          state.ldFileHandle = null;
+          showToast(error.message || "Não foi possível abrir a LD com edição direta.", "error");
+        }
+      });
+    } else {
+      els.ldOpenEditable.hidden = true;
+    }
+  }
   if (els.compatibilityOpen) els.compatibilityOpen.hidden = true;
   els.modeButtons.forEach((button) => button.addEventListener("click", () => setMode(button.dataset.mode)));
   els.filterSheet.addEventListener("change", () => {

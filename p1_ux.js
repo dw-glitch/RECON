@@ -230,6 +230,19 @@
       confirmLabel: "Baixar cópia da LD preenchida",
       audit: () => previewFor("databookApply"),
     }), true);
+    protect("databook-apply-ld-inplace", () => ({
+      title: "Confirmar gravação no arquivo original",
+      message: "Isto substitui o conteúdo do arquivo aberto — não é gerada uma cópia nova.",
+      facts: [
+        `Arquivo: ${ldLoaded() ? label("#relations-ld-meta") : "não informado"}`,
+        `Aba em análise: ${currentSheet("databook")}`,
+        `${num('[data-db-count="approved"]')} caminho(s) aprovado(s) nesta sessão`,
+        "Confirme que nenhuma outra pessoa está editando este arquivo agora.",
+        "Recomendado manter um backup antes de salvar por cima do original.",
+      ],
+      confirmLabel: "Salvar no arquivo original",
+      audit: () => previewFor("databookApply"),
+    }), true);
     protect("title-export", () => ({
       title: "Confirmar relatório de títulos",
       message: "O relatório mostrará o título atual, a sugestão e a decisão tomada.",
@@ -253,6 +266,20 @@
         "O arquivo original não será sobrescrito.",
       ],
       confirmLabel: "Baixar cópia da LD revisada",
+      audit: () => previewFor("titlesApply"),
+    }), true);
+    protect("title-apply-ld-inplace", () => ({
+      title: "Confirmar gravação no arquivo original",
+      message: "Isto substitui o conteúdo do arquivo aberto — não é gerada uma cópia nova.",
+      facts: [
+        `Arquivo: ${ldLoaded() ? label("#relations-ld-meta") : "não informado"}`,
+        `Aba em análise: ${currentSheet("titles")}`,
+        `${num('[data-title-count="approved"]')} título(s) será(ão) alterado(s)`,
+        "Fórmulas, macros, validações, estilos e títulos não aprovados devem permanecer intactos.",
+        "Confirme que nenhuma outra pessoa está editando este arquivo agora.",
+        "Recomendado manter um backup antes de salvar por cima do original.",
+      ],
+      confirmLabel: "Salvar no arquivo original",
       audit: () => previewFor("titlesApply"),
     }), true);
     protect("allocation-export-file", () => ({

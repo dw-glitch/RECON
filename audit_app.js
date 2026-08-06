@@ -22,6 +22,7 @@
 
   const state = {
     file: null,
+    fileHandle: null,
     parsed: null,
     index: null,
     catalog: [...(window.RECON_DATABOOK_CATALOG || [])],
@@ -60,13 +61,14 @@
     dbConfirmationFolder: $("#databook-confirmation-folder"), dbConfirmationMeta: $("#databook-confirmation-meta"),
     dbAllocationFolder: $("#databook-allocation-folder"), dbAllocationMeta: $("#databook-allocation-meta"), dbControlledStatus: $("#databook-controlled-status"),
     dbAnalyze: $("#databook-analyze"), dbReady: $("#databook-ready-name"), dbProgress: $("#databook-progress"), dbProgressBar: $("#databook-progress-bar"), dbProgressText: $("#databook-progress-text"),
-    dbResults: $("#databook-results"), dbExport: $("#databook-export"), dbApplyLd: $("#databook-apply-ld"), dbSearch: $("#databook-search"), dbIssue: $("#databook-issue"), dbSheet: $("#databook-sheet"), dbConfidence: $("#databook-confidence"), dbMeta: $("#databook-result-meta"), dbBody: $("#databook-body"), dbEmpty: $("#databook-empty"),
+    dbResults: $("#databook-results"), dbExport: $("#databook-export"), dbApplyLd: $("#databook-apply-ld"), dbApplyLdInplace: $("#databook-apply-ld-inplace"), dbSearch: $("#databook-search"), dbIssue: $("#databook-issue"), dbSheet: $("#databook-sheet"), dbConfidence: $("#databook-confidence"), dbMeta: $("#databook-result-meta"), dbBody: $("#databook-body"), dbEmpty: $("#databook-empty"),
     dbSelectVisible: $("#databook-select-visible"), dbSelectedCount: $("#databook-selected-count"), dbApproveSelected: $("#databook-approve-selected"), dbKeepSelected: $("#databook-keep-selected"),
     titleReference: $("#title-reference"), titleReferenceMeta: $("#title-reference-meta"), titleBaseStatus: $("#title-base-status"),
     titleSconReference: $("#title-scon-reference"), titleSconReferenceMeta: $("#title-scon-reference-meta"),
+    titleMemoryCount: $("#title-memory-count"), titleMemoryClear: $("#title-memory-clear"),
     titleScopeRadios: [...document.querySelectorAll('input[name="title-scope-mode"]')], titleSourceRadios: [...document.querySelectorAll('input[name="title-source-mode"]')], titleCodeLoader: $("#title-code-loader"), titleCodeText: $("#title-code-text"), titleCodeFile: $("#title-code-file"), titleCodeFileMeta: $("#title-code-file-meta"), titleCodeMeta: $("#title-code-meta"), titleCodeClear: $("#title-code-clear"), titleCodePrepare: $("#title-code-prepare"),
     titleAnalyze: $("#title-analyze"), titleReady: $("#title-ready-name"), titleProgress: $("#title-progress"), titleProgressBar: $("#title-progress-bar"), titleProgressText: $("#title-progress-text"),
-    titleResults: $("#title-results"), titleExport: $("#title-export"), titleApplyLd: $("#title-apply-ld"), titleSearch: $("#title-search"), titleIssue: $("#title-issue"), titleSheet: $("#title-sheet"), titleSource: $("#title-source-filter"), titleConfidence: $("#title-confidence"), titleMeta: $("#title-result-meta"), titleBody: $("#title-body"), titleEmpty: $("#title-empty"),
+    titleResults: $("#title-results"), titleExport: $("#title-export"), titleApplyLd: $("#title-apply-ld"), titleApplyLdInplace: $("#title-apply-ld-inplace"), titleSearch: $("#title-search"), titleIssue: $("#title-issue"), titleSheet: $("#title-sheet"), titleSource: $("#title-source-filter"), titleConfidence: $("#title-confidence"), titleMeta: $("#title-result-meta"), titleBody: $("#title-body"), titleEmpty: $("#title-empty"),
     titleSelectVisible: $("#title-select-visible"), titleSelectedCount: $("#title-selected-count"), titleApproveSelected: $("#title-approve-selected"), titleKeepSelected: $("#title-keep-selected"),
   };
   const dbPager = window.RECONPager && window.RECONPager.create("databook", els.dbMeta, () => renderDatabook(), DEFAULT_PAGE_SIZE);
@@ -279,8 +281,86 @@
       : label;
   }
 
+  const TITLE_MEMORY_STORE = "title_corrections";
+
+  // TAG é a chave preferida: a mesma TAG reaparece em vários documentos
+  // (relatório, certificado, PIT...) e uma correção feita num deles vale
+  // para os outros. Sem TAG confirmada, cai para o documento específico.
+  function titleMemoryKey(row) {
+    if (row.tag && row.discipline) return `TAG::${Q.norm(row.discipline)}::${Q.norm(row.tag)}`;
+    return `DOC::${row.documentKey}`;
+  }
+
+  function shouldRememberCorrection(row) {
+    const finalText = Q.text(row.proposed).trim();
+    if (!finalText) return false;
+    return Q.norm(finalText) !== Q.norm(Q.text(row.autoProposed));
+  }
+
+  function rememberTitleCorrection(row) {
+    if (!window.RECONDB) return;
+    window.RECONDB.put(TITLE_MEMORY_STORE, {
+      key: titleMemoryKey(row),
+      title: row.proposed,
+      auto: row.autoProposed || "",
+      document: row.document,
+      discipline: row.discipline || "",
+      tag: row.tag || "",
+      updatedAt: Date.now(),
+    }).then(updateTitleMemoryStatus)
+      .catch((error) => console.warn("RECON: não foi possível salvar a memória de correção.", error));
+  }
+
   function storeDecision(row, decision) {
     row.decision = decision;
+    if (decision === "approved" && row.kind === "title" && shouldRememberCorrection(row)) {
+      rememberTitleCorrection(row);
+    }
+  }
+
+  async function loadTitleMemory() {
+    if (!window.RECONDB) return new Map();
+    try {
+      const entries = await window.RECONDB.getAll(TITLE_MEMORY_STORE);
+      return new Map((entries || []).map((entry) => [entry.key, entry]));
+    } catch (error) {
+      console.warn("RECON: memória de correções indisponível.", error);
+      return new Map();
+    }
+  }
+
+  // Só preenche a lacuna quando a análise automática não teve uma sugestão
+  // segura — nunca substitui o que o SCON/Apêndice já confirmaram com
+  // confiança. Isso mantém a hierarquia: base controlada primeiro, memória
+  // pessoal como último recurso antes de "sem sugestão".
+  function applyTitleMemory(rows, memory) {
+    if (!memory || !memory.size) return rows;
+    rows.forEach((row) => {
+      if (row.issue === "ok" || row.proposed) return;
+      const entry = memory.get(titleMemoryKey(row));
+      if (!entry || !entry.title) return;
+      if (Q.norm(row.current || "") === Q.norm(entry.title)) return;
+      row.proposed = entry.title;
+      row.learnedTitle = true;
+      if (row.confidence === "nenhuma") row.confidence = "media";
+      row.reason = `${row.reason} Sugestão baseada numa correção sua anterior para ${row.tag ? "a mesma TAG" : "este documento"}.`;
+    });
+    return rows;
+  }
+
+  async function updateTitleMemoryStatus() {
+    if (!els.titleMemoryCount) return;
+    if (!window.RECONDB) { els.titleMemoryCount.textContent = "indisponível neste navegador"; return; }
+    try {
+      const entries = await window.RECONDB.getAll(TITLE_MEMORY_STORE);
+      const count = (entries || []).length;
+      els.titleMemoryCount.textContent = count
+        ? `${count.toLocaleString("pt-BR")} correção(ões) salva(s)`
+        : "nenhuma correção salva ainda";
+      if (els.titleMemoryClear) els.titleMemoryClear.hidden = count === 0;
+    } catch (_) {
+      els.titleMemoryCount.textContent = "indisponível neste navegador";
+    }
   }
 
   function emptyTitleReferences() {
@@ -342,6 +422,7 @@
   function titleSourceCategory(row) {
     if (!row) return "without_evidence";
     if (row.issue === "ok") return "already_correct";
+    if (row.learnedTitle) return "learned_memory";
     if (/^SCON TAG SGP \+ SCON ESCOPO \+ Apêndice/i.test(row.descriptionSource || "")) return "all_tag_bases";
     if (/^SCON TAG SGP \+ Apêndice/i.test(row.descriptionSource || "")) return "scon_appendix";
     if (row.descriptionSource === "SCON TAG SGP + SCON ESCOPO") return "scon_combined";
@@ -449,13 +530,26 @@
       const target = document.querySelector(`[data-${prefix}-count="${key}"]`);
       if (target) target.textContent = value.toLocaleString("pt-BR");
     });
+    // "Salvar no arquivo original" só aparece quando a LD foi aberta com
+    // permissão de escrita (botão "Abrir com edição direta") e o navegador
+    // ainda oferece a API — em Firefox/Safari, ou numa LD aberta pelo upload
+    // comum, o botão fica oculto e só existe a opção de baixar uma cópia.
+    const canInplace = Boolean(state.fileHandle && window.RECONFileHandles && window.RECONFileHandles.isSupported());
     const controlledDatabook = state.databookRows.filter((row) => row.decision === "approved" && row.proposed && row.controlledSource).length;
     if (els.dbApplyLd) {
       els.dbApplyLd.disabled = controlledDatabook === 0 || !state.file;
       els.dbApplyLd.textContent = controlledDatabook ? `Gerar LD com ${controlledDatabook} caminho(s) confirmado(s)` : "Gerar LD com caminhos confirmados";
     }
+    if (els.dbApplyLdInplace) {
+      els.dbApplyLdInplace.hidden = !canInplace;
+      els.dbApplyLdInplace.disabled = controlledDatabook === 0 || !state.file || !canInplace;
+    }
     const approvedTitles = state.titleRows.filter((row) => row.decision === "approved" && row.proposed).length;
     if (els.titleApplyLd) { els.titleApplyLd.disabled = approvedTitles === 0 || !state.file; els.titleApplyLd.textContent = approvedTitles ? `Gerar cópia da LD com ${approvedTitles} título(s)` : "Gerar cópia da LD revisada"; }
+    if (els.titleApplyLdInplace) {
+      els.titleApplyLdInplace.hidden = !canInplace;
+      els.titleApplyLdInplace.disabled = approvedTitles === 0 || !state.file || !canInplace;
+    }
   }
 
   function renderDatabook() {
@@ -526,6 +620,7 @@
   function titleEvidenceHtml(row) {
     const category = titleSourceCategory(row);
     const sourceLabel = {
+      learned_memory: "Memória de correções (sua edição anterior)",
       all_tag_bases: "SCON TAG SGP + SCON ESCOPO + Apêndice 3 Rev.B",
       scon_appendix: "SCON TAG SGP + Apêndice 3 Rev.B",
       scon_combined: "SCON TAG SGP + SCON ESCOPO",
@@ -688,6 +783,8 @@
       const titleOptions = { titleSourceMode: state.titleSourceMode };
       if (requestedKeys) titleOptions.documentKeys = requestedKeys;
       state.titleRows = window.RECONCompute ? await window.RECONCompute.run("title", "audit-titles", { index: state.index, references: mergedTitleReferences(), options: titleOptions }) : Q.auditTitles(state.index, mergedTitleReferences(), titleOptions);
+      setProgress("title", 90, "Conferindo suas correções anteriores…");
+      applyTitleMemory(state.titleRows, await loadTitleMemory());
       if (titlePager) titlePager.reset();
       state.titleSelected.clear();
       populateSheetSelect(els.titleSheet, state.titleRows);
@@ -1047,45 +1144,69 @@
     window.setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
 
-  async function applyDatabookToLd() {
+  // Escreve o buffer final no mesmo arquivo (File System Access API) ou baixa
+  // uma cópia, conforme o modo escolhido. As duas funções que chamam isto já
+  // geram o buffer a partir do arquivo ORIGINAL inalterado mais o conjunto
+  // completo de decisões aprovadas — então repetir "salvar no arquivo
+  // original" mais de uma vez na mesma sessão sempre regrava o estado final
+  // correto, nunca acumula em cima de uma gravação anterior.
+  async function deliverWorkbook(result, inPlace) {
+    if (inPlace) {
+      if (!state.fileHandle || !window.RECONFileHandles) {
+        throw new Error("A permissão de edição direta não está mais disponível para este arquivo. Baixe uma cópia.");
+      }
+      await window.RECONFileHandles.writeBuffer(state.fileHandle, result.buffer);
+      return;
+    }
+    const macro = /\.xlsm$/i.test(result.fileName);
+    downloadBuffer(result.buffer, result.fileName, macro ? "application/vnd.ms-excel.sheet.macroEnabled.12" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  }
+
+  async function applyDatabookToLd(options) {
+    const inPlace = Boolean(options && options.inPlace);
     await ensureExportLibraries();
     const approved = state.databookRows.filter((row) => row.decision === "approved" && row.proposed && row.controlledSource);
     if (!approved.length) { showToast("Nenhum Caminho Databook confirmado por alocação está pronto para aplicação.", "error"); return; }
     if (!DatabookWriter) { showToast("O gravador de Caminho Databook não está disponível.", "error"); return; }
-    const taskId = Tasks ? Tasks.start("Gerar cópia da LD com Databook", `${approved.length} caminho(s) confirmado(s)`) : "";
-    els.dbApplyLd.disabled = true; els.dbApplyLd.textContent = "Gerando cópia…";
+    const button = inPlace ? els.dbApplyLdInplace : els.dbApplyLd;
+    const taskId = Tasks ? Tasks.start(inPlace ? "Salvar Databook no arquivo original" : "Gerar cópia da LD com Databook", `${approved.length} caminho(s) confirmado(s)`) : "";
+    const originalLabel = button ? button.textContent : "";
+    if (button) { button.disabled = true; button.textContent = inPlace ? "Salvando…" : "Gerando cópia…"; }
     try {
       const result = await DatabookWriter.apply(state.file, approved, XLSX, JSZip);
-      const macro = /\.xlsm$/i.test(result.fileName);
-      downloadBuffer(result.buffer, result.fileName, macro ? "application/vnd.ms-excel.sheet.macroEnabled.12" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      if (Tasks) Tasks.finish(taskId, `${result.count} caminho(s) copiados exatamente da alocação`);
-      showToast(`${result.summary.title} ${result.summary.explanation}`, "success");
+      await deliverWorkbook(result, inPlace);
+      if (Tasks) Tasks.finish(taskId, inPlace ? "Arquivo original atualizado" : `${result.count} caminho(s) copiados exatamente da alocação`);
+      showToast(inPlace ? `${result.count} caminho(s) salvos direto em "${state.file.name}".` : `${result.summary.title} ${result.summary.explanation}`, "success");
     } catch (error) {
       if (Tasks) Tasks.fail(taskId, error);
-      showToast(error.message || "Não foi possível gerar a cópia da LD com os caminhos.", "error");
-    } finally { renderSummary("databook"); }
+      showToast(error.message || "Não foi possível gravar os caminhos do Databook.", "error");
+    } finally { if (button) button.textContent = originalLabel; renderSummary("databook"); }
   }
 
-  async function applyTitlesToLd() {
+  async function applyTitlesToLd(options) {
+    const inPlace = Boolean(options && options.inPlace);
     await ensureExportLibraries();
     const approved = state.titleRows.filter((row) => row.decision === "approved" && row.proposed);
     if (!approved.length) { showToast("Aprove ao menos um título antes de gerar a LD revisada.", "error"); return; }
-    const taskId = Tasks ? Tasks.start("Gerar cópia da LD revisada", `${approved.length} título(s)`) : "";
-    els.titleApplyLd.disabled = true;
-    els.titleApplyLd.textContent = "Gerando cópia…";
+    const button = inPlace ? els.titleApplyLdInplace : els.titleApplyLd;
+    const taskId = Tasks ? Tasks.start(inPlace ? "Salvar títulos no arquivo original" : "Gerar cópia da LD revisada", `${approved.length} título(s)`) : "";
+    const originalLabel = button ? button.textContent : "";
+    if (button) { button.disabled = true; button.textContent = inPlace ? "Salvando…" : "Gerando cópia…"; }
     try {
       const plan = await TitleWriter.planChanges(state.file, approved, XLSX, JSZip);
       const guard = ExportGuard ? ExportGuard.validatePlan(plan) : (Contracts ? Contracts.validateChangeSet(plan.changes) : { valid: true, errors: [] });
       if (!guard.valid) throw new Error(guard.errors.join(" "));
       const result = await TitleWriter.apply(state.file, approved, XLSX, JSZip);
-      const macro = /\.xlsm$/i.test(result.fileName);
-      downloadBuffer(result.buffer, result.fileName, macro ? "application/vnd.ms-excel.sheet.macroEnabled.12" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      if (Tasks) Tasks.finish(taskId, `${result.count} título(s) aplicados e reabertos para validação`);
-      showToast(result.summary ? `${result.summary.title} ${result.summary.explanation}` : `${result.count} título(s) alterados. A LD original permaneceu intacta.`, "success");
+      await deliverWorkbook(result, inPlace);
+      if (Tasks) Tasks.finish(taskId, inPlace ? "Arquivo original atualizado" : `${result.count} título(s) aplicados e reabertos para validação`);
+      showToast(inPlace
+        ? `${result.count} título(s) salvos direto em "${state.file.name}".`
+        : (result.summary ? `${result.summary.title} ${result.summary.explanation}` : `${result.count} título(s) alterados. A LD original permaneceu intacta.`), "success");
     } catch (error) {
       if (Tasks) Tasks.fail(taskId, error);
-      showToast(error.message || "Não foi possível gerar a cópia revisada da LD.", "error");
+      showToast(error.message || "Não foi possível gravar a revisão dos títulos.", "error");
     } finally {
+      if (button) button.textContent = originalLabel;
       renderSummary("title");
     }
   }
@@ -1142,17 +1263,25 @@
   }
 
   window.addEventListener("recon:ld-ready", (event) => {
-    state.file = event.detail.file; state.parsed = event.detail.parsed; state.index = event.detail.index; state.databookRows = []; state.titleRows = []; state.databookSelected.clear(); state.titleSelected.clear(); els.dbResults.hidden = true; els.titleResults.hidden = true;
+    state.file = event.detail.file; state.fileHandle = event.detail.fileHandle || null; state.parsed = event.detail.parsed; state.index = event.detail.index; state.databookRows = []; state.titleRows = []; state.databookSelected.clear(); state.titleSelected.clear(); els.dbResults.hidden = true; els.titleResults.hidden = true;
     if (dbPager) dbPager.reset(); if (titlePager) titlePager.reset();
     if (titleScopeSpecific()) resolveTitleScope();
     updateReady();
   });
-  window.addEventListener("recon:ld-cleared", () => { state.file = null; state.parsed = null; state.index = null; state.databookRows = []; state.titleRows = []; state.titleMatchedCodes = []; state.titleUnmatchedCodes = []; els.dbResults.hidden = true; els.titleResults.hidden = true; updateReady(); });
+  window.addEventListener("recon:ld-cleared", () => { state.file = null; state.fileHandle = null; state.parsed = null; state.index = null; state.databookRows = []; state.titleRows = []; state.titleMatchedCodes = []; state.titleUnmatchedCodes = []; els.dbResults.hidden = true; els.titleResults.hidden = true; updateReady(); });
   els.dbReference.addEventListener("change", () => loadDatabookReference(els.dbReference.files && els.dbReference.files[0]));
   if (els.dbConfirmationFolder) els.dbConfirmationFolder.addEventListener("change", () => loadDatabookSourceFolder("confirmation", els.dbConfirmationFolder.files));
   if (els.dbAllocationFolder) els.dbAllocationFolder.addEventListener("change", () => loadDatabookSourceFolder("allocation", els.dbAllocationFolder.files));
   if (els.titleReference) els.titleReference.addEventListener("change", () => loadTitleReference(els.titleReference.files && els.titleReference.files[0]));
   if (els.titleSconReference) els.titleSconReference.addEventListener("change", () => loadSconReference(els.titleSconReference.files && els.titleSconReference.files[0]));
+  if (els.titleMemoryClear) els.titleMemoryClear.addEventListener("click", () => {
+    if (!window.RECONDB) return;
+    if (!window.confirm("Apagar todas as correções de título aprendidas neste navegador? Isso não pode ser desfeito.")) return;
+    window.RECONDB.clear(TITLE_MEMORY_STORE).then(() => {
+      updateTitleMemoryStatus();
+      showToast("Memória de correções apagada.", "success");
+    }).catch((error) => showToast(error.message || "Não foi possível apagar a memória.", "error"));
+  });
   els.titleScopeRadios.forEach((radio) => radio.addEventListener("change", () => {
     if (!radio.checked) return;
     state.titleScopeMode = radio.value === "specific" ? "specific" : "all";
@@ -1192,14 +1321,16 @@
   els.dbApproveSelected.addEventListener("click", () => decideSelected("databook", "approved")); els.dbKeepSelected.addEventListener("click", () => decideSelected("databook", "kept"));
   els.titleApproveSelected.addEventListener("click", () => decideSelected("title", "approved")); els.titleKeepSelected.addEventListener("click", () => decideSelected("title", "kept"));
   els.dbExport.addEventListener("click", () => exportAudit("databook")); els.titleExport.addEventListener("click", () => exportAudit("title"));
-  if (els.dbApplyLd) els.dbApplyLd.addEventListener("click", applyDatabookToLd);
-  if (els.titleApplyLd) els.titleApplyLd.addEventListener("click", applyTitlesToLd);
+  if (els.dbApplyLd) els.dbApplyLd.addEventListener("click", () => applyDatabookToLd({ inPlace: false }));
+  if (els.dbApplyLdInplace) els.dbApplyLdInplace.addEventListener("click", () => applyDatabookToLd({ inPlace: true }));
+  if (els.titleApplyLd) els.titleApplyLd.addEventListener("click", () => applyTitlesToLd({ inPlace: false }));
+  if (els.titleApplyLdInplace) els.titleApplyLdInplace.addEventListener("click", () => applyTitlesToLd({ inPlace: true }));
   const savedTitleFilters = readTitleFilters();
   if (els.titleIssue && [...els.titleIssue.options].some((option) => option.value === savedTitleFilters.issue)) els.titleIssue.value = savedTitleFilters.issue || "";
   if (els.titleConfidence && [...els.titleConfidence.options].some((option) => option.value === savedTitleFilters.confidence)) els.titleConfidence.value = savedTitleFilters.confidence || "";
   if (els.titleSource && [...els.titleSource.options].some((option) => option.value === savedTitleFilters.source)) els.titleSource.value = savedTitleFilters.source || "";
   if (els.titleSearch) els.titleSearch.value = Q.text(savedTitleFilters.search);
-  rebuildDatabookSourceIndex(); loadBundledReferences(); updateReady(); renderDatabook(); renderTitles();
+  rebuildDatabookSourceIndex(); loadBundledReferences(); updateTitleMemoryStatus(); updateReady(); renderDatabook(); renderTitles();
   window.RECONOutputPreviewProviders = window.RECONOutputPreviewProviders || {};
   window.RECONOutputPreviewProviders.databook = () => ({
     title: "Decisões do relatório de Databook",

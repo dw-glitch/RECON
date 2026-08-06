@@ -19,6 +19,7 @@ const SHELL_URLS = [
   "recon_contracts.js",
   "task_center.js",
   "file_access.js",
+  "recon_file_handles.js",
   "recon_module_loader.js",
   "recon_compute_client.js",
   "recon_pager.js",
