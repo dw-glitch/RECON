@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const checks = [];
@@ -311,6 +312,54 @@ check("o RECON lembra correções de título manuais e sugere de novo quando fal
   assert.match(html, /id="title-memory-count"/, "sem indicador de quantas correções estão guardadas");
   assert.match(html, /id="title-memory-clear"/, "sem forma de apagar a memória de correções");
   assert.match(html, /value="learned_memory"/, "filtro de origem sem a categoria de memória de correções");
+});
+
+check("o casamento de documentos (matchDocuments) usa um índice O(1) em vez de varrer a LD inteira por item", () => {
+  const source = read("core.js");
+  assert.match(source, /byDocumentKey/, "buildIndex não cria o índice de correspondência exata usado pelo caminho rápido");
+  assert.match(source, /DOCUMENT_EXTENSION_PATTERN/, "matchDocuments não remove a extensão do arquivo antes de comparar — nomes como .pdf nunca batem no caminho rápido");
+});
+
+check("chooseCatalogEvidence não recalcula por entrada do catálogo o que é igual para todo documento da LD", () => {
+  const source = read("allocation_core.js");
+  assert.match(source, /catalogEntryCache/, "sem memoização por entrada do catálogo — cada documento sem Databook confirmado reprocessa o catálogo inteiro do zero");
+  assert.match(source, /function titleSimilarityFromTokens/, "sem função que aceita tokens já calculados");
+  assert.match(source, /titleSimilarityFromTokens\(targetTokens, prepared\.searchableTokens\)/, "chooseCatalogEvidence recalcula os tokens do título do registro a cada entrada do catálogo comparada");
+  assert.match(source, /titleSimilarityFromTokens\(targetTitleTokens, titleTokens\(candidateTitle\)\)/, "chooseFamilyEvidence recalcula os tokens do título do registro a cada linha do histórico comparada");
+});
+
+check("a análise de alocação processa uma LD grande em tempo hábil (regressão de desempenho)", () => {
+  const require = createRequire(import.meta.url);
+  const C = require(path.join(root, "core.js"));
+  const A = require(path.join(root, "allocation_core.js"));
+
+  const discs = ["ELE", "TUB", "CVL", "INS", "MEC", "EST"];
+  function makeRecord(i) {
+    const disc = discs[i % discs.length];
+    const document = `C1O_RNEST_U32_3.1.1.1_${disc}_REP_${String(i).padStart(5, "0")}`;
+    return { documentKey: document, document, sheet: disc, title: `RELATÓRIO ${i}`, discipline: disc, source: "LD.xlsx", allocation: "" };
+  }
+  const records = Array.from({ length: 3000 }, (_, i) => makeRecord(i));
+  const entries = Array.from({ length: 2000 }, (_, i) => ({
+    raw: `C1O_RNEST_U32_3.1.1.1_${discs[i % discs.length]}_REP_${String(i).padStart(5, "0")}.pdf`,
+    sheetName: "Entrada", rowNumber: i + 1, hintedSheet: "",
+  }));
+  const catalogEntries = Array.from({ length: 160 }, (_, i) => ({
+    description: `ITEM DE CATÁLOGO ${i}`, databook: `UHDT-D|GRUPO ${i % 10}|ITEM ${i}`, notes: "", rowNumber: i,
+  }));
+  const control = { baseDocuments: new Map(), levelsByDatabook: new Map(), rows: [], latestLdVersion: "" };
+  const options = { allocationDate: "01/2026", catalogEntries, historyRows: [], confirmationRows: [], ldHistory: [], ldSourceNames: ["LD.xlsx"] };
+
+  const start = Date.now();
+  const analyzed = A.analyze(entries, records, control, options);
+  const elapsedMs = Date.now() - start;
+
+  assert.equal(analyzed.results.length, entries.length, "a análise não gerou um resultado por item da relação");
+  // O algoritmo anterior (sem os índices O(1) e sem memoização por entrada do
+  // catálogo) levava dezenas de segundos nesta mesma escala; 5s é uma folga
+  // generosa para não quebrar em runners de CI mais lentos, mas ainda pega
+  // uma regressão real para o comportamento O(itens × documentos).
+  assert.ok(elapsedMs < 5000, `analyze() levou ${elapsedMs} ms para ${entries.length} itens x ${records.length} documentos — esperado bem abaixo de 5000 ms`);
 });
 
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));

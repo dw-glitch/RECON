@@ -443,14 +443,33 @@
       byLooseDocument.get(item.looseDocumentKey).push(item);
     });
     byDocumentRevision.forEach((items) => items.sort(historyCompare));
-    return { byDocument, byDocumentRevision, byLooseDocument, documents };
+    // Índice para o caminho rápido de matchDocuments: quando o texto de
+    // entrada É exatamente a chave de um documento (o caso comum — a relação
+    // normalmente traz o próprio código), evita varrer todos os "documents"
+    // fazendo indexOf em cada um só para achar isso de novo.
+    const byDocumentKey = new Map(documents.map((item) => [item.documentKey, item]));
+    return { byDocument, byDocumentRevision, byLooseDocument, byDocumentKey, documents };
   }
 
+  const DOCUMENT_EXTENSION_PATTERN = /\.(?:PDF|DOCX?|XLSX?|XLSM|DWG|DGN|PPTX?)$/i;
+
   function matchDocuments(nameOrText, index, hintedSheet) {
-    const inputKey = canonicalId(nameOrText);
-    const inputLoose = looseKey(nameOrText);
+    // A relação costuma trazer o nome do arquivo, não só o código (colunas
+    // "ARQUIVO"/"PDF" no upload). Sem tirar a extensão, nem o match exato
+    // (byDocumentKey) nem o loose (byLooseDocument) batiam nunca — a busca
+    // sempre caía na varredura lenta, mesmo pros casos mais comuns.
+    const inputKey = canonicalId(nameOrText).replace(DOCUMENT_EXTENSION_PATTERN, "");
+    const inputLoose = looseKey(inputKey);
     const hint = norm(hintedSheet);
-    let candidates = index.documents.filter((item) => {
+
+    // Uma correspondência exata de comprimento total nunca pode ser dominada
+    // por outro candidato (nada pode ser "maior" dentro da mesma string), e
+    // qualquer outra chave que também apareça como substring de inputKey é,
+    // por definição, mais curta — logo sempre eliminada pelo filtro de
+    // maximalCandidates abaixo. O resultado é idêntico ao da varredura
+    // completa, só que em O(1) em vez de O(quantidade de documentos).
+    const exactMatch = index.byDocumentKey && index.byDocumentKey.get(inputKey);
+    let candidates = exactMatch ? [exactMatch] : index.documents.filter((item) => {
       let position = inputKey.indexOf(item.documentKey);
       while (position >= 0) {
         const before = position > 0 ? inputKey[position - 1] : "";

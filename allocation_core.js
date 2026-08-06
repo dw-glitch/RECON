@@ -227,13 +227,19 @@
     return new Set(norm(value).split(/[^A-Z0-9]+/).filter((token) => token.length >= 3 && !TITLE_STOP_WORDS.has(token)));
   }
 
-  function titleSimilarity(left, right) {
-    const a = titleTokens(left);
-    const b = titleTokens(right);
+  // Separado de titleSimilarity para permitir passar tokens já calculados: em
+  // chooseCatalogEvidence e chooseFamilyEvidence, o título do registro é o
+  // mesmo em toda a comparação contra o catálogo/histórico — sem isto,
+  // titleTokens(record.title) seria refeito uma vez por entrada comparada.
+  function titleSimilarityFromTokens(a, b) {
     if (!a.size || !b.size) return 0;
     let intersection = 0;
     a.forEach((token) => { if (b.has(token)) intersection += 1; });
     return intersection / Math.max(a.size, b.size);
+  }
+
+  function titleSimilarity(left, right) {
+    return titleSimilarityFromTokens(titleTokens(left), titleTokens(right));
   }
 
   function subjectTags(document, title, databook) {
@@ -632,6 +638,7 @@
     if (!targetFamily.key) return null;
     const targetKind = titleKind(record.title);
     const targetSubjects = subjectTags(record.document, record.title, "");
+    const targetTitleTokens = titleTokens(record.title);
     const targetDiscipline = disciplineKey(record.discipline);
     const targetSequence = documentSequence(record.document);
     const dedupe = new Set();
@@ -647,7 +654,7 @@
       const candidateKind = titleKind(candidateTitle);
       const candidateSubjects = subjectTags(row.document, candidateTitle, row.databook);
       const subjectMatch = setsIntersect(targetSubjects, candidateSubjects);
-      const similarity = titleSimilarity(record.title, candidateTitle);
+      const similarity = titleSimilarityFromTokens(targetTitleTokens, titleTokens(candidateTitle));
       const kindMatch = Boolean(targetKind && candidateKind && targetKind === candidateKind);
       if (targetKind && candidateKind && !kindMatch) return;
       if (targetSubjects.size && !subjectMatch) return;
@@ -756,24 +763,48 @@
     };
   }
 
+  // chooseCatalogEvidence roda uma vez por documento sem Databook confirmado
+  // na LD, e para cada um repete o mesmo trabalho sobre o catálogo inteiro.
+  // Como description/notes/databook de uma entrada do catálogo não mudam
+  // entre chamadas, o que só depende da ENTRADA (normalização, tags de
+  // assunto, profundidade do caminho) é calculado uma vez e reaproveitado —
+  // só o que depende do REGISTRO é recalculado a cada documento. Numa LD
+  // grande isso é a diferença entre segundos e minutos de análise.
+  const catalogEntryCache = new WeakMap();
+  function prepareCatalogEntry(entry) {
+    let prepared = catalogEntryCache.get(entry);
+    if (prepared) return prepared;
+    const searchable = `${entry.description || ""} ${entry.notes || ""}`;
+    prepared = {
+      searchable,
+      searchableNorm: norm(searchable),
+      searchableTokens: titleTokens(searchable),
+      databookDescriptionNorm: norm(`${entry.databook} ${entry.description}`),
+      entrySubjects: subjectTags("", searchable, entry.databook),
+      depth: text(entry.databook).split("|").filter(Boolean).length,
+    };
+    catalogEntryCache.set(entry, prepared);
+    return prepared;
+  }
+
   function chooseCatalogEvidence(record, catalogEntries) {
     const targetKind = titleKind(record.title);
     const targetDiscipline = disciplineKey(record.discipline);
     const targetTokens = titleTokens(record.title);
     const targetSubjects = subjectTags(record.document, record.title, "");
     const ranked = (catalogEntries || []).map((entry) => {
-      const searchable = `${entry.description || ""} ${entry.notes || ""}`;
-      const searchableNorm = norm(searchable);
+      const prepared = prepareCatalogEntry(entry);
+      const searchableNorm = prepared.searchableNorm;
       let overlap = 0;
       targetTokens.forEach((token) => { if (searchableNorm.includes(token)) overlap += 1; });
       const kindMatch = Boolean(targetKind && searchableNorm.includes(targetKind));
-      const disciplineMatch = Boolean(targetDiscipline && norm(`${entry.databook} ${entry.description}`).includes(targetDiscipline));
-      const entrySubjects = subjectTags("", searchable, entry.databook);
+      const disciplineMatch = Boolean(targetDiscipline && prepared.databookDescriptionNorm.includes(targetDiscipline));
+      const entrySubjects = prepared.entrySubjects;
       const subjectMatch = targetSubjects.size && setsIntersect(targetSubjects, entrySubjects);
       const subjectConflict = targetSubjects.size && entrySubjects.size && !subjectMatch;
-      const depth = text(entry.databook).split("|").filter(Boolean).length;
+      const depth = prepared.depth;
       const score = (kindMatch ? 65 : 0) + (disciplineMatch ? 24 : 0) + Math.min(28, overlap * 4)
-        + Math.round(titleSimilarity(record.title, searchable) * 28)
+        + Math.round(titleSimilarityFromTokens(targetTokens, prepared.searchableTokens) * 28)
         + (subjectMatch ? 58 : 0) - (subjectConflict ? 32 : 0)
         + (subjectMatch && depth >= 5 ? 8 : 0);
       return { entry, score, kindMatch, disciplineMatch, subjectMatch };
