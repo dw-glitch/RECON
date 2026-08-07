@@ -275,7 +275,7 @@
   var RECONDB = {
     db: null,
     DB_NAME: "RECONStorage",
-    DB_VERSION: 2,
+    DB_VERSION: 3,
 
     open: function () {
       return new Promise(function (resolve, reject) {
@@ -311,6 +311,10 @@
           // TAG ou o mesmo documento aparecer numa análise futura.
           if (!db.objectStoreNames.contains("title_corrections")) {
             db.createObjectStore("title_corrections", { keyPath: "key" });
+          }
+          // v3: perfis fixados de abas da LD (bases reconhecidas pelo usuário).
+          if (!db.objectStoreNames.contains("ld_sheet_profiles")) {
+            db.createObjectStore("ld_sheet_profiles", { keyPath: "fileName" });
           }
         };
         request.onsuccess = function (e) {
@@ -396,6 +400,31 @@
     return RECONDB.get("session", key).then(function (entry) {
       return entry ? entry.value : null;
     });
+  }
+
+  // ===================== LD SHEET PROFILE PERSISTENCE =====================
+  // Permite que o usuário fixe quais abas da LD são técnicas, SIGEM ou ignoradas.
+
+  function saveLdSheetProfile(fileName, sheets) {
+    return RECONDB.put("ld_sheet_profiles", {
+      fileName: fileName,
+      sheets: sheets,
+      savedAt: Date.now()
+    });
+  }
+
+  function loadLdSheetProfile(fileName) {
+    return RECONDB.get("ld_sheet_profiles", fileName).then(function (entry) {
+      return entry ? entry.sheets : null;
+    });
+  }
+
+  function deleteLdSheetProfile(fileName) {
+    return RECONDB.delete("ld_sheet_profiles", fileName);
+  }
+
+  function getAllLdSheetProfiles() {
+    return RECONDB.getAll("ld_sheet_profiles");
   }
 
   // Save analysis to history
@@ -858,7 +887,8 @@
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState === "hidden") persist();
     });
-    window.addEventListener("unload", function () { clearInterval(timer); });
+    // Nota: o evento "unload" é bloqueado por Permissions Policy em documentos modernos.
+    // O pagehide e visibilitychange acima já cobrem todos os casos relevantes de persistência.
   }
 
   // ===================== INIT ALL =====================
@@ -873,6 +903,294 @@
     }
   }
 
+  // ===================== PAINEL DE BASES RECONHECIDAS =====================
+
+  var ROLE_LABELS = {
+    "technical": "Técnica",
+    "history": "SIGEM / Histórico",
+    "ignore": "Ignorar"
+  };
+
+  var ROLE_COLORS = {
+    "technical": "var(--brand-600, #1479a6)",
+    "history": "#7c5cbf",
+    "ignore": "var(--text-3, #888)"
+  };
+
+  function installLdBasesPanel() {
+    var preferencesLink = $("recon-preferences-open");
+    if (!preferencesLink) return;
+
+    var btn = document.createElement("button");
+    btn.className = "module-link";
+    btn.id = "recon-ld-bases-open";
+    btn.type = "button";
+    btn.innerHTML =
+      '<svg viewBox="0 0 24 24"><path d="M3 5h18v3H3zM3 10h18v3H3zM3 15h18v3H3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      '<span><strong>Bases reconhecidas</strong><small>Abas da LD fixadas</small></span>';
+
+    var sidebarFoot = qs(".sidebar-foot");
+    if (sidebarFoot) {
+      sidebarFoot.parentNode.insertBefore(btn, sidebarFoot);
+    } else {
+      var sidebar = qs(".module-sidebar");
+      if (sidebar) sidebar.appendChild(btn);
+    }
+
+    btn.addEventListener("click", function () {
+      showLdBasesPanel();
+    });
+  }
+
+  function collectLdFilesForBases() {
+    // Tenta coletar todos os inputs de LD carregados
+    var sources = [];
+    var inputs = [
+      $("relations-ld"),
+      $("allocation-ld-input")
+    ];
+    inputs.forEach(function (input) {
+      if (!input) return;
+      var files = input.files ? Array.from(input.files) : [];
+      files.forEach(function (file) {
+        if (!sources.find(function (s) { return s.name === file.name; })) {
+          sources.push(file);
+        }
+      });
+    });
+    return sources;
+  }
+
+  function sheetRoleTag(role, pinned) {
+    var label = ROLE_LABELS[role] || role || "Desconhecido";
+    var color = ROLE_COLORS[role] || "var(--text-3)";
+    var pinnedMark = pinned ? ' <span style="font-size:0.68rem;opacity:0.8">📌</span>' : '';
+    return '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:' + color + '1a;color:' + color + ';border:1px solid ' + color + '40">' + label + pinnedMark + '</span>';
+  }
+
+  function buildSheetRow(sheet, isPinned, savedRole) {
+    var effectiveRole = savedRole !== undefined ? savedRole : sheet.role;
+    var isOverridden = savedRole !== undefined && savedRole !== sheet.role;
+    var scoreText = sheet.score ? ' · confiança ' + sheet.score : '';
+    var options = Object.keys(ROLE_LABELS).map(function (roleKey) {
+      return '<option value="' + roleKey + '"' + (effectiveRole === roleKey ? ' selected' : '') + '>' + ROLE_LABELS[roleKey] + '</option>';
+    }).join('');
+    return '<tr style="border-bottom:1px solid var(--border-1,#e5e5e5)">' +
+      '<td style="padding:0.45rem 0.5rem;font-size:0.82rem;font-weight:600;color:var(--text-1)">' + escStr(sheet.name) + '</td>' +
+      '<td style="padding:0.45rem 0.5rem">' + sheetRoleTag(effectiveRole, isPinned && savedRole !== undefined) + '</td>' +
+      '<td style="padding:0.45rem 0.5rem;font-size:0.75rem;color:var(--text-3)">' + escStr(sheet.score || 0) + scoreText + '</td>' +
+      '<td style="padding:0.45rem 0.5rem">' +
+        '<select data-sheet-name="' + escStr(sheet.name) + '" class="recon-bases-role-select" style="font-size:0.8rem;padding:3px 6px;border-radius:var(--radius-sm,4px);border:1px solid var(--border-1,#ccc);background:var(--surface-1,#fff);color:var(--text-1)">' +
+        options +
+        '</select>' +
+      '</td>' +
+      (isOverridden ? '<td style="padding:0.45rem 0.5rem;font-size:0.72rem;color:var(--text-3)">Auto: ' + escStr(ROLE_LABELS[sheet.role] || sheet.role) + '</td>' : '<td></td>') +
+    '</tr>';
+  }
+
+  function escStr(value) {
+    return String(value === null || value === undefined ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function buildLdSection(file, inspection, savedProfile, index) {
+    var sheets = inspection && inspection.sheets ? inspection.sheets : [];
+    var savedSheets = savedProfile || {};
+    var isPinned = Boolean(savedProfile);
+    var issues = inspection && inspection.issues ? inspection.issues : [];
+    var issueHtml = issues.length
+      ? '<div style="margin:0.4rem 0 0.5rem;padding:0.4rem 0.6rem;border-radius:var(--radius-sm,4px);background:#f5e0001a;border:1px solid #f5e00044;font-size:0.76rem;color:#9a7800">' +
+          issues.map(escStr).join('<br>') + '</div>'
+      : '';
+    var tableRows = sheets.map(function (sheet) {
+      return buildSheetRow(sheet, isPinned, savedSheets[sheet.name]);
+    }).join('');
+    var pinnedBadge = isPinned
+      ? '<span style="margin-left:0.5rem;font-size:0.72rem;padding:2px 8px;background:#1479a61a;color:var(--brand-600,#1479a6);border:1px solid #1479a640;border-radius:10px;font-weight:700">Configuração fixada 📌</span>'
+      : '<span style="margin-left:0.5rem;font-size:0.72rem;color:var(--text-3);font-style:italic">Detecção automática</span>';
+    return '<section style="margin-bottom:1.2rem;border:1px solid var(--border-1,#e5e5e5);border-radius:var(--radius-md,8px);overflow:hidden">' +
+      '<header style="padding:0.6rem 0.8rem;background:var(--surface-2,#f5f5f5);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.4rem">' +
+        '<div style="display:flex;align-items:center;gap:0.4rem;min-width:0">' +
+          '<span style="font-size:0.72rem;font-weight:700;color:var(--text-3);flex-shrink:0">LD ' + (index + 1) + '</span>' +
+          '<strong style="font-size:0.85rem;color:var(--text-1);word-break:break-all">' + escStr(file.name) + '</strong>' +
+          pinnedBadge +
+        '</div>' +
+        '<div style="display:flex;gap:0.4rem">' +
+          '<button class="recon-bases-pin" data-file-index="' + index + '" type="button" style="font-size:0.78rem;padding:4px 12px;border-radius:var(--radius-sm,4px);border:1px solid var(--brand-600,#1479a6);background:var(--brand-600,#1479a6);color:#fff;cursor:pointer;font-weight:600">Fixar</button>' +
+          '<button class="recon-bases-reset" data-file-index="' + index + '" type="button" style="font-size:0.78rem;padding:4px 10px;border-radius:var(--radius-sm,4px);border:1px solid var(--border-1,#ccc);background:var(--surface-1,#fff);color:var(--text-2,#555);cursor:pointer">' + (isPinned ? 'Restaurar automático' : 'Limpar') + '</button>' +
+        '</div>' +
+      '</header>' +
+      issueHtml +
+      (tableRows
+        ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">' +
+            '<thead><tr style="background:var(--surface-2,#f5f5f5);font-size:0.72rem;color:var(--text-3);text-transform:uppercase">' +
+              '<th style="padding:0.3rem 0.5rem;text-align:left;font-weight:600">Aba</th>' +
+              '<th style="padding:0.3rem 0.5rem;text-align:left;font-weight:600">Papel atual</th>' +
+              '<th style="padding:0.3rem 0.5rem;text-align:left;font-weight:600">Pontuação</th>' +
+              '<th style="padding:0.3rem 0.5rem;text-align:left;font-weight:600">Alterar para</th>' +
+              '<th style="padding:0.3rem 0.5rem;text-align:left;font-weight:600">Automático</th>' +
+            '</tr></thead>' +
+            '<tbody>' + tableRows + '</tbody>' +
+          '</table></div>'
+        : '<div style="padding:0.8rem;color:var(--text-3);font-size:0.82rem">Nenhuma aba identificada. Carregue um arquivo LD primeiro.</div>'
+      ) +
+    '</section>';
+  }
+
+  function showLdBasesPanel() {
+    var existingOverlay = $("recon-bases-overlay");
+    var existingDialog = $("recon-bases-dialog");
+    if (existingOverlay && existingDialog) {
+      existingOverlay.remove();
+      existingDialog.remove();
+    }
+
+    var overlay = document.createElement("div");
+    overlay.className = "recon-preferences-overlay";
+    overlay.id = "recon-bases-overlay";
+    overlay.style.display = "block";
+    document.body.appendChild(overlay);
+
+    var dialog = document.createElement("section");
+    dialog.className = "recon-preferences-dialog";
+    dialog.id = "recon-bases-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "recon-bases-title");
+    dialog.style.maxWidth = "64rem";
+
+    var ldFiles = collectLdFilesForBases();
+    var L = window.ReconLdCompatibility;
+
+    // Montagem assíncrona: carrega perfis salvos e inspecções
+    getAllLdSheetProfiles().catch(function () { return []; }).then(function (savedProfiles) {
+      var profileMap = {};
+      (savedProfiles || []).forEach(function (entry) {
+        profileMap[entry.fileName] = entry.sheets;
+      });
+
+      var bodyHtml = '';
+      if (!ldFiles.length) {
+        bodyHtml = '<div style="text-align:center;padding:2.5rem 1rem">' +
+          '<strong style="font-size:1rem">Nenhuma LD carregada</strong>' +
+          '<span style="display:block;margin-top:0.5rem;color:var(--text-2)">Carregue uma LD no módulo de Relações ou Alocação e abra este painel novamente.</span>' +
+          '</div>';
+      } else {
+        ldFiles.forEach(function (file, index) {
+          var inspection = L ? L.inspectionFor(file) : null;
+          var savedProfile = profileMap[file.name] || null;
+          bodyHtml += buildLdSection(file, inspection, savedProfile, index);
+        });
+      }
+
+      var savedAllHtml = '';
+      var allSaved = Object.keys(profileMap);
+      if (allSaved.length) {
+        savedAllHtml = '<section style="margin-top:1rem;padding:0.8rem;border:1px solid var(--border-1,#e5e5e5);border-radius:var(--radius-md,8px)">' +
+          '<strong style="font-size:0.82rem">Configurações fixadas salvas (' + allSaved.length + ')</strong>' +
+          '<div style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.3rem">' +
+          allSaved.map(function (name) {
+            return '<span style="font-size:0.75rem;padding:2px 8px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border-1);color:var(--text-2)">' + escStr(name) + '</span>';
+          }).join('') +
+          '</div>' +
+          '<button id="recon-bases-clear-all" type="button" style="margin-top:0.6rem;font-size:0.78rem;padding:4px 10px;border-radius:var(--radius-sm,4px);border:1px solid #e0000080;background:#e000001a;color:#b00000;cursor:pointer">Limpar todas as configurações fixadas</button>' +
+          '</section>';
+      }
+
+      dialog.innerHTML =
+        '<header><div><span>BASES RECONHECIDAS</span><h2 id="recon-bases-title">Configuração de abas da LD</h2>' +
+        '<p>Veja quais abas cada LD está usando e fixe uma configuração personalizada.</p></div>' +
+        '<button aria-label="Fechar" class="icon-button" id="recon-bases-close" type="button">×</button></header>' +
+        '<div class="recon-preferences-body" style="padding:1rem;max-height:72vh;overflow:auto" id="recon-bases-body">' +
+          bodyHtml + savedAllHtml +
+        '</div>' +
+        '<footer class="drawer-footer" style="justify-content:flex-end;padding:0.75rem 1rem">' +
+          '<button class="primary-button" id="recon-bases-ok" type="button">Fechar</button>' +
+        '</footer>';
+
+      document.body.appendChild(dialog);
+      bindDialog(overlay, dialog, ['recon-bases-close', 'recon-bases-ok']);
+      openDialog(overlay, dialog);
+
+      // Evento: fixar configuração
+      dialog.addEventListener('click', function (e) {
+        var pinBtn = e.target.closest('.recon-bases-pin');
+        var resetBtn = e.target.closest('.recon-bases-reset');
+        var clearAllBtn = e.target.closest('#recon-bases-clear-all');
+
+        if (pinBtn) {
+          var fileIndex = Number(pinBtn.dataset.fileIndex);
+          var file = ldFiles[fileIndex];
+          if (!file) return;
+          // Coleta estado atual dos selects desta seção
+          var section = pinBtn.closest('section');
+          var selects = section ? section.querySelectorAll('.recon-bases-role-select') : [];
+          var sheetsMap = {};
+          selects.forEach(function (sel) {
+            sheetsMap[sel.dataset.sheetName] = sel.value;
+          });
+          saveLdSheetProfile(file.name, sheetsMap).then(function () {
+            showToast('Configuração fixada para "' + file.name + '"!', 4000, 'success');
+            // Reabrir para refletir
+            setTimeout(function () {
+              dialog.remove();
+              overlay.remove();
+              showLdBasesPanel();
+            }, 600);
+          }).catch(function (err) {
+            showToast('Erro ao salvar configuração: ' + (err && err.message || err), 5000, 'error');
+          });
+        }
+
+        if (resetBtn) {
+          var fileIndex = Number(resetBtn.dataset.fileIndex);
+          var file = ldFiles[fileIndex];
+          if (!file) return;
+          deleteLdSheetProfile(file.name).then(function () {
+            showToast('Configuração restaurada para automática em "' + file.name + '".', 4000, 'success');
+            setTimeout(function () {
+              dialog.remove();
+              overlay.remove();
+              showLdBasesPanel();
+            }, 600);
+          }).catch(function (err) {
+            showToast('Erro ao remover configuração: ' + (err && err.message || err), 5000, 'error');
+          });
+        }
+
+        if (clearAllBtn) {
+          if (!confirm('Limpar todas as configurações fixadas de abas da LD? Esta ação não pode ser desfeita.')) return;
+          RECONDB.clear('ld_sheet_profiles').then(function () {
+            showToast('Todas as configurações fixadas foram removidas.', 4000, 'success');
+            setTimeout(function () {
+              dialog.remove();
+              overlay.remove();
+              showLdBasesPanel();
+            }, 600);
+          }).catch(function (err) {
+            showToast('Erro ao limpar configurações: ' + (err && err.message || err), 5000, 'error');
+          });
+        }
+      });
+    });
+
+    // Mostra o shell do dialog imediatamente com loading
+    dialog.innerHTML =
+      '<header><div><span>BASES RECONHECIDAS</span><h2 id="recon-bases-title">Configuração de abas da LD</h2>' +
+      '<p>Veja quais abas cada LD está usando e fixe uma configuração personalizada.</p></div>' +
+      '<button aria-label="Fechar" class="icon-button" id="recon-bases-close" type="button">×</button></header>' +
+      '<div class="recon-preferences-body" style="padding:1rem;max-height:72vh;overflow:auto" id="recon-bases-body">' +
+        '<div style="text-align:center;padding:2rem;color:var(--text-3)">Carregando…</div>' +
+      '</div>' +
+      '<footer class="drawer-footer" style="justify-content:flex-end;padding:0.75rem 1rem">' +
+        '<button class="primary-button" id="recon-bases-ok" type="button">Fechar</button>' +
+      '</footer>';
+
+    document.body.appendChild(dialog);
+    bindDialog(overlay, dialog, ['recon-bases-close', 'recon-bases-ok']);
+    openDialog(overlay, dialog);
+  }
+
   function init() {
     install("atalhos de teclado", installKeyboardShortcuts);
     install("arrastar e soltar", installDragAndDrop);
@@ -880,6 +1198,7 @@
     install("microinterações", installMicroInteractions);
     install("instalação do PWA", installPwaPrompt);
     install("dashboard", installDashboardAnalytics);
+    install("bases reconhecidas", installLdBasesPanel);
     install("auto-save", installAutoSave);
     install("restauração de filtros", function () { restoreFilterState(); });
   }
@@ -896,4 +1215,9 @@
   window.RECONImportSession = importSession;
   window.RECONShowDashboard = showDashboard;
   window.RECONShowShortcuts = showShortcutsHelp;
+  window.RECONShowLdBasesPanel = showLdBasesPanel;
+  window.RECONSaveLdSheetProfile = saveLdSheetProfile;
+  window.RECONLoadLdSheetProfile = loadLdSheetProfile;
+  window.RECONDeleteLdSheetProfile = deleteLdSheetProfile;
+  window.RECONGetAllLdSheetProfiles = getAllLdSheetProfiles;
 })();
