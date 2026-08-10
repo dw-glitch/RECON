@@ -581,7 +581,35 @@ check("a sugestão vinda da memória de correções também sai em caixa alta", 
   const app = read("audit_app.js");
   // applyTitleMemory não passa por buildTitle: sem isto, uma correção antiga
   // digitada em minúscula voltaria como sugestão fora do padrão.
-  assert.match(app, /row\.proposed = Q\.upperCaseTitle\(entry\.title\)/, "memória de correções devolve o texto sem normalizar a caixa");
+  assert.match(app, /row\.proposed = upperTitle\(entry\.title\)/, "memória de correções devolve o texto sem normalizar a caixa");
+  assert.match(app, /function upperTitle/, "sem conversão local de caixa no audit_app");
+});
+
+check("a análise de títulos não depende de símbolo novo do audit_core para renderizar", () => {
+  const app = read("audit_app.js");
+  // Se o navegador servir um audit_core.js de versão anterior (cache do Service
+  // Worker, aba aberta durante a publicação), uma função recém-exportada não
+  // existe. Chamá-la depois da análise pronta derrubava tudo no catch e a tela
+  // ficava com o resultado antigo — parecendo que só parte da LD foi analisada.
+  // Só a chamada importa; a menção no comentário que explica o motivo, não.
+  assert.doesNotMatch(app, /Q\.upperCaseTitle\s*\(/, "audit_app voltou a depender de um símbolo novo do audit_core");
+
+  // A memória de correções é enriquecimento opcional e precisa estar isolada.
+  const trecho = app.slice(app.indexOf("Conferindo suas correções anteriores"), app.indexOf("Conferindo suas correções anteriores") + 700);
+  assert.match(trecho, /try \{[\s\S]*applyTitleMemory[\s\S]*\} catch/, "applyTitleMemory pode derrubar uma análise já concluída");
+});
+
+check("auditTitles devolve uma linha por documento, sem descartar nenhuma", () => {
+  const Q = createRequire(import.meta.url)("./audit_core.js");
+  const documents = Array.from({ length: 500 }, (_, i) => {
+    const doc = `C1O_RNEST_U32_3.1.1.1_TUB_RIR_NT-B-${32000 + i}`;
+    return {
+      documentKey: doc.toUpperCase(),
+      group: { records: [{ document: doc, documentKey: doc.toUpperCase(), title: i % 3 === 0 ? "documento" : `BOMBA ${i} - B-${32000 + i}`, discipline: "TUB", sheet: "TÉCNICA", rowNumber: i + 2, revision: "0" }], history: [] },
+    };
+  });
+  const rows = Q.auditTitles({ documents }, { byDocument: new Map(), byTagDiscipline: new Map() }, null);
+  assert.equal(rows.length, 500, "a auditoria devolveu menos linhas do que a LD tem documentos");
 });
 
 check("o caminho do Databook não é afetado pela regra de caixa alta", () => {
