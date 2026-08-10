@@ -316,6 +316,13 @@
           if (!db.objectStoreNames.contains("ld_sheet_profiles")) {
             db.createObjectStore("ld_sheet_profiles", { keyPath: "fileName" });
           }
+          // Bases de referência substituídas pelo usuário (v3): guarda os bytes
+          // da planilha, ou o catálogo já convertido, para que a troca continue
+          // valendo depois de fechar o navegador. Fica no IndexedDB e não no
+          // localStorage porque uma base passa facilmente de 1 MB.
+          if (!db.objectStoreNames.contains("base_overrides")) {
+            db.createObjectStore("base_overrides", { keyPath: "id" });
+          }
         };
         request.onsuccess = function (e) {
           RECONDB.db = e.target.result;
@@ -883,12 +890,19 @@
 
     var timer = setInterval(persist, 30000);
     // Um fechamento de aba entre dois ciclos perdia os últimos 30 segundos.
-    window.addEventListener("pagehide", persist);
+    // "unload" era usado aqui para parar o cronômetro, mas o evento é
+    // descontinuado e a Permissions Policy do navegador recusa o registro,
+    // gerando uma violação no console. O pagehide cobre o mesmo momento.
+    window.addEventListener("pagehide", function (event) {
+      persist();
+      // event.persisted indica que a página foi só congelada no bfcache e pode
+      // voltar. Parar o cronômetro nesse caso deixaria a aba restaurada sem
+      // salvamento automático, por isso ele só é encerrado na saída definitiva.
+      if (!event.persisted) clearInterval(timer);
+    });
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState === "hidden") persist();
     });
-    // Nota: o evento "unload" é bloqueado por Permissions Policy em documentos modernos.
-    // O pagehide e visibilitychange acima já cobrem todos os casos relevantes de persistência.
   }
 
   // ===================== INIT ALL =====================

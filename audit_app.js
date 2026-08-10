@@ -735,6 +735,21 @@
 
   async function ensureSconForTitles(requestedKeys) {
     if (state.sconReferenceFile && state.sconTitleReferences) return state.sconTitleReferences;
+    // Uma base SCON fixada na aba Bases substitui o download por disciplina:
+    // ela já vem inteira, então não há o que buscar pela rede.
+    const bases = pinnedBases();
+    if (bases) {
+      await bases.ready();
+      const replacement = bases.catalog("scon-tag-sgp");
+      if (replacement) {
+        state.sconTitleReferences = Q.parseSconTitleCatalog(replacement);
+        if (els.titleSconReferenceMeta) {
+          els.titleSconReferenceMeta.textContent = `${state.sconTitleReferences.entries.length.toLocaleString("pt-BR")} códigos SCON · base fixada por você`;
+        }
+        updateTitleReferenceStatus();
+        return state.sconTitleReferences;
+      }
+    }
     if (!window.RECONSconCatalog) return state.sconTitleReferences;
     if (els.titleSconReferenceMeta) els.titleSconReferenceMeta.textContent = "Carregando somente as disciplinas necessárias…";
     // A base embutida é buscada pela rede, em pedaços por disciplina. Uma falha
@@ -1211,43 +1226,70 @@
     }
   }
 
-  async function bundledArrayBuffer(fileName) {
+  // A aba Bases permite fixar um arquivo próprio no lugar de uma base
+  // incorporada. Quando existe substituição, ela tem precedência aqui — é o
+  // único ponto por onde as bases entram na análise.
+  function pinnedBases() {
+    return window.RECONBases || null;
+  }
+
+  async function bundledArrayBuffer(fileName, baseId) {
+    const bases = pinnedBases();
+    if (bases && baseId) {
+      await bases.ready();
+      const replacement = bases.arrayBuffer(baseId);
+      if (replacement) return replacement;
+    }
     const offline = window.RECONOfflineResources;
     if (offline && (offline.has(fileName) || await offline.ensure(fileName))) return offline.arrayBuffer(fileName);
     throw new Error(`Base incorporada indisponível: ${fileName}`);
   }
 
   async function loadBundledReferences() {
+    const bases = pinnedBases();
+    if (bases) await bases.ready();
+    // A conferência de volume só vale para a base incorporada, cujo conteúdo é
+    // conhecido. Uma base substituída é do usuário e pode ter outro tamanho
+    // legítimo; o alerta de divergência fica na própria aba Bases.
+    const replaced = (id) => Boolean(bases && bases.isPinned(id));
+
     const jobs = [
-      bundledArrayBuffer("Analise_descricoes_Planilha1.xlsx").then(async (buffer) => {
+      bundledArrayBuffer("Analise_descricoes_Planilha1.xlsx", "titles-control").then(async (buffer) => {
         const workbook = window.RECONWorkbookWorker ? await window.RECONWorkbookWorker.readBuffer(buffer, "titles-control-base", { cellDates: true, cellFormula: true }) : XLSX.read(buffer, { type: "array", cellDates: true, cellFormula: true });
         const parsed = Q.parseTitleReferenceWorkbook(workbook, XLSX);
-        if (parsed.entries.length !== 782) throw new Error(`A base de títulos contém ${parsed.entries.length} de 782 registros esperados.`);
+        if (!replaced("titles-control") && parsed.entries.length !== 782) throw new Error(`A base de títulos contém ${parsed.entries.length} de 782 registros esperados.`);
+        if (replaced("titles-control") && !parsed.entries.length) throw new Error("A base de títulos que você fixou não trouxe nenhuma conclusão aproveitável.");
         state.titleReferences = parsed;
         updateTitleReferenceStatus();
       }),
-      bundledArrayBuffer("Caminho data book_Rev.A VINI.xlsx").then(async (buffer) => {
+      bundledArrayBuffer("Caminho data book_Rev.A VINI.xlsx", "databook-rev-a").then(async (buffer) => {
         const workbook = window.RECONWorkbookWorker ? await window.RECONWorkbookWorker.readBuffer(buffer, "databook-rev-a", { cellDates: true, cellFormula: true }) : XLSX.read(buffer, { type: "array", cellDates: true, cellFormula: true });
         const parsed = A.parseDatabookWorkbook(workbook, XLSX);
-        if (parsed.entries.length !== 158) throw new Error(`A base Databook contém ${parsed.entries.length} de 158 referências esperadas.`);
+        if (!replaced("databook-rev-a") && parsed.entries.length !== 158) throw new Error(`A base Databook contém ${parsed.entries.length} de 158 referências esperadas.`);
+        if (replaced("databook-rev-a") && !parsed.entries.length) throw new Error("A base de Databook que você fixou não trouxe nenhuma referência aproveitável.");
         const merged = new Map([...state.catalog, ...parsed.entries].map((item) => [`${Q.norm(item.description)}|${A.pathKey(item.databook)}`, item]));
-        state.catalog = [...merged.values()]; els.dbBaseStatus.textContent = `${parsed.entries.length} referências validadas · base Rev.A`;
+        state.catalog = [...merged.values()];
+        els.dbBaseStatus.textContent = `${parsed.entries.length} referências validadas · ${replaced("databook-rev-a") ? "base substituída" : "base Rev.A"}`;
       }),
       Promise.resolve().then(() => {
-        if (!window.RECONSconEscopoTitleCatalog) throw new Error("O SCON ESCOPO incorporado não foi carregado.");
-        const parsed = Q.parseSconEscopoTitleCatalog(window.RECONSconEscopoTitleCatalog);
-        if (parsed.entries.length !== 7798 || parsed.uniqueTagCount !== 3027 || parsed.uniqueEapCount !== 71) {
+        const source = (bases && bases.catalog("scon-escopo")) || window.RECONSconEscopoTitleCatalog;
+        if (!source) throw new Error("O SCON ESCOPO incorporado não foi carregado.");
+        const parsed = Q.parseSconEscopoTitleCatalog(source);
+        if (!replaced("scon-escopo") && (parsed.entries.length !== 7798 || parsed.uniqueTagCount !== 3027 || parsed.uniqueEapCount !== 71)) {
           throw new Error(`O SCON ESCOPO contém ${parsed.entries.length} linhas, ${parsed.uniqueTagCount} TAGs e ${parsed.uniqueEapCount} EAPs; eram esperadas 7.798 linhas, 3.027 TAGs e 71 EAPs.`);
         }
+        if (replaced("scon-escopo") && !parsed.entries.length) throw new Error("O SCON ESCOPO que você fixou não trouxe nenhuma linha aproveitável.");
         state.sconEscopoTitleReferences = parsed;
         updateTitleReferenceStatus();
       }),
       Promise.resolve().then(() => {
-        if (!window.RECONTagReferenceCatalog) throw new Error("O Apêndice 3 Rev.B incorporado não foi carregado.");
-        const parsed = Q.parseTagReferenceCatalog(window.RECONTagReferenceCatalog);
-        if (parsed.entries.length < 5600 || parsed.uniqueTagCount < 5500) {
+        const source = (bases && bases.catalog("tag-appendix")) || window.RECONTagReferenceCatalog;
+        if (!source) throw new Error("O Apêndice 3 Rev.B incorporado não foi carregado.");
+        const parsed = Q.parseTagReferenceCatalog(source);
+        if (!replaced("tag-appendix") && (parsed.entries.length < 5600 || parsed.uniqueTagCount < 5500)) {
           throw new Error(`O Apêndice 3 Rev.B contém somente ${parsed.entries.length} registros e ${parsed.uniqueTagCount} TAGs válidas.`);
         }
+        if (replaced("tag-appendix") && !parsed.entries.length) throw new Error("O Apêndice de TAGs que você fixou não trouxe nenhuma TAG aproveitável.");
         state.tagReferenceTitleReferences = parsed;
         updateTitleReferenceStatus();
       }),

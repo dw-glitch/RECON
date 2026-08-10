@@ -6,7 +6,7 @@
   const moduleState = new Map();
   const busyModules = new Set();
   let compatibilityMode = false;
-  const moduleLabels = { relations: "Relações", allocation: "Alocação", databook: "Databook", titles: "Correção de títulos", tags: "Conferência de TAGs", renamer: "Renomeador" };
+  const moduleLabels = { relations: "Relações", allocation: "Alocação", databook: "Databook", titles: "Correção de títulos", tags: "Conferência de TAGs", renamer: "Renomeador", bases: "Bases de referência" };
 
   const moduleDeps = {
     relations: ["relations"],
@@ -15,6 +15,7 @@
     titles: ["relations", "audit"],
     tags: ["tags"],
     renamer: ["renamer"],
+    bases: ["bases"],
   };
 
   const moduleRequirements = {
@@ -24,6 +25,7 @@
     titles: ["TriagemCore", "RECONAuditCore", "RECONAudits"],
     tags: ["RECONTagConferenceCore", "RECONTagConference"],
     renamer: ["RECONRenamerCore", "RECONRenamer"],
+    bases: ["RECONBasesCore", "RECONBases"],
   };
 
   const groupRequirements = {
@@ -33,6 +35,7 @@
     audit: ["TriagemCore", "RECONAuditCore", "RECONAudits"],
     tags: ["RECONTagConferenceCore", "RECONTagConference"],
     renamer: ["RECONRenamerCore", "RECONRenamer"],
+    bases: ["RECONBasesCore", "RECONBases"],
     "offline:scon-escopo-titles": ["RECONSconEscopoTitleCatalog"],
   };
 
@@ -45,11 +48,15 @@
     "offline:databook-b": ["offline", "offline_recon_databook_b.js"],
     "offline:pdf-worker": ["offline", "offline_recon_pdf_worker.js"],
     "offline:scon-escopo-titles": ["scon_escopo_title_catalog.js"],
-    common: ["recon_compute_client.js", "recon_pager.js", "core.js", "ld_conflicts.js", "recon_export_guard.js", "ld_compatibility.js", "timeline_core.js"],
+    // bases_* entra em `common` porque a substituição de base precisa estar
+    // resolvida antes de qualquer módulo carregar uma referência — não adianta
+    // descobrir a troca depois que a análise já leu a base incorporada.
+    bases: ["xlsx", "bases_core.js", "bases_app.js"],
+    common: ["recon_compute_client.js", "recon_pager.js", "core.js", "ld_conflicts.js", "recon_export_guard.js", "ld_compatibility.js", "timeline_core.js", "bases_core.js", "bases_app.js"],
     relations: ["xlsx", "common", "relations_core.js", "relations_app.js"],
     allocation: ["xlsx", "offline:databook-b", "common", "allocation_confirmation_sources.js", "allocation_core.js", "allocation_batches.js", "databook_catalog.js", "databook_allocation_sources.js", "offline_recon_allocation_template.js", "allocation_workbook.js", "allocation_title_quality.js", "allocation_app.js"],
     audit: ["xlsx", "offline:audit", "offline:scon-escopo-titles", "common", "allocation_confirmation_sources.js", "allocation_core.js", "databook_catalog.js", "databook_allocation_sources.js", "non_tagged_title_rules.js", "scon_catalog_loader.js", "tag_reference_catalog.js", "audit_core.js", "ld_preservation.js", "ld_databook_writer.js", "ld_title_writer.js", "audit_app.js"],
-    tags: ["xlsx", "tag_reference_catalog.js", "tag_conference_core.js", "tag_conference_app.js"],
+    tags: ["xlsx", "bases", "tag_reference_catalog.js", "tag_conference_core.js", "tag_conference_app.js"],
     renamer: ["offline:pdf-worker", "pdf.min.js", "renamer_core.js", "renamer_app.js"],
   };
 

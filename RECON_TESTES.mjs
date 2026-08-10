@@ -291,7 +291,7 @@ check("é possível abrir a LD e salvar a revisão direto no arquivo original (F
 check("o RECON lembra correções de título manuais e sugere de novo quando faltar sugestão segura", () => {
   const enhancements = read("recon_enhancements.js");
   assert.match(enhancements, /title_corrections/, "object store title_corrections não foi criada no IndexedDB");
-  assert.match(enhancements, /DB_VERSION:\s*2/, "versão do banco não foi incrementada para criar a nova store");
+  assert.match(enhancements, /DB_VERSION:\s*[3-9]\d*/, "versão do banco não foi incrementada para criar a nova store");
 
   const app = read("audit_app.js");
   assert.match(app, /function titleMemoryKey/, "sem chave de memória por TAG/documento");
@@ -360,6 +360,138 @@ check("a análise de alocação processa uma LD grande em tempo hábil (regress�
   // generosa para não quebrar em runners de CI mais lentos, mas ainda pega
   // uma regressão real para o comportamento O(itens × documentos).
   assert.ok(elapsedMs < 5000, `analyze() levou ${elapsedMs} ms para ${entries.length} itens x ${records.length} documentos — esperado bem abaixo de 5000 ms`);
+});
+
+// ===================== BASES DE REFERÊNCIA =====================
+
+const Bases = createRequire(import.meta.url)("./bases_core.js");
+
+check("a aba Bases está registrada na interface, no carregador e no precache", () => {
+  assert.match(html, /data-module="bases"/, "sem botão de módulo na barra lateral");
+  assert.match(html, /data-module-view="bases"/, "sem área de trabalho do módulo");
+  assert.match(html, /id="bases-table-body"/, "sem corpo da tabela de bases");
+  assert.match(html, /id="bases-file-input"/, "sem campo para escolher a base substituta");
+
+  const loader = read("recon_module_loader.js");
+  assert.match(loader, /bases: \["bases"\]/, "módulo bases não declarado em moduleDeps");
+  assert.match(loader, /bases: \["RECONBasesCore", "RECONBases"\]/, "requisitos do módulo bases ausentes");
+  // Sem bases_* em `common`, a análise leria a base incorporada antes de saber
+  // que existe uma substituição fixada.
+  assert.match(loader, /common: \[[^\]]*"bases_core\.js", "bases_app\.js"\]/, "bases_* fora do grupo common");
+
+  for (const file of ["bases_core.js", "bases_app.js"]) {
+    assert.ok(exists(file), `${file} não existe`);
+    assert.ok(sw.includes(`"${file}"`), `${file} fora do precache do Service Worker`);
+  }
+});
+
+check("o registro de bases descreve as sete bases que o RECON reconhece", () => {
+  const ids = Bases.descriptors().map((item) => item.id);
+  assert.deepEqual(ids.slice().sort(), [
+    "allocation-template", "databook-rev-a", "databook-rev-b",
+    "scon-escopo", "scon-tag-sgp", "tag-appendix", "titles-control",
+  ]);
+  // Os volumes precisam bater com o que audit_app.js confere ao carregar as
+  // bases incorporadas; divergir aqui produziria aviso de troca falso.
+  const app = read("audit_app.js");
+  assert.equal(Bases.descriptor("titles-control").bundled.count, 782);
+  assert.equal(Bases.descriptor("databook-rev-a").bundled.count, 158);
+  assert.equal(Bases.descriptor("scon-escopo").bundled.count, 7798);
+  assert.match(app, /!== 782/);
+  assert.match(app, /!== 158/);
+  assert.match(app, /!== 7798/);
+});
+
+check("uma planilha substituta é convertida no formato que o audit_core espera", () => {
+  const item = Bases.descriptor("tag-appendix");
+  const rows = [
+    ["ANEXO I - APÊNDICE 3", "", "", ""],
+    [],
+    ["Unidade", "Disciplina", "TAG", "Descrição"],
+    ["U-32", "Dinâmicos", "B-32110A", "BOMBA DE ÁGUA GELADA"],
+    ["U-32", "Estáticos", "P-32001", "VASO SEPARADOR"],
+    ["", "", "", ""],
+  ];
+  const catalog = Bases.buildCatalog(item, rows, { source: "meu_apendice.xlsx", sheet: "Apêndice" });
+  assert.equal(catalog.entries.length, 2, "cabeçalho fora da linha 1 não foi localizado");
+  assert.equal(catalog.entries[0].tag, "B-32110A");
+  assert.equal(catalog.entries[0].description, "BOMBA DE ÁGUA GELADA");
+  assert.equal(catalog.meta.source, "meu_apendice.xlsx");
+  assert.equal(catalog.meta.sheet, "Apêndice");
+});
+
+check("cabeçalho com acento, caixa ou pontuação diferente ainda é reconhecido", () => {
+  const item = Bases.descriptor("scon-escopo");
+  const rows = [
+    ["TAG", "TÍTULO", "DISCIPLINA", "E.A.P."],
+    ["CXESC03-EL01", "EXECUCAO CHAPISCO DE PAREDE", "CIVIL", "3528"],
+    ["FACHADA2L", "EXECUCAO CHAPISCO DE PAREDE", "CIVIL", "3529"],
+  ];
+  const catalog = Bases.buildCatalog(item, rows, { source: "escopo.xlsx", sheet: "MAPA" });
+  assert.equal(catalog.rows.length, 2);
+  assert.equal(catalog.uniqueTagCount, 2);
+  assert.equal(catalog.uniqueEapCount, 2);
+  // A ordem das colunas do catálogo é a que parseSconEscopoTitleCatalog lê por
+  // posição — inverter aqui deslocaria todos os títulos silenciosamente.
+  assert.deepEqual(catalog.columns, ["tag", "title", "discipline", "area", "type", "stage", "eap", "row"]);
+  assert.equal(catalog.rows[0][catalog.columns.indexOf("title")], "EXECUCAO CHAPISCO DE PAREDE");
+});
+
+check("planilha sem as colunas obrigatórias é recusada dizendo qual falta", () => {
+  const item = Bases.descriptor("tag-appendix");
+  const rows = [["Unidade", "Disciplina", "Observação"], ["U-32", "Civil", "nada"]];
+  assert.throws(() => Bases.buildCatalog(item, rows, {}), (error) => {
+    assert.equal(error.name, "RECONBaseColumnError");
+    assert.deepEqual(error.missing, ["TAG", "Descrição"]);
+    return true;
+  });
+});
+
+check("divergência grande de volume vira aviso, e base vazia vira erro", () => {
+  const item = Bases.descriptor("scon-escopo");
+  const vazio = Bases.review(item, { rowCount: 0 });
+  assert.equal(vazio.valid, false, "base sem registros deveria ser recusada");
+
+  // 7.798 é o volume da incorporada: 100 linhas é queda de mais de 90%, sinal
+  // clássico de aba errada — mas continua sendo escolha do usuário.
+  const encolhida = Bases.review(item, { rowCount: 100 });
+  assert.equal(encolhida.valid, true, "volume menor não pode bloquear a substituição");
+  assert.equal(encolhida.warnings.length, 1, "queda brusca de volume deveria avisar");
+});
+
+check("a análise só dispensa a conferência de volume quando a base foi substituída", () => {
+  const app = read("audit_app.js");
+  assert.match(app, /const replaced = \(id\) => Boolean\(bases && bases\.isPinned\(id\)\)/, "sem checagem de base substituída");
+  assert.match(app, /!replaced\("titles-control"\) && parsed\.entries\.length !== 782/, "conferência de títulos deixou de valer para a base incorporada");
+  assert.match(app, /!replaced\("scon-escopo"\)/, "conferência do SCON ESCOPO deixou de valer para a base incorporada");
+  // A base substituída não fica sem nenhuma checagem: continua precisando
+  // produzir ao menos um registro aproveitável.
+  assert.match(app, /replaced\("titles-control"\) && !parsed\.entries\.length/, "base substituída vazia não é recusada");
+});
+
+check("a substituição é guardada em IndexedDB, não em localStorage", () => {
+  const enhancements = read("recon_enhancements.js");
+  assert.match(enhancements, /base_overrides/, "store base_overrides não foi criada");
+  const app = read("bases_app.js");
+  assert.match(app, /const STORE = "base_overrides"/);
+  // Uma base passa de 1 MB com folga; localStorage estouraria a cota.
+  assert.doesNotMatch(app, /localStorage/, "bases não podem ser guardadas em localStorage");
+});
+
+check("o listener unload descontinuado foi trocado por pagehide", () => {
+  const enhancements = read("recon_enhancements.js");
+  assert.doesNotMatch(enhancements, /addEventListener\("unload"/, "unload viola a Permissions Policy e gera violação no console");
+  // Parar o cronômetro num pagehide de bfcache deixaria a aba restaurada sem
+  // salvamento automático.
+  assert.match(enhancements, /if \(!event\.persisted\) clearInterval\(timer\)/, "pagehide de bfcache não pode encerrar o auto-save");
+});
+
+check("as colunas fixas da tabela de alocação existem no CSS que o index.html carrega", () => {
+  // O ajuste tinha sido escrito em reconfinal.css, que não é o arquivo ligado
+  // no index.html — na prática a tabela continuava desalinhada ao rolar.
+  assert.match(html, /href="recon-final\.css"/, "index.html não carrega recon-final.css");
+  const finalCss = read("recon-final.css");
+  assert.match(finalCss, /allocation-decision-table td:nth-child\(2\) \{ left: 150px; \}/);
 });
 
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));

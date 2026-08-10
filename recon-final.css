@@ -456,6 +456,17 @@ html[data-app="RECON"][data-functional-generation="4"] .allocation-decision-tabl
 html[data-app="RECON"][data-functional-generation="4"] .allocation-decision-table th:nth-child(6) { width: 300px; }
 html[data-app="RECON"][data-functional-generation="4"] .allocation-decision-table th:nth-child(7) { width: 210px; }
 
+/* As três primeiras colunas ficam fixas (sticky) ao rolar a tabela na horizontal.
+   O deslocamento precisa bater exatamente com a largura das colunas acima —
+   caso contrário, a coluna fixa sobrepõe ou abre um vão em relação às colunas
+   que rolam, exatamente o efeito de "tabela bugada" ao arrastar a barra. */
+html[data-app="RECON"][data-functional-generation="4"] .allocation-decision-table th:nth-child(1),
+html[data-app="RECON"][data-functional-generation="4"] .allocation-decision-table td:nth-child(1) { left: 0; }
+html[data-app="RECON"][data-functional-generation="4"] .allocation-decision-table th:nth-child(2),
+html[data-app="RECON"][data-functional-generation="4"] .allocation-decision-table td:nth-child(2) { left: 150px; }
+html[data-app="RECON"][data-functional-generation="4"] .allocation-decision-table th:nth-child(3),
+html[data-app="RECON"][data-functional-generation="4"] .allocation-decision-table td:nth-child(3) { left: 430px; }
+
 html[data-app="RECON"][data-functional-generation="4"] .allocation-decision-table td {
   vertical-align: top;
   padding: 12px 10px;
@@ -1402,4 +1413,34 @@ body.p2-dark .app-shortcut-link:hover {
 }
 @media (max-width: 44rem) {
   .app-shortcut-link { flex: 1 1 auto; min-width: 0; }
+}
+
+/* ===================== ABA BASES DE REFERÊNCIA ===================== */
+/* Reaproveita os blocos já existentes (tag-summary, tag-toolbar, table-card,
+   recon-data-table). Só o que é específico da tabela de bases fica aqui. */
+.bases-table td { vertical-align: top; }
+.bases-table td strong { display: block; font-weight: 600; }
+.bases-table td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--ui-muted, #5a6b7a);
+  font-size: 0.82em;
+  line-height: 1.35;
+}
+.bases-table .state-pill { display: inline-block; margin-bottom: 4px; }
+.bases-table .bases-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  white-space: nowrap;
+}
+.bases-note {
+  margin: 12px 0 0;
+  color: var(--ui-muted, #5a6b7a);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+@media (max-width: 60rem) {
+  .bases-table .bases-actions { white-space: normal; }
 }

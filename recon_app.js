@@ -41,7 +41,7 @@
       view.hidden = !active;
       view.classList.toggle("active", active);
     });
-    document.body.classList.toggle("recon-without-ld", wanted === "renamer" || wanted === "allocation" || wanted === "tags");
+    document.body.classList.toggle("recon-without-ld", wanted === "renamer" || wanted === "allocation" || wanted === "tags" || wanted === "bases");
     try { window.sessionStorage.setItem(KEY, wanted); } catch (_) { /* conveniência */ }
     writeHash(wanted);
     window.dispatchEvent(new CustomEvent("recon:module", { detail: { module: wanted } }));

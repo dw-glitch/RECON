@@ -433,6 +433,20 @@
   elements.export && elements.export.addEventListener("click", exportReport);
 
   if (elements.referenceMeta) elements.referenceMeta.textContent = `${state.reference.entries.length.toLocaleString("pt-BR")} TAGs incorporadas · Rev. ${state.reference.meta.revision || "B"}`;
+
+  // A base do Apêndice pode ter sido substituída e fixada na aba Bases. A troca
+  // é lida do IndexedDB, que é assíncrono, então o módulo abre com a base
+  // incorporada e troca em seguida — em vez de atrasar a interface inteira.
+  if (window.RECONBases) {
+    window.RECONBases.ready().then(() => {
+      const replacement = window.RECONBases.catalog("tag-appendix");
+      if (!replacement || !replacement.entries || !replacement.entries.length) return;
+      state.reference = Core.buildReferenceIndex(replacement.entries, replacement.meta);
+      if (elements.referenceMeta) elements.referenceMeta.textContent = `${state.reference.entries.length.toLocaleString("pt-BR")} TAGs · base fixada por você`;
+      render();
+    }).catch(() => { /* sem base fixada, a incorporada permanece */ });
+  }
+
   const savedFilters = readFilters();
   if (elements.search) elements.search.value = String(savedFilters.search || "");
   if (elements.status && [...elements.status.options].some((option) => option.value === savedFilters.status)) elements.status.value = savedFilters.status || "all";

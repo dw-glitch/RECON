@@ -17,6 +17,7 @@
     databook: "Revisar caminho do Databook",
     titles: "Corrigir títulos da LD",
     renamer: "Renomear PDFs",
+    bases: "Conferir as bases de referência",
   };
 
   const state = { bypass: new Set(), confirmAction: null, dirty: false, auditBlocked: false };
