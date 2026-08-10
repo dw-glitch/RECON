@@ -55,7 +55,7 @@
     common: ["recon_compute_client.js", "recon_pager.js", "core.js", "ld_conflicts.js", "recon_export_guard.js", "ld_compatibility.js", "timeline_core.js", "bases_core.js", "bases_app.js"],
     relations: ["xlsx", "common", "relations_core.js", "relations_app.js"],
     allocation: ["xlsx", "offline:databook-b", "common", "allocation_confirmation_sources.js", "allocation_core.js", "allocation_batches.js", "databook_catalog.js", "databook_allocation_sources.js", "offline_recon_allocation_template.js", "allocation_workbook.js", "allocation_title_quality.js", "allocation_app.js"],
-    audit: ["xlsx", "offline:audit", "offline:scon-escopo-titles", "common", "allocation_confirmation_sources.js", "allocation_core.js", "databook_catalog.js", "databook_allocation_sources.js", "non_tagged_title_rules.js", "scon_catalog_loader.js", "tag_reference_catalog.js", "audit_core.js", "ld_preservation.js", "ld_databook_writer.js", "ld_title_writer.js", "audit_app.js"],
+    audit: ["xlsx", "offline:audit", "offline:scon-escopo-titles", "common", "allocation_confirmation_sources.js", "allocation_core.js", "databook_catalog.js", "databook_allocation_sources.js", "non_tagged_title_rules.js", "et_report_titles.js", "scon_catalog_loader.js", "tag_reference_catalog.js", "audit_core.js", "ld_preservation.js", "ld_databook_writer.js", "ld_title_writer.js", "audit_app.js"],
     tags: ["xlsx", "bases", "tag_reference_catalog.js", "tag_conference_core.js", "tag_conference_app.js"],
     renamer: ["offline:pdf-worker", "pdf.min.js", "renamer_core.js", "renamer_app.js"],
   };

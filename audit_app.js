@@ -401,7 +401,7 @@
     merged.sconEscopo = state.sconEscopoTitleReferences || null;
     // A ET só existe se tiver sido carregada na aba Bases. Sem ela, a análise
     // segue exatamente como antes, pelas demais fontes.
-    merged.etTitles = state.etTitleReferences || null;
+    merged.etReportTitles = state.etTitleReferences || null;
     merged.tagReference = state.tagReferenceTitleReferences || null;
     return merged;
   }
@@ -420,8 +420,11 @@
     const extraText = extraCount ? ` · ${extraCount.toLocaleString("pt-BR")} referências adicionais` : "";
     // A ET vem primeiro na linha porque é a fonte de maior prioridade: quem
     // olha a análise precisa saber de imediato se ela está participando.
-    const etCount = state.etTitleReferences && state.etTitleReferences.uniqueDocumentCount || 0;
-    const etText = etCount ? `ET com ${etCount.toLocaleString("pt-BR")} títulos normativos` : "ET não carregada";
+    const etCount = state.etTitleReferences && state.etTitleReferences.count || 0;
+    const etRev = state.etTitleReferences && state.etTitleReferences.revision || "";
+    const etText = etCount
+      ? `ET Rev. ${etRev || "?"} com ${etCount.toLocaleString("pt-BR")} códigos de relatório`
+      : "ET indisponível";
     els.titleBaseStatus.textContent = `${etText} · ${baseText} · ${sconText} · ${sconEscopoText} · ${appendixText}${extraText}`;
     if (els.titleSconReferenceMeta && !state.sconReferenceFile) {
       els.titleSconReferenceMeta.textContent = sconCount ? `Base incorporada · ${sconCount.toLocaleString("pt-BR")} códigos` : "Base incorporada indisponível";
@@ -1312,12 +1315,15 @@
         updateTitleReferenceStatus();
       }),
       Promise.resolve().then(() => {
-        // A ET não tem versão incorporada: ou o usuário carregou na aba Bases,
-        // ou ela simplesmente não participa desta análise.
-        const source = bases && bases.catalog("et-titles");
+        // TABELA 13 da ET: incorporada na Rev. P, substituível por uma revisão
+        // mais nova pela aba Bases.
+        const source = (bases && bases.catalog("et-titles")) || window.RECONEtReportTitles;
         if (!source) { state.etTitleReferences = null; return; }
-        const parsed = Q.parseEtTitleCatalog(source);
-        if (!parsed.uniqueDocumentCount) throw new Error("A ET que você carregou não trouxe nenhum código com título aproveitável.");
+        const parsed = Q.parseEtReportTitles(source);
+        if (!replaced("et-titles") && parsed.count < 300) {
+          throw new Error(`A TABELA 13 da ET trouxe somente ${parsed.count} códigos; eram esperados 325.`);
+        }
+        if (!parsed.count) throw new Error("A ET que você carregou não trouxe nenhum código de relatório aproveitável.");
         state.etTitleReferences = parsed;
         updateTitleReferenceStatus();
       }),

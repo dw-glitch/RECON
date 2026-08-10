@@ -881,56 +881,51 @@
   }
 
   /**
-   * Converte a ET carregada pela aba Bases num índice por código documental.
-   * A ET é a Especificação Técnica do contrato: ela define o título oficial de
-   * cada código, e por isso tem prioridade sobre SCON, Apêndice e sobre a
-   * descrição escrita na própria LD.
+   * TABELA 13 da ET (norma de codificação do contrato): liga o código do
+   * relatório ao seu título oficial. O código do relatório é o 6º grupo do
+   * código documental e a TAG é o 7º — por isso o título da ET é exatamente a
+   * parte que precede a TAG no título do documento.
    */
-  function parseEtTitleCatalog(catalog) {
+  function parseEtReportTitles(catalog) {
     const columns = catalog && catalog.columns || [];
     const position = new Map(columns.map((name, index) => [name, index]));
     const at = (row, name) => position.has(name) ? row[position.get(name)] : "";
-    const entries = (catalog && catalog.rows || []).map((row, index) => ({
-      document: cleanSpaces(at(row, "document")),
-      title: usableDescription(at(row, "title")),
-      discipline: cleanSpaces(at(row, "discipline")),
-      documentType: cleanSpaces(at(row, "documentType")),
-      row: Number(at(row, "row")) || index + 2,
-    })).filter((entry) => entry.document && entry.title);
-
-    const byDocument = new Map();
-    entries.forEach((entry) => {
-      const key = C.key(entry.document);
-      if (!key) return;
-      const current = byDocument.get(key);
-      if (!current) { byDocument.set(key, { ...entry, documentKey: key }); return; }
-      // O mesmo código com títulos diferentes na ET não pode escolher um deles
-      // por conta própria: a linha vira ambígua e a ET deixa de decidir.
-      if (norm(current.title) !== norm(entry.title)) { current.ambiguous = true; current.title = ""; }
+    const byCode = new Map();
+    (catalog && catalog.rows || []).forEach((row) => {
+      const code = norm(at(row, "code")).replace(/\s+/g, "");
+      const title = cleanTitlePart(usableDescription(at(row, "title")));
+      if (!code || !title) return;
+      const current = byCode.get(code);
+      // O mesmo código com títulos diferentes na norma se cala: escolher um
+      // deles por conta própria seria inventar norma.
+      if (current && norm(current.title) !== norm(title)) { current.ambiguous = true; current.title = ""; return; }
+      if (!current) byCode.set(code, { code, title });
     });
-
     return {
-      entries,
-      byDocument,
+      byCode,
+      revision: (catalog && catalog.revision) || "",
       sourceFile: (catalog && catalog.sourceFile) || "ET",
-      sheet: (catalog && catalog.sheet) || "",
-      uniqueDocumentCount: byDocument.size,
+      table: (catalog && catalog.table) || "TABELA 13",
+      count: byCode.size,
     };
   }
 
-  // A ET responde por código documental exato. Sem correspondência exata ela se
-  // cala — inferir título normativo por semelhança seria inventar norma.
-  function etReferenceFor(record, references) {
-    const catalog = references && references.etTitles;
-    if (!catalog || !catalog.byDocument) return null;
-    const entry = catalog.byDocument.get(record.documentKey) || catalog.byDocument.get(C.key(record.document));
+  // O 6º grupo do código documental é o código do relatório. Vale tanto para
+  // "..._CVL_RIR_NT-TAG" quanto para códigos compostos como "RSOFT-CPS".
+  function reportCodeFromDocument(document) {
+    const parts = text(document).split("_");
+    if (parts.length < 6) return "";
+    return norm(parts[5]).replace(/\s+/g, "");
+  }
+
+  function etReportTitleFor(record, references) {
+    const catalog = references && references.etReportTitles;
+    if (!catalog || !catalog.byCode) return null;
+    const code = reportCodeFromDocument(record.document);
+    if (!code) return null;
+    const entry = catalog.byCode.get(code);
     if (!entry || !entry.title || entry.ambiguous) return null;
-    return {
-      ...entry,
-      trusted: true,
-      sourceFile: catalog.sourceFile,
-      sheet: catalog.sheet,
-    };
+    return { ...entry, revision: catalog.revision, sourceFile: catalog.sourceFile, table: catalog.table };
   }
 
   function parseSconTitleCatalog(catalog) {
@@ -2170,7 +2165,11 @@
       const inferredType = inferType(record) || reference && reference.documentType || "";
       const prefix = stableTitlePrefix(current, inferredType);
       const drawing = isDrawingRecord(record, prefix, inferredType);
-      const type = prefix || inferredType;
+      // A ET é a norma do contrato: quando ela define o título para o código do
+      // relatório, ele vence o prefixo lido do título atual e o tipo inferido.
+      // É esse título que entra antes da TAG.
+      const etReport = etReportTitleFor(record, references);
+      const type = etReport && etReport.title || prefix || inferredType;
       const tagEvidence = resolveTagEvidence(record, reference);
       const possibleIdentifier = tagEvidence.possibleTag;
       const sconReference = sconReferenceFor(record, references);
@@ -2252,11 +2251,7 @@
       );
       const sconEscopoDrivesDescription = Boolean(externalTagDrivesDescription && sconEscopoInDescription);
       const currentDescription = stripKnownParts(current, type, tag);
-      // A ET é a norma contratual: quando ela tem o código, o título dela vence
-      // qualquer outra fonte. A TAG continua entrando depois, no fim do título.
-      const etReference = etReferenceFor(record, references);
-      const description = etReference && etReference.title
-        || nonTaggedRule && nonTaggedRule.description
+      const description = nonTaggedRule && nonTaggedRule.description
         || sconCombinedDescription
         || trustedDescription && referenceDescription
         || externalTagDrivesDescription && externalTagDescription
@@ -2556,7 +2551,8 @@
     sconEscopoReferenceFor,
     technicalIdentifiers,
     parseTitleReferenceWorkbook,
-    parseEtTitleCatalog,
+    parseEtReportTitles,
+    reportCodeFromDocument,
     titleLooksGeneric,
     combineTitleDescriptions,
     stripLeadingTitleTags,

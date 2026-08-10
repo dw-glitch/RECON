@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.33**.
+Versão atual: **1.26.34**.
 
 ## Execução
 
@@ -25,6 +25,15 @@ Cada módulo pode ser aberto direto pela URL: `index.html#relations`,
 `#allocation`, `#tags`, `#databook`, `#titles`, `#renamer` ou `#bases`.
 
 ## Bases de referência
+
+A norma de codificação do contrato (ET-5290.00-22000-912-1LV-001, **Rev. P** de
+17/06/2026) está incorporada em `et_report_titles.js`: são os 325 códigos da
+TABELA 13 – Codificação dos Relatórios. O código do relatório é o 6º grupo do
+código documental e a TAG é o 7º, então o título da ET é exatamente a parte que
+precede a TAG no título recomendado. Uma revisão mais nova pode ser carregada
+pela aba Bases como planilha de duas colunas (Código e Título), sem precisar de
+nova versão do RECON.
+
 
 A aba Bases (`#bases`) lista as bases que o RECON reconhece, de qual arquivo
 cada uma veio e quantos registros tem. Qualquer uma pode ser substituída por uma
