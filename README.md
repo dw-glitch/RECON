@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.28**.
+Versão atual: **1.26.29**.
 
 ## Execução
 
@@ -16,13 +16,23 @@ grandes, prefira a versão publicada em HTTP/HTTPS.
 
 Aplicativo local em HTML, CSS e JavaScript, sem React e sem servidor obrigatório.
 
-Os módulos (Relações, Alocação, Databook, Títulos, TAGs e Renomeador) são
+Os módulos (Relações, Alocação, Databook, Títulos, TAGs, Renomeador e Bases) são
 carregados sob demanda por `recon_module_loader.js`. Os catálogos de referência
 (`scon_*.js`, `tag_reference_catalog.js`) também são carregados apenas quando a
 disciplina correspondente é necessária.
 
 Cada módulo pode ser aberto direto pela URL: `index.html#relations`,
-`#allocation`, `#tags`, `#databook`, `#titles` ou `#renamer`.
+`#allocation`, `#tags`, `#databook`, `#titles`, `#renamer` ou `#bases`.
+
+## Bases de referência
+
+A aba Bases (`#bases`) lista as bases que o RECON reconhece, de qual arquivo
+cada uma veio e quantos registros tem. Qualquer uma pode ser substituída por uma
+planilha do usuário e fixada: `bases_core.js` converte as colunas para o formato
+que os leitores do `audit_core.js` esperam e `bases_app.js` guarda o resultado no
+IndexedDB (store `base_overrides`), de modo que a troca continue valendo depois
+de fechar o navegador. Enquanto existe substituição, a conferência de volume da
+base incorporada vira aviso na própria aba, em vez de bloquear a análise.
 
 ## Validação
 

@@ -295,18 +295,12 @@
   function workbookFor(file) { return entryFor(file) && entryFor(file).workbook || null; }
   function ready(file) { return Boolean(entryFor(file)); }
 
-  function close() {
-    if (typeof document === "undefined") return;
-    const overlay = document.getElementById("ld-compatibility-overlay");
-    const drawer = document.getElementById("ld-compatibility-drawer");
-    if (drawer) {
-      drawer.classList.remove("open");
-      drawer.setAttribute("aria-hidden", "true");
-      drawer.inert = true;
-      drawer.hidden = true;
-    }
-    if (overlay) overlay.hidden = true;
-  }
+  // A gaveta de confirmação manual foi removida da interface: a estrutura da LD
+  // passou a ser reconhecida automaticamente. open() e close() continuam
+  // existindo porque fazem parte da API pública do módulo, mas não há mais
+  // #ld-compatibility-overlay nem #ld-compatibility-drawer no index.html para
+  // manipular — procurá-los só produzia referências mortas.
+  function close() {}
 
   function open() {
     // A estrutura é reconhecida automaticamente. Não existe confirmação manual.

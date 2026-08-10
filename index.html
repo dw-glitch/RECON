@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html data-app="RECON" data-ops-ui="enabled" data-ui-architecture="scoped-components-v3" data-ui-generation="3" data-ui-version="1.26.28" data-version="1.26.28" data-functional-generation="4" lang="pt-BR">
+<html data-app="RECON" data-ops-ui="enabled" data-ui-architecture="scoped-components-v3" data-ui-generation="3" data-ui-version="1.26.29" data-version="1.26.29" data-functional-generation="4" lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
@@ -29,7 +29,7 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 }
 </script>
 <link href="design-system.css" rel="stylesheet"/><link href="legacy-compat.css" rel="stylesheet"/><link href="recon-ui.css" rel="stylesheet"/><link href="recon-final.css" rel="stylesheet"/>
-<meta content="1.26.28" name="application-version"/></head>
+<meta content="1.26.29" name="application-version"/></head>
 <body>
 <a class="skip-link" href="#app-main">Ir direto para o conteúdo principal</a>
 <header class="topbar">
@@ -72,6 +72,10 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <svg viewbox="0 0 24 24"><path d="M4 6h9l2 2h5v10H4zM9 12h7M12.5 9.5v5M6 21h12"></path></svg>
 <span><strong>Renomear PDFs</strong><small>Conferir antes e depois</small></span>
 </button>
+<button class="module-link" data-module="bases" type="button">
+<svg viewbox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"></ellipse><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"></path></svg>
+<span><strong>Bases de referência</strong><small>Ver, substituir e fixar</small></span>
+</button>
 <button class="module-link" id="recon-preferences-open" type="button">
 <svg viewbox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19 13.5v-3l-2-.7-.7-1.7.9-1.9-2.1-2.1-1.9.9-1.7-.7L10.5 2h-3l-.7 2.3-1.7.7-1.9-.9-2.1 2.1.9 1.9-.7 1.7-2 .7v3l2 .7.7 1.7-.9 1.9 2.1 2.1 1.9-.9 1.7.7.7 2.3h3l.7-2.3 1.7-.7 1.9.9 2.1-2.1-.9-1.9.7-1.7z"></path></svg>
 <span><strong>Preferências</strong><small>Backup, filtros e manutenção</small></span>
@@ -87,6 +91,7 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <button data-p1-open="databook" type="button"><span><strong>Revisar caminhos do Databook</strong><small>Confira as sugestões da aba escolhida e gere um relatório.</small><em>Precisa de uma LD</em></span></button>
 <button data-p1-open="titles" type="button"><span><strong>Corrigir títulos da LD</strong><small>Compare antes e depois e altere somente os títulos aprovados.</small><em>Gera uma nova cópia da LD</em></span></button>
 <button data-p1-open="renamer" type="button"><span><strong>Renomear PDFs</strong><small>Escolha um padrão simples, confira os novos nomes e baixe o pacote.</small><em>Não precisa de LD</em></span></button>
+<button data-p1-open="bases" type="button"><span><strong>Conferir as bases de referência</strong><small>Veja quais bases o RECON está usando, substitua por um arquivo seu e deixe fixado.</small><em>A troca fica salva neste navegador</em></span></button>
 </div>
 <div class="p1-home-note"><strong>Seus arquivos permanecem neste dispositivo.</strong><span>O RECON não envia PDFs ou planilhas para servidores.</span></div>
 </section>
@@ -474,8 +479,27 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <div class="renamer-package-summary" hidden id="renamer-package-summary" role="status"><strong>Último pacote gerado</strong><span id="renamer-package-summary-text">—</span></div>
 </section>
 </section>
+<section aria-labelledby="recon-module-title-bases" class="module-view bases-module" data-module-view="bases" hidden id="module-bases">
+<header class="module-heading"><div><span>REFERÊNCIA</span><h2 id="recon-module-title-bases">Bases de referência em uso</h2></div><p>Veja de qual arquivo cada base veio, substitua por uma versão sua e deixe fixada. A troca fica guardada neste navegador e continua valendo depois de fechar o RECON.</p></header>
+<nav aria-label="Resumo das bases" class="tag-summary">
+<div><span>Bases reconhecidas</span><strong id="bases-count-total">0</strong></div>
+<div class="ready"><span>Incorporadas</span><strong id="bases-count-bundled">0</strong></div>
+<div class="review"><span>Substituídas e fixadas</span><strong id="bases-count-pinned">0</strong></div>
+</nav>
+<div class="tag-official-evidence" id="bases-status" role="status">Lendo as bases fixadas neste navegador…</div>
+<div class="tag-toolbar">
+<div class="toolbar-spacer"></div>
+<button class="secondary-button" disabled id="bases-restore-all" type="button">Restaurar todas as incorporadas</button>
+<button class="primary-button" disabled id="bases-export" type="button">Baixar relatório das bases</button>
+</div>
+<div class="table-card"><div class="table-scroll"><table class="recon-data-table bases-table" id="bases-table"><thead><tr>
+<th scope="col">Base</th><th scope="col">Origem</th><th scope="col">Arquivo</th><th scope="col">Registros</th><th scope="col">Fixada em</th><th scope="col">Ações</th>
+</tr></thead><tbody id="bases-table-body"></tbody></table><empty-state class="empty-results" hidden id="bases-empty">Nenhuma base reconhecida.</empty-state></div></div>
+<p class="bases-note">A base que você fixa vale apenas neste navegador e neste computador — nada é enviado para servidor. Depois de substituir ou restaurar, recarregue a página para a mudança valer na próxima análise.</p>
+<input accept=".xlsx,.xls,.xlsm" hidden id="bases-file-input" type="file"/>
+</section>
 </main>
-<footer class="app-footer"><span>RECON 1.26.28 · Relações e Conformidade Documental</span><span>Arquivos processados somente neste navegador</span></footer></div>
+<footer class="app-footer"><span>RECON 1.26.29 · Relações e Conformidade Documental</span><span>Arquivos processados somente neste navegador</span></footer></div>
 <div class="drawer-overlay" hidden="" id="databook-assistant-overlay"></div><aside aria-hidden="true" aria-labelledby="databook-assistant-title" class="databook-assistant-drawer" hidden inert id="databook-assistant-drawer">
 <header class="drawer-header">
 <div><h2 id="databook-assistant-title">Assistente de Databook</h2><span id="databook-assistant-subtitle">Revisão nesta análise</span></div>

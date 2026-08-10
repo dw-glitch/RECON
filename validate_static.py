@@ -14,7 +14,10 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+# O script fica na raiz do repositório, ao lado de index.html e dos .js.
+# parents[2] apontava para dois diretórios acima, e a verificação abortava com
+# "index.html não encontrado" antes de conferir qualquer coisa.
+ROOT = Path(__file__).resolve().parent
 HTML_FILE = ROOT / "index.html"
 
 HTML_ID_RE = re.compile(r'\bid\s*=\s*["\']([^"\']+)["\']')

@@ -72,6 +72,12 @@
       "short_name": "Renomear",
       "description": "Conferir antes e depois",
       "url": "index.html#renamer"
+    },
+    {
+      "name": "Bases de referência",
+      "short_name": "Bases",
+      "description": "Ver, substituir e fixar as bases",
+      "url": "index.html#bases"
     }
   ]
 }
