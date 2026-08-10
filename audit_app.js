@@ -333,6 +333,15 @@
   // segura — nunca substitui o que o SCON/Apêndice já confirmaram com
   // confiança. Isso mantém a hierarquia: base controlada primeiro, memória
   // pessoal como último recurso antes de "sem sugestão".
+  // A caixa alta é resolvida aqui em vez de chamar Q.upperCaseTitle: se o
+  // navegador servir um audit_core.js de uma versão anterior — cache do
+  // Service Worker, aba aberta durante a publicação — a função não existe, e a
+  // chamada derrubava a análise inteira DEPOIS de ela já ter terminado,
+  // deixando na tela o resultado antigo e parcial.
+  function upperTitle(value) {
+    return String(value == null ? "" : value).toLocaleUpperCase("pt-BR");
+  }
+
   function applyTitleMemory(rows, memory) {
     if (!memory || !memory.size) return rows;
     rows.forEach((row) => {
@@ -342,7 +351,7 @@
       if (Q.norm(row.current || "") === Q.norm(entry.title)) return;
       // A memória guarda o texto exatamente como foi digitado; ao voltar como
       // sugestão ela segue a mesma regra das demais: título sempre em caixa alta.
-      row.proposed = Q.upperCaseTitle(entry.title);
+      row.proposed = upperTitle(entry.title);
       row.learnedTitle = true;
       if (row.confidence === "nenhuma") row.confidence = "media";
       row.reason = `${row.reason} Sugestão baseada numa correção sua anterior para ${row.tag ? "a mesma TAG" : "este documento"}.`;
@@ -801,7 +810,17 @@
       if (requestedKeys) titleOptions.documentKeys = requestedKeys;
       state.titleRows = window.RECONCompute ? await window.RECONCompute.run("title", "audit-titles", { index: state.index, references: mergedTitleReferences(), options: titleOptions }) : Q.auditTitles(state.index, mergedTitleReferences(), titleOptions);
       setProgress("title", 90, "Conferindo suas correções anteriores…");
-      applyTitleMemory(state.titleRows, await loadTitleMemory());
+      // A memória de correções é um enriquecimento opcional: ela só acrescenta
+      // sugestão a linhas que ficaram sem nenhuma. Uma falha aqui não pode
+      // descartar uma análise que já terminou — antes ela caía no catch de
+      // baixo e a tela continuava mostrando o resultado anterior, dando a
+      // impressão de que só parte da LD tinha sido analisada.
+      try {
+        applyTitleMemory(state.titleRows, await loadTitleMemory());
+      } catch (error) {
+        console.warn("RECON: memória de correções indisponível nesta análise", error);
+        showToast("A memória de correções não pôde ser consultada; a análise foi concluída com as bases controladas.", "warn");
+      }
       if (titlePager) titlePager.reset();
       state.titleSelected.clear();
       populateSheetSelect(els.titleSheet, state.titleRows);
