@@ -327,12 +327,29 @@
       && /\.(?:xlsx|xlsm|xls)$/i.test(file.name));
   }
 
+  // Cache separado para o catálogo offline (não depende de arquivo do usuário).
+  // Evita re-parsear os ~340 KB de base64 a cada clique em "Analisar".
+  let offlineCatalogCache = null;
+  let offlineCatalogFileRef = null; // Referência ao databookFile que gerou o cache atual.
+
   async function loadDatabookCatalog() {
     if (state.databookFile) {
+      // Catálogo personalizado: re-parseia só se o arquivo mudou.
+      if (offlineCatalogFileRef === state.databookFile && state.catalogEntries.length) {
+        return state.catalogEntries;
+      }
       const workbook = await readWorkbook(state.databookFile);
       state.catalogEntries = A.parseDatabookWorkbook(workbook, XLSX).entries;
+      offlineCatalogFileRef = state.databookFile;
+      offlineCatalogCache = null; // Invalida cache offline quando há arquivo custom.
       return state.catalogEntries;
     }
+    // Sem arquivo personalizado: usa o catálogo offline já parseado se disponível.
+    if (offlineCatalogCache !== null) {
+      state.catalogEntries = offlineCatalogCache;
+      return state.catalogEntries;
+    }
+    offlineCatalogFileRef = null;
     try {
       let buffer;
       const offline = window.RECONOfflineResources;
@@ -340,6 +357,7 @@
       buffer = offline.arrayBuffer("Caminho data book_Rev.B_VINI.xlsx");
       const workbook = window.RECONWorkbookWorker ? await window.RECONWorkbookWorker.readBuffer(buffer, "databook-rev-b", { cellDates: true }) : XLSX.read(buffer, { type: "array", cellDates: true });
       state.catalogEntries = A.parseDatabookWorkbook(workbook, XLSX).entries;
+      offlineCatalogCache = state.catalogEntries; // Guarda para próximas análises.
       return state.catalogEntries;
     } catch (_) {
       try {
@@ -347,13 +365,16 @@
         if (buffer) {
           const workbook = window.RECONWorkbookWorker ? await window.RECONWorkbookWorker.readBuffer(buffer, "databook-rev-b-offline", { cellDates: true }) : XLSX.read(buffer, { type: "array", cellDates: true });
           state.catalogEntries = A.parseDatabookWorkbook(workbook, XLSX).entries;
+          offlineCatalogCache = state.catalogEntries;
           return state.catalogEntries;
         }
       } catch (_) { /* contingência incorporada indisponível */ }
       state.catalogEntries = [];
+      offlineCatalogCache = []; // Não tenta de novo se não disponível.
       return [];
     }
   }
+
 
   async function loadHistoricalAllocations(files) {
     const rows = [];
