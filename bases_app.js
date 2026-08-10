@@ -248,9 +248,13 @@
   // ===================== INTERFACE =====================
 
   function actionsFor(state) {
-    const pinLabel = state.origin === "substituida" ? "Trocar arquivo" : "Substituir e fixar";
+    const pinLabel = state.origin === "substituida"
+      ? "Trocar arquivo"
+      : state.embedded === false ? "Carregar e fixar" : "Substituir e fixar";
+    // "Restaurar incorporada" só faz sentido quando existe uma incorporada.
+    const restoreLabel = state.embedded === false ? "Remover base carregada" : "Restaurar incorporada";
     const restore = state.origin === "substituida"
-      ? `<button class="text-action danger" data-base-restore="${escape(state.id)}" type="button">Restaurar incorporada</button>`
+      ? `<button class="text-action danger" data-base-restore="${escape(state.id)}" type="button">${restoreLabel}</button>`
       : "";
     return `<button class="secondary-button compact" data-base-pin="${escape(state.id)}" type="button">${pinLabel}</button>${restore}`;
   }
@@ -258,8 +262,10 @@
   function rowFor(state) {
     const pinned = state.origin === "substituida";
     const pill = pinned
-      ? '<quality-status class="state-pill review">Substituída e fixada</quality-status>'
-      : '<quality-status class="state-pill neutral">Incorporada</quality-status>';
+      ? `<quality-status class="state-pill review">${escape(state.originLabel)}</quality-status>`
+      : state.origin === "ausente"
+        ? '<quality-status class="state-pill warn">Não carregada</quality-status>'
+        : '<quality-status class="state-pill neutral">Incorporada</quality-status>';
     const drift = pinned && state.bundledCount && state.count !== state.bundledCount
       ? `<small>Incorporada tinha ${formatCount(state.bundledCount)}</small>`
       : "";

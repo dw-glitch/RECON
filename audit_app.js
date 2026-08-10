@@ -31,6 +31,7 @@
     titleReferences: null,
     titleSupplementalReferences: null,
     sconEscopoTitleReferences: null,
+    etTitleReferences: null,
     tagReferenceTitleReferences: null,
     sconReferenceFile: null,
     sconTitleReferences: null,
@@ -398,6 +399,9 @@
     const merged = mergeIndexedReferences(state.titleReferences, state.titleSupplementalReferences);
     merged.scon = state.sconTitleReferences || null;
     merged.sconEscopo = state.sconEscopoTitleReferences || null;
+    // A ET só existe se tiver sido carregada na aba Bases. Sem ela, a análise
+    // segue exatamente como antes, pelas demais fontes.
+    merged.etTitles = state.etTitleReferences || null;
     merged.tagReference = state.tagReferenceTitleReferences || null;
     return merged;
   }
@@ -414,7 +418,11 @@
     const sconEscopoText = sconEscopoCount ? `${sconEscopoCount.toLocaleString("pt-BR")} TAGs · ${sconEscopoEapCount.toLocaleString("pt-BR")} EAPs no SCON ESCOPO` : "SCON ESCOPO indisponível";
     const appendixText = appendixCount ? `${appendixCount.toLocaleString("pt-BR")} TAGs no Apêndice 3 Rev.B` : "Apêndice 3 Rev.B indisponível";
     const extraText = extraCount ? ` · ${extraCount.toLocaleString("pt-BR")} referências adicionais` : "";
-    els.titleBaseStatus.textContent = `${baseText} · ${sconText} · ${sconEscopoText} · ${appendixText}${extraText}`;
+    // A ET vem primeiro na linha porque é a fonte de maior prioridade: quem
+    // olha a análise precisa saber de imediato se ela está participando.
+    const etCount = state.etTitleReferences && state.etTitleReferences.uniqueDocumentCount || 0;
+    const etText = etCount ? `ET com ${etCount.toLocaleString("pt-BR")} títulos normativos` : "ET não carregada";
+    els.titleBaseStatus.textContent = `${etText} · ${baseText} · ${sconText} · ${sconEscopoText} · ${appendixText}${extraText}`;
     if (els.titleSconReferenceMeta && !state.sconReferenceFile) {
       els.titleSconReferenceMeta.textContent = sconCount ? `Base incorporada · ${sconCount.toLocaleString("pt-BR")} códigos` : "Base incorporada indisponível";
     }
@@ -1301,6 +1309,16 @@
         }
         if (replaced("scon-escopo") && !parsed.entries.length) throw new Error("O SCON ESCOPO que você fixou não trouxe nenhuma linha aproveitável.");
         state.sconEscopoTitleReferences = parsed;
+        updateTitleReferenceStatus();
+      }),
+      Promise.resolve().then(() => {
+        // A ET não tem versão incorporada: ou o usuário carregou na aba Bases,
+        // ou ela simplesmente não participa desta análise.
+        const source = bases && bases.catalog("et-titles");
+        if (!source) { state.etTitleReferences = null; return; }
+        const parsed = Q.parseEtTitleCatalog(source);
+        if (!parsed.uniqueDocumentCount) throw new Error("A ET que você carregou não trouxe nenhum código com título aproveitável.");
+        state.etTitleReferences = parsed;
         updateTitleReferenceStatus();
       }),
       Promise.resolve().then(() => {
