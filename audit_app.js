@@ -340,7 +340,9 @@
       const entry = memory.get(titleMemoryKey(row));
       if (!entry || !entry.title) return;
       if (Q.norm(row.current || "") === Q.norm(entry.title)) return;
-      row.proposed = entry.title;
+      // A memória guarda o texto exatamente como foi digitado; ao voltar como
+      // sugestão ela segue a mesma regra das demais: título sempre em caixa alta.
+      row.proposed = Q.upperCaseTitle(entry.title);
       row.learnedTitle = true;
       if (row.confidence === "nenhuma") row.confidence = "media";
       row.reason = `${row.reason} Sugestão baseada numa correção sua anterior para ${row.tag ? "a mesma TAG" : "este documento"}.`;

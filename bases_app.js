@@ -65,11 +65,26 @@
 
   // ===================== PERSISTÊNCIA =====================
 
+  // Uma falha transitória (outra aba segurando o upgrade) merece nova
+  // tentativa; uma falha estrutural, não. Sem esse limite, cada chamada de
+  // ready() reabria o banco e falhava de novo, enchendo o console de erro
+  // repetido a cada análise.
+  const MAX_TENTATIVAS = 3;
+  let tentativas = 0;
+
   async function load() {
     if (loaded) return overrides;
     if (loadPromise) return loadPromise;
+    if (loadError && tentativas >= MAX_TENTATIVAS) return overrides;
     loadPromise = (async () => {
       try {
+        const store = await (await db()).open();
+        // A store pode não existir se o banco ficou numa versão antiga: nesse
+        // caso a transação lançaria NotFoundError. Detectar antes dá uma
+        // mensagem que diz o que fazer, em vez de um erro de baixo nível.
+        if (store && store.objectStoreNames && !store.objectStoreNames.contains(STORE)) {
+          throw new Error("O espaço das bases fixadas ainda não existe neste navegador. Feche as outras abas do RECON e recarregue a página.");
+        }
         const records = await (await db()).getAll(STORE);
         overrides.clear();
         (records || []).forEach((record) => {
@@ -77,14 +92,16 @@
         });
         loadError = null;
         loaded = true;
+        tentativas = 0;
       } catch (error) {
         // Sem IndexedDB o RECON continua funcionando com as bases incorporadas:
         // falhar aqui não pode impedir a abertura de nenhum módulo. Mas `loaded`
         // continua falso de propósito — marcar como carregado faria a análise
         // usar a base incorporada em silêncio, enquanto o usuário acredita que
-        // a base que ele fixou está valendo. Assim a próxima chamada tenta de novo.
+        // a base que ele fixou está valendo.
+        tentativas += 1;
         loadError = error;
-        console.warn("RECON Bases: não foi possível ler as bases fixadas.", error);
+        if (tentativas === 1) console.warn("RECON Bases: não foi possível ler as bases fixadas.", error);
       }
       loadPromise = null;
       return overrides;

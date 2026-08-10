@@ -275,7 +275,14 @@
   var RECONDB = {
     db: null,
     DB_NAME: "RECONStorage",
-    DB_VERSION: 3,
+    // v4: a v3 foi publicada duas vezes com conteúdo diferente — primeiro
+    // criando apenas ld_sheet_profiles e depois também base_overrides. Quem
+    // abriu o app entre as duas ficou com um banco marcado como v3 sem a
+    // segunda store, e onupgradeneeded não roda de novo na mesma versão: toda
+    // leitura de bases quebrava com NotFoundError. Subir o número força o
+    // upgrade, e a criação condicional abaixo repõe só o que estiver faltando,
+    // sem tocar nos dados já gravados.
+    DB_VERSION: 4,
 
     open: function () {
       return new Promise(function (resolve, reject) {
