@@ -1952,6 +1952,14 @@
     return cleanType;
   }
 
+  // O título recomendado sai sempre em caixa alta, qualquer que seja a caixa
+  // usada na base de origem — SCON TAG SGP, SCON ESCOPO e Apêndice 3 gravam a
+  // descrição de formas diferentes, e a LD precisa de um padrão único.
+  // toLocaleUpperCase("pt-BR") preserva os acentos: "ção" vira "ÇÃO".
+  function upperCaseTitle(value) {
+    return String(value == null ? "" : value).toLocaleUpperCase("pt-BR");
+  }
+
   function buildTitle(type, description, tag) {
     const cleanTag = cleanTitlePart(tag);
     let cleanDescription = stripLeadingTitleTags(removeParentheticalContent(description), [cleanTag]);
@@ -1965,7 +1973,7 @@
       if (!parts.some((current) => norm(current) === norm(part) || norm(current).includes(norm(part)))) parts.push(part);
     });
     if (cleanTag) parts.push(cleanTag);
-    return parts.join(" - ").replace(/\s+/g, " ").trim();
+    return upperCaseTitle(parts.join(" - ").replace(/\s+/g, " ").trim());
   }
 
   function referenceFor(record, references) {
@@ -2496,6 +2504,7 @@
     stripLeadingTitleTags,
     trimTypeDescriptionOverlap,
     buildTitle,
+    upperCaseTitle,
     auditTitles,
     summarize,
   };

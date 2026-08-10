@@ -207,10 +207,40 @@
     return true;
   }
 
+  // O botão "Analisar" depende de cinco condições. Quando alguma falta ele
+  // simplesmente fica cinza, e quem colou a relação e clicou não recebe
+  // nenhuma explicação — parece que o app travou. Esta lista diz, com as
+  // mesmas palavras dos campos da tela, o que ainda falta.
+  function missingRequirements() {
+    const missing = [];
+    if (!currentLdFiles().length) missing.push("LDs controladas");
+    if (!state.controlFile) missing.push("controle de solicitações");
+    if (!hasRelation()) missing.push("relação de documentos");
+    if (!els.date.value) missing.push("data da alocação");
+    if (!codeIsValid()) missing.push("número da alocação válido");
+    return missing;
+  }
+
   function updateReadyName() {
     const parsed = A.parseAllocationCode(els.code.value);
-    els.readyName.textContent = parsed ? `${parsed.code}.xlsx` : (state.control ? "Número da alocação inválido" : "Aguardando controle");
-    els.readyName.classList.toggle("warning", Boolean(els.code.value && !parsed));
+    const missing = missingRequirements();
+
+    if (state.busy) {
+      els.readyName.textContent = "Analisando…";
+      els.readyName.classList.remove("warning");
+      return;
+    }
+    if (missing.length) {
+      els.readyName.textContent = missing.length === 1
+        ? `Falta ${missing[0]} para analisar`
+        : `Faltam ${missing.slice(0, -1).join(", ")} e ${missing[missing.length - 1]} para analisar`;
+      els.readyName.classList.add("warning");
+      els.readyName.title = "O botão Analisar só habilita quando todos estes itens estiverem preenchidos.";
+      return;
+    }
+    els.readyName.textContent = parsed ? `${parsed.code}.xlsx` : "Número da alocação inválido";
+    els.readyName.classList.toggle("warning", !parsed);
+    els.readyName.title = "";
   }
 
   function updateInputs() {

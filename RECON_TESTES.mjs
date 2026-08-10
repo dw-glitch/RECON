@@ -561,4 +561,68 @@ check("a coluna de ações da tabela de bases continua sendo uma célula de tabe
   assert.match(css, /\.bases-table \{ width: 100%; min-width: 62rem/, "tabela de bases sem largura mínima para rolar em telas estreitas");
 });
 
+// ===================== TÍTULO SEMPRE EM CAIXA ALTA =====================
+
+check("o título recomendado sai em caixa alta qualquer que seja a caixa da base", () => {
+  const Q = createRequire(import.meta.url)("./audit_core.js");
+  // As três bases gravam a descrição com caixas diferentes; a LD precisa de um
+  // padrão único, então a composição normaliza no final.
+  assert.equal(Q.buildTitle("bomba de água gelada", "hvac se-3200", "B-32110A"),
+    "BOMBA DE ÁGUA GELADA - HVAC SE-3200 - B-32110A");
+  assert.equal(Q.buildTitle("Vaso Separador", "unidade de tratamento", "V-32001"),
+    "VASO SEPARADOR - UNIDADE DE TRATAMENTO - V-32001");
+  // toLocaleUpperCase("pt-BR") preserva acento; toUpperCase() de locale errado
+  // ou uma normalização NFD perderiam o "Ç" e o "Ã".
+  assert.equal(Q.upperCaseTitle("execução de canaleta"), "EXECUÇÃO DE CANALETA");
+  assert.equal(Q.buildTitle("", "caixa de inspeção", "CXINSP-110"), "CAIXA DE INSPEÇÃO - CXINSP-110");
+});
+
+check("a sugestão vinda da memória de correções também sai em caixa alta", () => {
+  const app = read("audit_app.js");
+  // applyTitleMemory não passa por buildTitle: sem isto, uma correção antiga
+  // digitada em minúscula voltaria como sugestão fora do padrão.
+  assert.match(app, /row\.proposed = Q\.upperCaseTitle\(entry\.title\)/, "memória de correções devolve o texto sem normalizar a caixa");
+});
+
+check("o caminho do Databook não é afetado pela regra de caixa alta", () => {
+  const source = read("audit_core.js");
+  // O mesmo arquivo monta caminhos de Databook, que são pastas e não títulos.
+  const trecho = source.slice(source.indexOf("proposed = suggestion.databook"), source.indexOf("proposed = suggestion.databook") + 120);
+  assert.doesNotMatch(trecho, /upperCaseTitle/, "o caminho do Databook não pode ser convertido para caixa alta");
+});
+
+// ===================== BANCO LOCAL =====================
+
+check("a versão do banco avança quando uma store nova é adicionada", () => {
+  const enhancements = read("recon_enhancements.js");
+  // A v3 foi publicada duas vezes com conteúdo diferente: quem abriu o app
+  // entre as duas ficou com um banco marcado como v3 sem base_overrides, e
+  // onupgradeneeded não roda de novo na mesma versão.
+  assert.match(enhancements, /DB_VERSION:\s*([4-9]|\d{2,})/, "a versão do banco não avançou depois de somar base_overrides à v3");
+  for (const store of ["ld_sheet_profiles", "base_overrides"]) {
+    assert.match(enhancements, new RegExp(`objectStoreNames\\.contains\\("${store}"\\)`), `store ${store} não é criada de forma condicional`);
+  }
+});
+
+check("a leitura das bases não repete a tentativa indefinidamente", () => {
+  const app = read("bases_app.js");
+  // Sem limite, cada chamada de ready() reabria o banco e falhava de novo,
+  // enchendo o console a cada análise.
+  assert.match(app, /MAX_TENTATIVAS/, "sem limite de tentativas na leitura das bases");
+  assert.match(app, /objectStoreNames && !store\.objectStoreNames\.contains\(STORE\)/, "não detecta store ausente antes de abrir a transação");
+});
+
+// ===================== ALOCAÇÃO =====================
+
+check("a alocação diz o que falta quando o botão Analisar está desabilitado", () => {
+  const app = read("allocation_app.js");
+  assert.match(app, /function missingRequirements/, "sem enumeração dos requisitos pendentes");
+  // As cinco condições do disabled precisam estar todas cobertas pela mensagem,
+  // senão o usuário fica sem saber qual delas está travando a análise.
+  for (const termo of ["LDs controladas", "controle de solicitações", "relação de documentos", "data da alocação", "número da alocação"]) {
+    assert.ok(app.includes(termo), `mensagem de pendência não cita "${termo}"`);
+  }
+  assert.match(app, /para analisar/, "a mensagem não explica que o botão depende dos itens");
+});
+
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));
