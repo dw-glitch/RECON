@@ -1,6 +1,6 @@
-// RECON Service Worker v1.26.33
+// RECON Service Worker v1.26.34
 // Provides offline support, caching, and PWA installation capabilities
-const VERSION = "1.26.33";
+const VERSION = "1.26.34";
 const CACHE_NAME = `recon-cache-v${VERSION}`;
 const STATIC_CACHE = `recon-static-v${VERSION}`;
 const DATA_CACHE = `recon-data-v${VERSION}`;
@@ -68,6 +68,7 @@ const MODULE_URLS = [
   "databook_catalog.js",
   "databook_allocation_sources.js",
   "non_tagged_title_rules.js",
+  "et_report_titles.js",
   "audit_core.js",
   "audit_app.js",
   "tag_conference_core.js",

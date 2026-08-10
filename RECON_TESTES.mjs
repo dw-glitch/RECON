@@ -653,59 +653,72 @@ check("a alocação diz o que falta quando o botão Analisar está desabilitado"
   assert.match(app, /para analisar/, "a mensagem não explica que o botão depende dos itens");
 });
 
-// ===================== ET COMO FONTE NORMATIVA DO TÍTULO =====================
+// ===================== ET: TABELA 13 COMO TÍTULO NORMATIVO =====================
 
-check("a ET é registrada como base sem versão incorporada", () => {
+check("a TABELA 13 da ET Rev. P está incorporada e registrada como base", () => {
+  assert.ok(exists("et_report_titles.js"), "catálogo da ET ausente");
+  const require2 = createRequire(import.meta.url);
+  const catalogo = require2("./et_report_titles.js") || globalThis.RECONEtReportTitles;
+  const cat = globalThis.RECONEtReportTitles || catalogo;
+  assert.equal(cat.revision, "P", "a ET incorporada precisa ser a revisão mais recente");
+  assert.match(cat.sourceFile, /ET-5290\.00-22000-912-1LV-001/);
+  assert.ok(cat.rows.length >= 320, `a TABELA 13 trouxe apenas ${cat.rows.length} códigos`);
+
   const et = Bases.descriptor("et-titles");
-  assert.ok(et, "a ET não está no registro de bases");
-  assert.equal(et.embedded, false, "a ET não pode se apresentar como incorporada ao RECON");
-  const semCarga = Bases.status(et, null);
-  assert.equal(semCarga.origin, "ausente");
-  assert.equal(semCarga.originLabel, "Não carregada");
-  // Código e título são obrigatórios; sem os dois a ET não decide nada.
-  const obrigatorias = et.columns.filter((c) => c.required).map((c) => c.label);
-  assert.deepEqual(obrigatorias, ["Código documental", "Título"]);
+  assert.equal(et.bundled.revision, "P");
+  assert.equal(et.bundled.count, cat.rows.length, "o registro de bases discorda do catálogo incorporado");
+
+  // Precisa carregar no app, no Worker e no cache offline.
+  assert.match(read("recon_module_loader.js"), /"et_report_titles\.js"/, "fora do carregamento do módulo de auditoria");
+  assert.match(read("recon_compute_worker.js"), /"et_report_titles\.js"/, "fora do Worker, onde auditTitles roda");
+  assert.ok(sw.includes('"et_report_titles.js"'), "fora do precache do Service Worker");
 });
 
-check("a ET carregada vira o título recomendado, com a TAG depois", () => {
+check("o código do relatório é o 6º grupo e a TAG vem depois", () => {
   const Q = createRequire(import.meta.url)("./audit_core.js");
-  const doc = "C1O_RNEST_U32_3.1.1.1_TUB_RIR_B-32110A";
-  const et = Q.parseEtTitleCatalog({
-    columns: ["document", "title", "discipline", "documentType", "row"],
-    rows: [[doc, "bomba de água gelada normativa", "TUB", "RIR", 2]],
-    sourceFile: "ET.xlsx", sheet: "ET",
-  });
-  assert.equal(et.uniqueDocumentCount, 1);
+  assert.equal(Q.reportCodeFromDocument("C1O_RNEST_U32_3.1.1.1_CVL_RIR_NT-SE-3200-CXESC002"), "RIR");
+  assert.equal(Q.reportCodeFromDocument("C1O_RNEST_U32_3.1.1.1_ELE_RTDMT_MT-4501"), "RTDMT");
+  // Códigos compostos da própria norma, como RSOFT-CPS, não podem ser cortados.
+  assert.equal(Q.reportCodeFromDocument("C1O_RNEST_U32_3.1.1.1_INS_RSOFT-CPS_XX-1"), "RSOFT-CPS");
+  assert.equal(Q.reportCodeFromDocument("SEM_GRUPOS"), "", "código curto demais não pode inventar sigla");
+});
 
+check("o título da ET entra antes da TAG, em caixa alta", () => {
+  const require2 = createRequire(import.meta.url);
+  require2("./et_report_titles.js");
+  const Q = require2("./audit_core.js");
+  const et = Q.parseEtReportTitles(globalThis.RECONEtReportTitles);
+  assert.equal(et.revision, "P");
+  assert.ok(et.count >= 320);
+  assert.equal(et.byCode.get("RIR").title, "Relatório de Inspeção de Recebimento");
+
+  const doc = "C1O_RNEST_U32_3.1.1.1_TUB_RNC_B-32110A";
   const index = { documents: [{ documentKey: doc.toUpperCase(), group: { records: [{ document: doc, documentKey: doc.toUpperCase(), title: "documento", discipline: "TUB", sheet: "TÉCNICA", rowNumber: 2, revision: "0" }], history: [] } }] };
-  const rows = Q.auditTitles(index, { byDocument: new Map(), byTagDiscipline: new Map(), etTitles: et }, null);
-  // O título da ET entra antes da TAG e sai em caixa alta.
-  assert.match(rows[0].proposed, /BOMBA DE ÁGUA GELADA NORMATIVA - B-32110A$/, "o título da ET não foi usado ou a TAG não ficou no fim");
+  const rows = Q.auditTitles(index, { byDocument: new Map(), byTagDiscipline: new Map(), etReportTitles: et }, null);
+  assert.match(rows[0].proposed, /^RELATÓRIO DE NÃO CONFORMIDADE\b/, "o título da ET não abriu o título recomendado");
+  assert.match(rows[0].proposed, /B-32110A$/, "a TAG precisa continuar no fim");
 });
 
-check("um código com dois títulos diferentes na ET não escolhe nenhum", () => {
+check("um código com dois títulos na ET se cala", () => {
   const Q = createRequire(import.meta.url)("./audit_core.js");
-  const doc = "C1O_RNEST_U32_3.1.1.1_TUB_RIR_B-32110A";
-  const et = Q.parseEtTitleCatalog({
-    columns: ["document", "title", "row"],
-    rows: [[doc, "bomba de água gelada", 2], [doc, "bomba de água quente", 3]],
+  const et = Q.parseEtReportTitles({ columns: ["code", "title"], rows: [["XX", "Relatório A"], ["XX", "Relatório B"]] });
+  const entrada = et.byCode.get("XX");
+  assert.equal(entrada.ambiguous, true);
+  assert.equal(entrada.title, "", "a norma ambígua não pode escolher um dos títulos");
+});
+
+check("sem a ET a análise segue e não perde linhas", () => {
+  const Q = createRequire(import.meta.url)("./audit_core.js");
+  const documents = Array.from({ length: 300 }, (_, i) => {
+    const doc = `C1O_RNEST_U32_3.1.1.1_TUB_RIR_B-${32000 + i}`;
+    return { documentKey: doc.toUpperCase(), group: { records: [{ document: doc, documentKey: doc.toUpperCase(), title: i % 4 === 0 ? "documento" : `BOMBA ${i}`, discipline: "TUB", sheet: "TÉCNICA", rowNumber: i + 2, revision: "0" }], history: [] } };
   });
-  // Inventar norma escolhendo um dos dois seria pior do que se calar.
-  const entrada = et.byDocument.get([...et.byDocument.keys()][0]);
-  assert.equal(entrada.ambiguous, true, "a ET ambígua deveria se marcar como tal");
-  assert.equal(entrada.title, "", "a ET ambígua não pode devolver um dos títulos");
-});
-
-check("sem ET carregada a análise segue pelas demais fontes", () => {
-  const Q = createRequire(import.meta.url)("./audit_core.js");
-  const doc = "C1O_RNEST_U32_3.1.1.1_TUB_RIR_B-32110A";
-  const index = { documents: [{ documentKey: doc.toUpperCase(), group: { records: [{ document: doc, documentKey: doc.toUpperCase(), title: "documento", discipline: "TUB", sheet: "TÉCNICA", rowNumber: 2, revision: "0" }], history: [] } }] };
-  const semEt = Q.auditTitles(index, { byDocument: new Map(), byTagDiscipline: new Map() }, null);
-  assert.equal(semEt.length, 1, "a ausência da ET não pode reduzir as linhas analisadas");
+  const semEt = Q.auditTitles({ documents }, { byDocument: new Map(), byTagDiscipline: new Map() }, null);
+  assert.equal(semEt.length, 300, "a ausência da ET reduziu as linhas analisadas");
 
   const app = read("audit_app.js");
-  assert.match(app, /const source = bases && bases\.catalog\("et-titles"\)/, "a ET não é lida da aba Bases");
-  assert.match(app, /merged\.etTitles = state\.etTitleReferences \|\| null/, "a ET não chega às referências da análise");
+  assert.match(app, /Q\.parseEtReportTitles\(source\)/, "a ET não é lida no carregamento das bases");
+  assert.match(app, /merged\.etReportTitles = state\.etTitleReferences \|\| null/, "a ET não chega às referências da análise");
 });
 
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));

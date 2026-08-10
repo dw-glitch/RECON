@@ -147,24 +147,26 @@
       ],
     },
     {
-      // Única base sem versão incorporada: a ET é o documento contratual que
-      // define o título normativo de cada código, e o RECON não pode embutir
-      // uma cópia dela. Enquanto não for carregada, a análise segue como antes.
+      // A ET é a norma de codificação do contrato. A TABELA 13 dela liga o
+      // código do relatório (6º grupo do código documental) ao título oficial,
+      // que é justamente o que precede a TAG (7º grupo) no título do documento.
       id: "et-titles",
-      label: "ET — títulos normativos",
-      summary: "Especificação Técnica com o título oficial de cada código documental. É a fonte de maior prioridade do título recomendado.",
+      label: "ET — TABELA 13, títulos dos relatórios",
+      summary: "Norma de codificação do contrato. Dá o título oficial de cada código de relatório, que entra antes da TAG no título do documento.",
       consumer: "Corrigir títulos",
       kind: "rows-catalog",
-      schema: "recon.et-title-catalog.v1",
-      embedded: false,
-      bundled: { source: "Nenhuma — carregue a sua ET", sheet: "—", count: 0, unit: "títulos" },
+      schema: "recon.et-report-titles.v1",
+      bundled: {
+        source: "ET-5290.00-22000-912-1LV-001 Rev. P",
+        sheet: "TABELA 13", revision: "P", version: "2026-06-17",
+        count: 325, unit: "códigos de relatório",
+      },
       minRows: 1,
+      // Uma revisão mais nova da ET pode ser carregada como planilha com estas
+      // duas colunas, sem precisar de nova versão do RECON.
       columns: [
-        column("document", "Código documental", ["documento", "codigo", "documento planilha1", "codigo do documento"], true),
-        column("title", "Título", ["descricao", "titulo do documento", "descricao do documento", "denominacao"], true),
-        column("discipline", "Disciplina", [], false),
-        column("documentType", "Tipo de documento", ["tipo"], false),
-        column("row", "Linha", [], false),
+        column("code", "Código", ["codigo", "codigo do relatorio", "sigla"], true),
+        column("title", "Título", ["titulo do relatorio", "descricao", "denominacao"], true),
       ],
     },
     {
