@@ -255,7 +255,7 @@
 <td><strong>${escape(state.source)}</strong><small>aba ${escape(state.sheet)}</small></td>
 <td><strong>${volume}</strong><small>${escape(state.unit)}</small>${drift}</td>
 <td>${escape(formatDate(state.pinnedAt))}</td>
-<td class="bases-actions">${actionsFor(state)}</td>
+<td class="bases-actions"><div class="bases-actions-stack">${actionsFor(state)}</div></td>
 </tr>`;
   }
 

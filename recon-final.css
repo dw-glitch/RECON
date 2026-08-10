@@ -1428,19 +1428,264 @@ body.p2-dark .app-shortcut-link:hover {
   line-height: 1.35;
 }
 .bases-table .state-pill { display: inline-block; margin-bottom: 4px; }
-.bases-table .bases-actions {
+/* O empilhamento fica num wrapper, nunca no proprio <td>: um td com
+   display:flex deixa de ser table-cell, ignora a largura da coluna e
+   transborda para fora do cartao. */
+.bases-table td.bases-actions { white-space: normal; }
+.bases-table .bases-actions-stack {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  align-items: flex-start;
-  white-space: nowrap;
+  align-items: stretch;
 }
+.bases-table .bases-actions-stack > * { width: 100%; }
 .bases-note {
   margin: 12px 0 0;
   color: var(--ui-muted, #5a6b7a);
   font-size: 0.86rem;
   line-height: 1.5;
 }
+
+
+/* =====================================================================
+   AJUSTES DE USABILIDADE — 1.26.30
+   Três defeitos vinham da mesma origem: regras escritas em reconui.css e
+   reconfinal.css, que NÃO são as folhas carregadas pelo index.html (ele
+   carrega recon-ui.css e recon-final.css). Sem elas, os blocos afetados
+   caíam para o layout padrão do navegador e apareciam como texto corrido.
+   ===================================================================== */
+
+/* --- 1. Fonte da descrição do título ---------------------------------
+   Sem estas regras os três rádios viravam um parágrafo único: caixa de
+   seleção colada no texto, títulos e descrições sem separação nenhuma. */
+html[data-app="RECON"] .title-source-mode {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+/* --color-surface e --color-border não existem neste projeto: os tokens
+   reais são --ui-surface/--ui-border, que trocam junto com o tema. Usar o
+   fallback #fff deixava o cartão branco com texto quase branco no modo
+   escuro — ilegível. O mesmo vale para o bloco de escopo logo abaixo. */
+html[data-app="RECON"] .title-source-mode > label,
+html[data-app="RECON"] .title-scope-mode > label {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: .7rem;
+  padding: .85rem;
+  border: 1px solid var(--ui-border, var(--border-1, #d6e0e7));
+  border-radius: .75rem;
+  background: var(--ui-surface, var(--surface-1, #fff));
+  color: var(--ui-text, var(--text-1, #243b4d));
+  cursor: pointer;
+}
+
+html[data-app="RECON"] .title-source-mode > label:has(input:checked) {
+  border-color: var(--brand-500, #2c82b8);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-500, #2c82b8) 14%, transparent);
+}
+
+html[data-app="RECON"] .title-source-mode input { margin-top: .2rem; flex: 0 0 auto; }
+html[data-app="RECON"] .title-source-mode strong,
+html[data-app="RECON"] .title-source-mode small { display: block; }
+html[data-app="RECON"] .title-source-mode small,
+html[data-app="RECON"] .title-scope-mode small {
+  margin-top: .2rem;
+  color: var(--ui-muted, var(--text-2, #667b8d));
+  line-height: 1.35;
+}
+
+/* --- 2. Campo de título proposto ------------------------------------- */
+html[data-app="RECON"][data-functional-generation="4"] .title-proposed-input {
+  display: block;
+  width: 100%;
+  min-height: 3.4em;
+  margin: 0;
+  padding: .5em .6em;
+  resize: vertical;
+  border: 1px solid var(--f4-border);
+  border-radius: .5em;
+  background: var(--f4-surface);
+  color: var(--text, #243b4d);
+  font: inherit;
+  font-size: .88rem;
+  line-height: 1.5;
+}
+html[data-app="RECON"][data-functional-generation="4"] .title-proposed-input:focus-visible {
+  outline: 2px solid var(--f4-ready);
+  outline-offset: 1px;
+}
+html[data-app="RECON"][data-functional-generation="4"] .title-proposed-auto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .35em .5em;
+  margin-top: .55em;
+  color: var(--f4-muted);
+  font-size: .78rem;
+  line-height: 1.5;
+}
+html[data-app="RECON"][data-functional-generation="4"] .title-proposed-auto small {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+html[data-app="RECON"][data-functional-generation="4"] .title-proposed-auto button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--f4-info);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* --- 3. Caixas de seleção -------------------------------------------
+   Eram 16px coladas ao texto por 3px de margem. Numa tela de escolha
+   ("Toda a LD" / "Códigos específicos") isso deixa o alvo pequeno e o
+   texto grudado no controle. 18px com folga de 0.7rem dá respiro sem
+   mudar o desenho das telas. */
+html[data-app="RECON"] .module-view input[type="checkbox"],
+html[data-app="RECON"] .module-view input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand-600, #0c648f);
+  cursor: pointer;
+}
+
+html[data-app="RECON"] .module-view label:has(> input[type="checkbox"]),
+html[data-app="RECON"] .module-view label:has(> input[type="radio"]) {
+  align-items: center;
+  gap: .55rem;
+}
+
+/* Numa tabela, a caixa continua compacta: aumentar a linha inteira só
+   para caber um alvo maior faria a lista render muito menos por tela. */
+html[data-app="RECON"] .recon-data-table input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+}
+
+/* --- 4. Barra lateral -----------------------------------------------
+   A altura é presa em calc(100vh - 78px) sem rolagem: com a aba Bases o
+   menu passou a ser mais alto que a janela e "Dashboard" ficava cortado
+   pela metade, sem nenhuma forma de alcançá-lo. */
+html[data-app="RECON"] .module-sidebar {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* --- 5. Cabeçalho do módulo -----------------------------------------
+   O texto explicativo dividia a linha com o título e era espremido contra
+   a borda direita, com o divisor sobrando solto ao lado. Passa a ocupar a
+   largura inteira, abaixo do título. */
+html[data-app="RECON"] .module-heading {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: .35rem;
+  padding-bottom: 1rem;
+}
+
+html[data-app="RECON"] .module-heading p {
+  max-width: 78ch;
+  color: var(--ui-muted, #5a6b7a);
+  font-size: .88rem;
+  line-height: 1.5;
+}
+
+/* O vão entre o cabeçalho e o primeiro cartão do módulo passava de 100px
+   em telas de 1280, empurrando o conteúdo útil para fora da primeira
+   dobra sem nenhum ganho de leitura. */
+html[data-app="RECON"] .module-view > .workspace,
+html[data-app="RECON"] .module-view > .module-workspace { margin-top: .25rem; }
+
+/* --- 6. Painel de controle da alocação -------------------------------
+   O auto-fit aceitava colunas de 12rem (192px). Com quatro painéis lado a
+   lado numa tela de 1280 sobravam cerca de 100px úteis por coluna: os
+   títulos quebravam em três linhas ("Consultar / caminho / Databook") e a
+   descrição virava uma tira ilegível. 17rem é a menor largura em que o
+   título de cada painel cabe em duas linhas — o número de colunas passa a
+   se ajustar sozinho ao tamanho real da janela. */
+html[data-app="RECON"] .allocation-control-panel {
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+}
+
 @media (max-width: 60rem) {
-  .bases-table .bases-actions { white-space: normal; }
+  html[data-app="RECON"] .title-source-mode { grid-template-columns: 1fr; }
+}
+
+/* --- 7. Tabela de bases ----------------------------------------------
+   A coluna de ações escapava para fora do cartão e os cabeçalhos curtos
+   quebravam no meio da palavra ("REGIST/ROS", "FIXAD/A EM"). */
+/* Abaixo de ~1180px as seis colunas não cabem sem espremer o nome da
+   base contra a coluna de ações. Em vez de encolher tudo, a tabela
+   ganha largura mínima e a área rolável desliza na horizontal — mesmo
+   padrão já usado pela tabela de conferência de TAGs. */
+html[data-app="RECON"] .bases-table { width: 100%; min-width: 62rem; table-layout: fixed; }
+html[data-app="RECON"] .bases-table th { white-space: normal; overflow-wrap: normal; word-break: normal; }
+html[data-app="RECON"] .bases-table th:nth-child(1),
+html[data-app="RECON"] .bases-table td:nth-child(1) { width: 24%; }
+html[data-app="RECON"] .bases-table th:nth-child(2),
+html[data-app="RECON"] .bases-table td:nth-child(2) { width: 14%; }
+html[data-app="RECON"] .bases-table th:nth-child(3),
+html[data-app="RECON"] .bases-table td:nth-child(3) { width: 26%; }
+html[data-app="RECON"] .bases-table th:nth-child(4),
+html[data-app="RECON"] .bases-table td:nth-child(4) { width: 11%; }
+html[data-app="RECON"] .bases-table th:nth-child(5),
+html[data-app="RECON"] .bases-table td:nth-child(5) { width: 11%; }
+html[data-app="RECON"] .bases-table th:nth-child(6),
+html[data-app="RECON"] .bases-table td:nth-child(6) { width: 14%; }
+html[data-app="RECON"] .bases-table td { overflow-wrap: anywhere; }
+/* "conclusões" e "referências" quebravam como "conclusõe/s". */
+html[data-app="RECON"] .bases-table td:nth-child(4) small { overflow-wrap: normal; hyphens: none; }
+html[data-app="RECON"] .bases-table .bases-actions-stack button {
+  width: 100%;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+/* --- 8. Selo das seções de escopo e fonte ----------------------------
+   O selo era um círculo de 2rem com texto dentro: "ESCOPO" e "FONTE" não
+   cabiam e apareciam cortados como "ESCO" e "FONT". Vira uma pílula de
+   largura automática, igual às outras etiquetas de seção do app. */
+html[data-app="RECON"] .title-scope-card > header > div > span {
+  inline-size: auto;
+  block-size: auto;
+  flex: 0 0 auto;
+  min-inline-size: 2rem;
+  padding: .32rem .6rem;
+  border-radius: 999px;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+/* --- 9. Etiqueta de origem na tabela de bases ------------------------
+   "Substituída e fixada" não cabe em uma linha da coluna e virava
+   "INCORPOR…". A etiqueta passa a quebrar em vez de truncar: aqui a
+   informação é o texto inteiro, não o formato de uma linha só. */
+html[data-app="RECON"] .bases-table .state-pill {
+  max-width: 100%;
+  white-space: normal;
+  text-overflow: clip;
+  line-height: 1.25;
+}
+
+/* A quebra global das células (overflow-wrap:anywhere) serve para caminhos
+   e códigos longos, mas partia a etiqueta ao meio ("INCORPORAD/A"). */
+html[data-app="RECON"] .bases-table .state-pill {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+/* A lista de bases tem sete linhas fixas, não é uma tabela de milhares de
+   registros: o limite de altura da área rolável cortava a quinta linha ao
+   meio, dando a impressão de conteúdo quebrado. Aqui ela cresce com o
+   conteúdo e a página rola normalmente. */
+html[data-app="RECON"] .bases-module .table-scroll {
+  max-height: none;
+  min-height: 0;
 }
