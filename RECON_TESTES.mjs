@@ -494,4 +494,71 @@ check("as colunas fixas da tabela de alocação existem no CSS que o index.html 
   assert.match(finalCss, /allocation-decision-table td:nth-child\(2\) \{ left: 150px; \}/);
 });
 
+// ===================== FOLHAS DE ESTILO GÊMEAS =====================
+
+// O repositório tem pares quase idênticos: recon-ui.css / reconui.css e
+// recon-final.css / reconfinal.css. O index.html carrega apenas os arquivos
+// COM hífen. Três defeitos visuais já vieram de regra escrita só na cópia sem
+// hífen: as colunas fixas da tabela de alocação, a fonte da descrição do
+// título (que virava texto corrido) e o campo de título proposto.
+check("toda classe usada no HTML e estilizada na folha gêmea existe na folha carregada", () => {
+  const usadas = new Set();
+  for (const attr of html.match(/class="[^"]*"/g) || []) {
+    attr.slice(7, -1).split(/\s+/).filter(Boolean).forEach((name) => usadas.add(name));
+  }
+
+  const classesDe = (arquivo) => {
+    const found = new Set();
+    for (const match of read(arquivo).match(/\.[A-Za-z][\w-]*/g) || []) found.add(match.slice(1));
+    return found;
+  };
+
+  // O que importa é a classe estar estilizada em ALGUMA folha carregada pelo
+  // index.html — em qual delas é indiferente, já que a cascata resolve.
+  const carregadas = (html.match(/href="([\w.-]+\.css)"/g) || []).map((tag) => tag.slice(6, -1));
+  assert.ok(carregadas.length >= 2, "index.html não declara as folhas de estilo esperadas");
+  const estilizadas = new Set();
+  carregadas.forEach((arquivo) => classesDe(arquivo).forEach((name) => estilizadas.add(name)));
+
+  const ausentes = [];
+  for (const gemea of ["reconui.css", "reconfinal.css"]) {
+    if (!exists(gemea) || carregadas.includes(gemea)) continue;
+    for (const name of classesDe(gemea)) {
+      if (usadas.has(name) && !estilizadas.has(name)) ausentes.push(`${name} (só em ${gemea})`);
+    }
+  }
+  assert.deepEqual(ausentes, [], `regra de estilo fora da folha que o index.html carrega: ${ausentes.join(", ")}`);
+});
+
+check("os cartões de escolha usam tokens de tema, não branco fixo", () => {
+  const css = read("recon-final.css");
+  // --color-surface/--color-border não existem no projeto: o fallback #fff
+  // deixava o cartão branco com texto quase branco no modo escuro.
+  const bloco = css.slice(css.indexOf(".title-source-mode > label"));
+  assert.doesNotMatch(bloco.slice(0, 400), /var\(--color-surface/, "cartão de opção voltou a depender de um token inexistente");
+  assert.match(bloco.slice(0, 400), /background: var\(--ui-surface/, "cartão de opção não usa o token de superfície do tema");
+});
+
+check("as caixas de seleção têm alvo confortável e a barra lateral rola", () => {
+  const css = read("recon-final.css");
+  const caixas = css.match(/\.module-view input\[type="checkbox"\][\s\S]{0,200}?\}/);
+  assert.ok(caixas, "sem regra de dimensionamento das caixas de seleção");
+  assert.match(caixas[0], /width: 18px/, "caixa de seleção continua no tamanho padrão apertado");
+  assert.match(caixas[0], /accent-color/, "caixa de seleção sem cor da marca");
+  // A barra lateral tem altura presa em calc(100vh - 78px); sem rolagem, o
+  // último item do menu fica inalcançável em telas de altura menor.
+  assert.match(css, /\.module-sidebar \{\s*overflow-y: auto/, "barra lateral sem rolagem própria");
+});
+
+check("a coluna de ações da tabela de bases continua sendo uma célula de tabela", () => {
+  const css = read("recon-final.css");
+  const app = read("bases_app.js");
+  // Um <td> com display:flex deixa de ser table-cell, ignora a largura da
+  // coluna e transborda para fora do cartão.
+  assert.match(app, /<td class="bases-actions"><div class="bases-actions-stack">/, "os botões não estão num wrapper próprio");
+  assert.doesNotMatch(css, /\.bases-table \.bases-actions \{[^}]*display: flex/, "display:flex voltou para o próprio <td>");
+  assert.match(css, /\.bases-table \.bases-actions-stack \{[\s\S]{0,120}display: flex/, "wrapper de ações sem empilhamento");
+  assert.match(css, /\.bases-table \{ width: 100%; min-width: 62rem/, "tabela de bases sem largura mínima para rolar em telas estreitas");
+});
+
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));

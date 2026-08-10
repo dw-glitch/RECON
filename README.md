@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.29**.
+Versão atual: **1.26.30**.
 
 ## Execução
 
