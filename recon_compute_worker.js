@@ -8,17 +8,14 @@ try {
   importScripts(
     "recon_contracts.js", "core.js", "ld_conflicts.js", "allocation_confirmation_sources.js",
     "allocation_core.js", "databook_allocation_sources.js", "non_tagged_title_rules.js",
-    // A TABELA 13 da ET precisa existir dentro do Worker: é lá que auditTitles
-    // roda, e sem ela o título normativo não entraria no resultado.
-    "et_report_titles.js",
-    "audit_core.js", "timeline_core.js", "relations_core.js", "tag_conference_core.js"
+    "document_title_standard.js", "audit_core.js", "timeline_core.js", "relations_core.js", "tag_conference_core.js"
   );
 } catch (error) {
   bootError = String(error && error.message || error || "Falha ao carregar os módulos de análise");
 }
 
 const REQUIRED = {
-  "audit-titles": ["RECONAuditCore"],
+  "audit-titles": ["RECONDocumentTitleStandard", "RECONAuditCore"],
   "audit-databook": ["RECONAuditCore"],
   "allocation-analyze": ["AllocationCore"],
   "relations-catalog": ["CorporateRelationsCore"],

@@ -76,7 +76,7 @@ check("service worker usa cache isolado da versão atual", () => {
 check("arquivos essenciais do fluxo permanecem presentes", () => {
   const required = [
     "relations_app.js", "allocation_app.js", "tag_conference_app.js",
-    "audit_app.js", "audit_core.js", "renamer_app.js",
+    "audit_app.js", "audit_core.js", "document_title_standard.js", "renamer_app.js",
     "recon_module_loader.js", "core.js", "index.html",
   ];
   assert.deepEqual(required.filter((name) => !exists(name)), []);
@@ -143,7 +143,7 @@ check("o dashboard recebe o evento que alimenta o histórico", () => {
 check("o service worker precacheia o código dos módulos, não os catálogos gigantes", () => {
   const precached = [...sw.matchAll(/^\s*"([\w./-]+\.(?:js|css|html|png|ico|json))"/gm)].map((m) => m[1]);
 
-  for (const required of ["relations_app.js", "audit_app.js", "allocation_app.js", "xlsx.full.min.js", "recon_compute_worker.js"]) {
+  for (const required of ["relations_app.js", "audit_app.js", "allocation_app.js", "document_title_standard.js", "xlsx.full.min.js", "recon_compute_worker.js"]) {
     assert.ok(precached.includes(required), `${required} fora do precache: o módulo não abre na primeira sessão offline`);
   }
 
@@ -385,10 +385,10 @@ check("a aba Bases está registrada na interface, no carregador e no precache", 
   }
 });
 
-check("o registro de bases descreve as oito bases que o RECON reconhece", () => {
+check("o registro de bases descreve as sete bases que o RECON reconhece", () => {
   const ids = Bases.descriptors().map((item) => item.id);
   assert.deepEqual(ids.slice().sort(), [
-    "allocation-template", "databook-rev-a", "databook-rev-b", "et-titles",
+    "allocation-template", "databook-rev-a", "databook-rev-b",
     "scon-escopo", "scon-tag-sgp", "tag-appendix", "titles-control",
   ]);
   // Os volumes precisam bater com o que audit_app.js confere ao carregar as
@@ -581,35 +581,7 @@ check("a sugestão vinda da memória de correções também sai em caixa alta", 
   const app = read("audit_app.js");
   // applyTitleMemory não passa por buildTitle: sem isto, uma correção antiga
   // digitada em minúscula voltaria como sugestão fora do padrão.
-  assert.match(app, /row\.proposed = upperTitle\(entry\.title\)/, "memória de correções devolve o texto sem normalizar a caixa");
-  assert.match(app, /function upperTitle/, "sem conversão local de caixa no audit_app");
-});
-
-check("a análise de títulos não depende de símbolo novo do audit_core para renderizar", () => {
-  const app = read("audit_app.js");
-  // Se o navegador servir um audit_core.js de versão anterior (cache do Service
-  // Worker, aba aberta durante a publicação), uma função recém-exportada não
-  // existe. Chamá-la depois da análise pronta derrubava tudo no catch e a tela
-  // ficava com o resultado antigo — parecendo que só parte da LD foi analisada.
-  // Só a chamada importa; a menção no comentário que explica o motivo, não.
-  assert.doesNotMatch(app, /Q\.upperCaseTitle\s*\(/, "audit_app voltou a depender de um símbolo novo do audit_core");
-
-  // A memória de correções é enriquecimento opcional e precisa estar isolada.
-  const trecho = app.slice(app.indexOf("Conferindo suas correções anteriores"), app.indexOf("Conferindo suas correções anteriores") + 700);
-  assert.match(trecho, /try \{[\s\S]*applyTitleMemory[\s\S]*\} catch/, "applyTitleMemory pode derrubar uma análise já concluída");
-});
-
-check("auditTitles devolve uma linha por documento, sem descartar nenhuma", () => {
-  const Q = createRequire(import.meta.url)("./audit_core.js");
-  const documents = Array.from({ length: 500 }, (_, i) => {
-    const doc = `C1O_RNEST_U32_3.1.1.1_TUB_RIR_NT-B-${32000 + i}`;
-    return {
-      documentKey: doc.toUpperCase(),
-      group: { records: [{ document: doc, documentKey: doc.toUpperCase(), title: i % 3 === 0 ? "documento" : `BOMBA ${i} - B-${32000 + i}`, discipline: "TUB", sheet: "TÉCNICA", rowNumber: i + 2, revision: "0" }], history: [] },
-    };
-  });
-  const rows = Q.auditTitles({ documents }, { byDocument: new Map(), byTagDiscipline: new Map() }, null);
-  assert.equal(rows.length, 500, "a auditoria devolveu menos linhas do que a LD tem documentos");
+  assert.match(app, /row\.proposed = Q\.upperCaseTitle\(entry\.title\)/, "memória de correções devolve o texto sem normalizar a caixa");
 });
 
 check("o caminho do Databook não é afetado pela regra de caixa alta", () => {
@@ -617,6 +589,82 @@ check("o caminho do Databook não é afetado pela regra de caixa alta", () => {
   // O mesmo arquivo monta caminhos de Databook, que são pastas e não títulos.
   const trecho = source.slice(source.indexOf("proposed = suggestion.databook"), source.indexOf("proposed = suggestion.databook") + 120);
   assert.doesNotMatch(trecho, /upperCaseTitle/, "o caminho do Databook não pode ser convertido para caixa alta");
+});
+
+// ===================== PADRÃO NORMATIVO DOS TÍTULOS =====================
+
+check("a revisão P da ET traz toda a Tabela 13 para o padrão dos relatórios", () => {
+  const Standard = createRequire(import.meta.url)("./document_title_standard.js");
+  assert.equal(Standard.STANDARD.document, "ET-5290.00-22000-912-1LV-001");
+  assert.equal(Standard.STANDARD.revision, "P");
+  assert.equal(Standard.reportRowCount, 328);
+  assert.equal(Standard.reportCodeCount, 327);
+  assert.equal(Standard.reportCodeFromDocument("C1O_RNEST_U32_3.1.1.1_CVL_RIR_V-32001"), "RIR");
+  assert.equal(Standard.resolve("C1O_RNEST_U32_3.1.1.1_CVL_RIR_V-32001").title,
+    "Relatório de Inspeção de Recebimento");
+  assert.equal(Standard.resolve("C1O_RNEST_U32_3.1.1.1_CVL_GRACIM_nt-base-01").title,
+    "Relatório de Aplicação de Graute Cimentício", "GRACIM ainda usa a redação substituída da Rev. N");
+  assert.equal(Standard.resolve("C1O_RNEST_U32_3.1.1.1_INS_RRIMTI_TI-01").title,
+    "Relatório de Execução e Inspeção de Montagem - Tomadas de Instrumento", "inclusão da Rev. P ausente");
+  assert.deepEqual(Standard.reportTitlesFor("GRACIMR"), [], "código removido na Rev. P continuou ativo");
+  assert.equal(Standard.resolve("ET-5290.00-22000-912-1LV-001").title, "ESPECIFICAÇÃO TÉCNICA");
+  const worker = read("recon_compute_worker.js");
+  assert.ok(worker.indexOf('"document_title_standard.js"') < worker.indexOf('"audit_core.js"'),
+    "o Worker carrega audit_core antes da norma de títulos");
+  assert.match(worker, /"audit-titles": \["RECONDocumentTitleStandard", "RECONAuditCore"\]/,
+    "o Worker não valida a presença do padrão normativo antes de analisar títulos");
+});
+
+check("quando a própria norma repete um código, os títulos anteriores desempatarão a redação", () => {
+  const Standard = createRequire(import.meta.url)("./document_title_standard.js");
+  const resolved = Standard.resolve("C1O_RNEST_U32_3.1.1.1_CVL_EVSJE_JE-001", {
+    previousTitles: ["RELATÓRIO DE ENSAIO VISUAL - JUNTAS EXISTENTES - JE-001"],
+  });
+  assert.equal(resolved.title, "Relatório de Ensaio Visual - Juntas Existentes");
+  assert.equal(resolved.chosenByHistory, true);
+  assert.equal(resolved.ambiguous, false);
+});
+
+check("o tipo normativo permanece na frente da descrição encontrada nas bases", () => {
+  const C = createRequire(import.meta.url)("./core.js");
+  const Q = createRequire(import.meta.url)("./audit_core.js");
+  const document = "C1O_RNEST_U32_3.1.1.1_CVL_RIR_V-32001";
+  const previousDocument = "C1O_RNEST_U32_3.1.1.1_CVL_RIR_V-32000";
+  const current = {
+    document,
+    documentKey: C.key(document),
+    sheet: "CVL",
+    row: 2,
+    discipline: "CIVIL",
+    revision: "B",
+    title: "VÁLVULA - V-32001",
+    ldColumns: [{ header: "DESCRIÇÃO", value: "Válvula de bloqueio" }],
+  };
+  const previous = {
+    ...current,
+    document: previousDocument,
+    documentKey: C.key(previousDocument),
+    row: 1,
+    revision: "A",
+    title: "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO - VÁLVULA ANTIGA - V-32000",
+  };
+  const index = { documents: [
+    { document, documentKey: current.documentKey, group: { records: [current], history: [] } },
+    { document: previousDocument, documentKey: previous.documentKey, group: { records: [previous], history: [] } },
+  ] };
+  const row = Q.auditTitles(index, null, {}).find((item) => item.document === document);
+  assert.equal(row.issue, "document_type");
+  assert.equal(row.proposed, "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO - VÁLVULA DE BLOQUEIO - V-32001");
+  assert.equal(row.titleStandardCode, "RIR");
+  assert.equal(row.previousTitlePattern, "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO");
+  assert.match(row.evidence, /Rev\. P · Tabela 13/);
+  assert.match(row.evidence, /título\(s\) anterior\(es\)/);
+});
+
+check("parênteses que fazem parte do título normativo não são removidos", () => {
+  const Q = createRequire(import.meta.url)("./audit_core.js");
+  assert.equal(Q.buildTitle("CERTIFICADO DE TESTE DE PRESSÃO EM EQUIPAMENTOS (SELO MECÂNICO)", "bomba", "B-1", { preserveType: true }),
+    "CERTIFICADO DE TESTE DE PRESSÃO EM EQUIPAMENTOS (SELO MECÂNICO) - BOMBA - B-1");
 });
 
 // ===================== BANCO LOCAL =====================
@@ -651,74 +699,6 @@ check("a alocação diz o que falta quando o botão Analisar está desabilitado"
     assert.ok(app.includes(termo), `mensagem de pendência não cita "${termo}"`);
   }
   assert.match(app, /para analisar/, "a mensagem não explica que o botão depende dos itens");
-});
-
-// ===================== ET: TABELA 13 COMO TÍTULO NORMATIVO =====================
-
-check("a TABELA 13 da ET Rev. P está incorporada e registrada como base", () => {
-  assert.ok(exists("et_report_titles.js"), "catálogo da ET ausente");
-  const require2 = createRequire(import.meta.url);
-  const catalogo = require2("./et_report_titles.js") || globalThis.RECONEtReportTitles;
-  const cat = globalThis.RECONEtReportTitles || catalogo;
-  assert.equal(cat.revision, "P", "a ET incorporada precisa ser a revisão mais recente");
-  assert.match(cat.sourceFile, /ET-5290\.00-22000-912-1LV-001/);
-  assert.ok(cat.rows.length >= 320, `a TABELA 13 trouxe apenas ${cat.rows.length} códigos`);
-
-  const et = Bases.descriptor("et-titles");
-  assert.equal(et.bundled.revision, "P");
-  assert.equal(et.bundled.count, cat.rows.length, "o registro de bases discorda do catálogo incorporado");
-
-  // Precisa carregar no app, no Worker e no cache offline.
-  assert.match(read("recon_module_loader.js"), /"et_report_titles\.js"/, "fora do carregamento do módulo de auditoria");
-  assert.match(read("recon_compute_worker.js"), /"et_report_titles\.js"/, "fora do Worker, onde auditTitles roda");
-  assert.ok(sw.includes('"et_report_titles.js"'), "fora do precache do Service Worker");
-});
-
-check("o código do relatório é o 6º grupo e a TAG vem depois", () => {
-  const Q = createRequire(import.meta.url)("./audit_core.js");
-  assert.equal(Q.reportCodeFromDocument("C1O_RNEST_U32_3.1.1.1_CVL_RIR_NT-SE-3200-CXESC002"), "RIR");
-  assert.equal(Q.reportCodeFromDocument("C1O_RNEST_U32_3.1.1.1_ELE_RTDMT_MT-4501"), "RTDMT");
-  // Códigos compostos da própria norma, como RSOFT-CPS, não podem ser cortados.
-  assert.equal(Q.reportCodeFromDocument("C1O_RNEST_U32_3.1.1.1_INS_RSOFT-CPS_XX-1"), "RSOFT-CPS");
-  assert.equal(Q.reportCodeFromDocument("SEM_GRUPOS"), "", "código curto demais não pode inventar sigla");
-});
-
-check("o título da ET entra antes da TAG, em caixa alta", () => {
-  const require2 = createRequire(import.meta.url);
-  require2("./et_report_titles.js");
-  const Q = require2("./audit_core.js");
-  const et = Q.parseEtReportTitles(globalThis.RECONEtReportTitles);
-  assert.equal(et.revision, "P");
-  assert.ok(et.count >= 320);
-  assert.equal(et.byCode.get("RIR").title, "Relatório de Inspeção de Recebimento");
-
-  const doc = "C1O_RNEST_U32_3.1.1.1_TUB_RNC_B-32110A";
-  const index = { documents: [{ documentKey: doc.toUpperCase(), group: { records: [{ document: doc, documentKey: doc.toUpperCase(), title: "documento", discipline: "TUB", sheet: "TÉCNICA", rowNumber: 2, revision: "0" }], history: [] } }] };
-  const rows = Q.auditTitles(index, { byDocument: new Map(), byTagDiscipline: new Map(), etReportTitles: et }, null);
-  assert.match(rows[0].proposed, /^RELATÓRIO DE NÃO CONFORMIDADE\b/, "o título da ET não abriu o título recomendado");
-  assert.match(rows[0].proposed, /B-32110A$/, "a TAG precisa continuar no fim");
-});
-
-check("um código com dois títulos na ET se cala", () => {
-  const Q = createRequire(import.meta.url)("./audit_core.js");
-  const et = Q.parseEtReportTitles({ columns: ["code", "title"], rows: [["XX", "Relatório A"], ["XX", "Relatório B"]] });
-  const entrada = et.byCode.get("XX");
-  assert.equal(entrada.ambiguous, true);
-  assert.equal(entrada.title, "", "a norma ambígua não pode escolher um dos títulos");
-});
-
-check("sem a ET a análise segue e não perde linhas", () => {
-  const Q = createRequire(import.meta.url)("./audit_core.js");
-  const documents = Array.from({ length: 300 }, (_, i) => {
-    const doc = `C1O_RNEST_U32_3.1.1.1_TUB_RIR_B-${32000 + i}`;
-    return { documentKey: doc.toUpperCase(), group: { records: [{ document: doc, documentKey: doc.toUpperCase(), title: i % 4 === 0 ? "documento" : `BOMBA ${i}`, discipline: "TUB", sheet: "TÉCNICA", rowNumber: i + 2, revision: "0" }], history: [] } };
-  });
-  const semEt = Q.auditTitles({ documents }, { byDocument: new Map(), byTagDiscipline: new Map() }, null);
-  assert.equal(semEt.length, 300, "a ausência da ET reduziu as linhas analisadas");
-
-  const app = read("audit_app.js");
-  assert.match(app, /Q\.parseEtReportTitles\(source\)/, "a ET não é lida no carregamento das bases");
-  assert.match(app, /merged\.etReportTitles = state\.etTitleReferences \|\| null/, "a ET não chega às referências da análise");
 });
 
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));

@@ -147,29 +147,6 @@
       ],
     },
     {
-      // A ET é a norma de codificação do contrato. A TABELA 13 dela liga o
-      // código do relatório (6º grupo do código documental) ao título oficial,
-      // que é justamente o que precede a TAG (7º grupo) no título do documento.
-      id: "et-titles",
-      label: "ET — TABELA 13, títulos dos relatórios",
-      summary: "Norma de codificação do contrato. Dá o título oficial de cada código de relatório, que entra antes da TAG no título do documento.",
-      consumer: "Corrigir títulos",
-      kind: "rows-catalog",
-      schema: "recon.et-report-titles.v1",
-      bundled: {
-        source: "ET-5290.00-22000-912-1LV-001 Rev. P",
-        sheet: "TABELA 13", revision: "P", version: "2026-06-17",
-        count: 325, unit: "códigos de relatório",
-      },
-      minRows: 1,
-      // Uma revisão mais nova da ET pode ser carregada como planilha com estas
-      // duas colunas, sem precisar de nova versão do RECON.
-      columns: [
-        column("code", "Código", ["codigo", "codigo do relatorio", "sigla"], true),
-        column("title", "Título", ["titulo do relatorio", "descricao", "denominacao"], true),
-      ],
-    },
-    {
       id: "allocation-template",
       label: "Modelo de alocação",
       summary: "Planilha modelo usada para montar o arquivo de alocação documental.",
@@ -363,21 +340,14 @@
   function status(item, record) {
     if (!item) return null;
     const pinned = Boolean(record && record.id === item.id);
-    // Uma base sem versão incorporada não pode ser descrita como "incorporada"
-    // nem oferecer "restaurar": enquanto não for carregada, ela simplesmente
-    // não existe para a análise.
-    const embedded = item.embedded !== false;
     return {
       id: item.id,
       label: item.label,
       summary: item.summary,
       consumer: item.consumer,
       kind: item.kind,
-      embedded,
-      origin: pinned ? "substituida" : embedded ? "incorporada" : "ausente",
-      originLabel: pinned
-        ? (embedded ? "Substituída e fixada" : "Carregada e fixada")
-        : embedded ? "Incorporada ao RECON" : "Não carregada",
+      origin: pinned ? "substituida" : "incorporada",
+      originLabel: pinned ? "Substituída e fixada" : "Incorporada ao RECON",
       source: pinned ? record.fileName : item.bundled.source,
       sheet: pinned ? (record.sheet || "—") : (item.bundled.sheet || "—"),
       count: pinned ? Number(record.count) || 0 : Number(item.bundled.count) || 0,

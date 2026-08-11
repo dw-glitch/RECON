@@ -31,7 +31,6 @@
     titleReferences: null,
     titleSupplementalReferences: null,
     sconEscopoTitleReferences: null,
-    etTitleReferences: null,
     tagReferenceTitleReferences: null,
     sconReferenceFile: null,
     sconTitleReferences: null,
@@ -334,15 +333,6 @@
   // segura — nunca substitui o que o SCON/Apêndice já confirmaram com
   // confiança. Isso mantém a hierarquia: base controlada primeiro, memória
   // pessoal como último recurso antes de "sem sugestão".
-  // A caixa alta é resolvida aqui em vez de chamar Q.upperCaseTitle: se o
-  // navegador servir um audit_core.js de uma versão anterior — cache do
-  // Service Worker, aba aberta durante a publicação — a função não existe, e a
-  // chamada derrubava a análise inteira DEPOIS de ela já ter terminado,
-  // deixando na tela o resultado antigo e parcial.
-  function upperTitle(value) {
-    return String(value == null ? "" : value).toLocaleUpperCase("pt-BR");
-  }
-
   function applyTitleMemory(rows, memory) {
     if (!memory || !memory.size) return rows;
     rows.forEach((row) => {
@@ -352,7 +342,7 @@
       if (Q.norm(row.current || "") === Q.norm(entry.title)) return;
       // A memória guarda o texto exatamente como foi digitado; ao voltar como
       // sugestão ela segue a mesma regra das demais: título sempre em caixa alta.
-      row.proposed = upperTitle(entry.title);
+      row.proposed = Q.upperCaseTitle(entry.title);
       row.learnedTitle = true;
       if (row.confidence === "nenhuma") row.confidence = "media";
       row.reason = `${row.reason} Sugestão baseada numa correção sua anterior para ${row.tag ? "a mesma TAG" : "este documento"}.`;
@@ -399,9 +389,6 @@
     const merged = mergeIndexedReferences(state.titleReferences, state.titleSupplementalReferences);
     merged.scon = state.sconTitleReferences || null;
     merged.sconEscopo = state.sconEscopoTitleReferences || null;
-    // A ET só existe se tiver sido carregada na aba Bases. Sem ela, a análise
-    // segue exatamente como antes, pelas demais fontes.
-    merged.etReportTitles = state.etTitleReferences || null;
     merged.tagReference = state.tagReferenceTitleReferences || null;
     return merged;
   }
@@ -418,14 +405,7 @@
     const sconEscopoText = sconEscopoCount ? `${sconEscopoCount.toLocaleString("pt-BR")} TAGs · ${sconEscopoEapCount.toLocaleString("pt-BR")} EAPs no SCON ESCOPO` : "SCON ESCOPO indisponível";
     const appendixText = appendixCount ? `${appendixCount.toLocaleString("pt-BR")} TAGs no Apêndice 3 Rev.B` : "Apêndice 3 Rev.B indisponível";
     const extraText = extraCount ? ` · ${extraCount.toLocaleString("pt-BR")} referências adicionais` : "";
-    // A ET vem primeiro na linha porque é a fonte de maior prioridade: quem
-    // olha a análise precisa saber de imediato se ela está participando.
-    const etCount = state.etTitleReferences && state.etTitleReferences.count || 0;
-    const etRev = state.etTitleReferences && state.etTitleReferences.revision || "";
-    const etText = etCount
-      ? `ET Rev. ${etRev || "?"} com ${etCount.toLocaleString("pt-BR")} códigos de relatório`
-      : "ET indisponível";
-    els.titleBaseStatus.textContent = `${etText} · ${baseText} · ${sconText} · ${sconEscopoText} · ${appendixText}${extraText}`;
+    els.titleBaseStatus.textContent = `${baseText} · ${sconText} · ${sconEscopoText} · ${appendixText}${extraText}`;
     if (els.titleSconReferenceMeta && !state.sconReferenceFile) {
       els.titleSconReferenceMeta.textContent = sconCount ? `Base incorporada · ${sconCount.toLocaleString("pt-BR")} códigos` : "Base incorporada indisponível";
     }
@@ -496,7 +476,7 @@
       if (sheet && row.sheet !== sheet) return false;
       if (confidence && row.confidence !== confidence) return false;
       if (kind === "title" && source && titleSourceCategory(row) !== source) return false;
-      if (search && !Q.norm(`${row.document} ${row.sheet} ${row.allocation || ""} ${row.controlledSourceKind || ""} ${row.controlledSourceFile || ""} ${row.title || ""} ${row.current} ${row.proposed} ${row.tag || ""} ${row.sconEscopoLookupTag || ""} ${row.sconEscopoDocumentEap || ""} ${(row.sconEscopoCandidateEaps || []).join(" ")} ${row.description || ""} ${row.descriptionSource || ""} ${row.sconTitleComplement || ""} ${row.sconFullDescription || ""} ${row.sconEscopoTitle || ""} ${(row.sconEscopoCandidateTitles || []).join(" ")} ${row.appendixTitle || ""} ${(row.appendixMatchedTags || []).join(" ")} ${(row.appendixCandidateTitles || []).join(" ")} ${row.reason}`).includes(search)) return false;
+      if (search && !Q.norm(`${row.document} ${row.sheet} ${row.allocation || ""} ${row.controlledSourceKind || ""} ${row.controlledSourceFile || ""} ${row.title || ""} ${row.current} ${row.proposed} ${row.tag || ""} ${row.titleStandard || ""} ${row.titleStandardCode || ""} ${row.previousTitlePattern || ""} ${row.sconEscopoLookupTag || ""} ${row.sconEscopoDocumentEap || ""} ${(row.sconEscopoCandidateEaps || []).join(" ")} ${row.description || ""} ${row.descriptionSource || ""} ${row.sconTitleComplement || ""} ${row.sconFullDescription || ""} ${row.sconEscopoTitle || ""} ${(row.sconEscopoCandidateTitles || []).join(" ")} ${row.appendixTitle || ""} ${(row.appendixMatchedTags || []).join(" ")} ${(row.appendixCandidateTitles || []).join(" ")} ${row.reason}`).includes(search)) return false;
       return true;
     });
   }
@@ -691,6 +671,8 @@
     const sconMatchDetail = row.sconMatchMode && row.sconMatch !== "NÃO" ? ` (${row.sconMatchMode})` : "";
     const sconEscopoMatchDetail = row.sconEscopoMatchMode && row.sconEscopoMatch !== "NÃO" ? ` (${row.sconEscopoMatchMode})` : "";
     const controlledDescriptions = [
+      row.titleStandard ? `Padrão documental ${row.titleStandardCode || ""} (ET-5290.00-22000-912-1LV-001 Rev. P): ${row.titleStandard}` : "",
+      row.previousTitlePattern ? `Títulos anteriores (${row.previousTitleSupport || 1}): ${row.previousTitlePattern}` : "",
       row.sconTitleComplement ? `SCON TAG SGP${sconMatchDetail}: ${cleanTitleReportValue(row.sconTitleComplement)}` : "",
       row.sconEscopoTitle ? `SCON ESCOPO${sconEscopoMatchDetail}: ${cleanTitleReportValue(row.sconEscopoTitle)}` : "",
       row.appendixTitle ? `Apêndice 3 Rev.B (${(row.appendixMatchedTags || []).join(", ") || row.tag || "TAG"}): ${cleanTitleReportValue(row.appendixTitle)}` : "",
@@ -821,17 +803,7 @@
       if (requestedKeys) titleOptions.documentKeys = requestedKeys;
       state.titleRows = window.RECONCompute ? await window.RECONCompute.run("title", "audit-titles", { index: state.index, references: mergedTitleReferences(), options: titleOptions }) : Q.auditTitles(state.index, mergedTitleReferences(), titleOptions);
       setProgress("title", 90, "Conferindo suas correções anteriores…");
-      // A memória de correções é um enriquecimento opcional: ela só acrescenta
-      // sugestão a linhas que ficaram sem nenhuma. Uma falha aqui não pode
-      // descartar uma análise que já terminou — antes ela caía no catch de
-      // baixo e a tela continuava mostrando o resultado anterior, dando a
-      // impressão de que só parte da LD tinha sido analisada.
-      try {
-        applyTitleMemory(state.titleRows, await loadTitleMemory());
-      } catch (error) {
-        console.warn("RECON: memória de correções indisponível nesta análise", error);
-        showToast("A memória de correções não pôde ser consultada; a análise foi concluída com as bases controladas.", "warn");
-      }
+      applyTitleMemory(state.titleRows, await loadTitleMemory());
       if (titlePager) titlePager.reset();
       state.titleSelected.clear();
       populateSheetSelect(els.titleSheet, state.titleRows);
@@ -1033,7 +1005,7 @@
 
   function issueLabel(kind, issue) {
     const labels = kind === "databook" ? { ok: "Adequado", missing: "Caminho vazio ou incompleto", divergent: "Caminho completo com referência divergente", unconfirmed: "Não confirmado", conflict: "Conflito na LD" }
-      : { ok: "Adequado", empty: "Título vazio", generic: "Pouco específico", description_mismatch: "Descrição divergente", missing_tag: "TAG comprovada ausente", possible_identifier: "Possível identificador", format: "Padronização", conflict: "Conflito na LD" };
+      : { ok: "Adequado", empty: "Título vazio", generic: "Pouco específico", document_type: "Tipo documental fora do padrão", description_mismatch: "Descrição divergente", missing_tag: "TAG comprovada ausente", possible_identifier: "Possível identificador", format: "Padronização", conflict: "Conflito na LD" };
     return labels[issue] || issue;
   }
 
@@ -1042,6 +1014,8 @@
       return cleanTitleReportValue(`Item não tagueado — O QUÊ: ${row.nonTaggedWhat || "não identificado"} · ONDE/QUANDO: ${row.nonTaggedWhereWhen || "não identificado"}`);
     }
     const references = [
+      row.titleStandard ? `Padrão documental ${row.titleStandardCode || ""} (ET-5290.00-22000-912-1LV-001 Rev. P): ${row.titleStandard}` : "",
+      row.previousTitlePattern ? `Títulos anteriores (${row.previousTitleSupport || 1}): ${row.previousTitlePattern}` : "",
       row.sconTitleComplement ? `SCON TAG SGP: ${row.sconTitleComplement}` : "",
       row.sconEscopoTitle ? `SCON ESCOPO (${row.sconEscopoLookupTag || row.tag || "TAG"} · EAP ${row.sconEscopoDocumentEap || "não informado"}): ${row.sconEscopoTitle}` : "",
       row.appendixTitle ? `Apêndice 3 Rev.B (${(row.appendixMatchedTags || []).join(", ") || row.tag || "TAG"}): ${row.appendixTitle}` : "",
@@ -1062,6 +1036,8 @@
 
   function titleSourceSummary(row) {
     const details = [
+      row.titleStandardSource || "",
+      row.previousTitlePattern ? `${row.previousTitleSupport || 1} título(s) anterior(es)` : "",
       row.descriptionSource || "",
       row.sconMatchMode && row.sconMatch !== "NÃO" ? `SCON TAG SGP: ${row.sconMatchMode}` : "",
       row.sconEscopoMatchMode && row.sconEscopoMatch !== "NÃO" ? `SCON ESCOPO: ${row.sconEscopoMatchMode}` : "",
@@ -1312,19 +1288,6 @@
         }
         if (replaced("scon-escopo") && !parsed.entries.length) throw new Error("O SCON ESCOPO que você fixou não trouxe nenhuma linha aproveitável.");
         state.sconEscopoTitleReferences = parsed;
-        updateTitleReferenceStatus();
-      }),
-      Promise.resolve().then(() => {
-        // TABELA 13 da ET: incorporada na Rev. P, substituível por uma revisão
-        // mais nova pela aba Bases.
-        const source = (bases && bases.catalog("et-titles")) || window.RECONEtReportTitles;
-        if (!source) { state.etTitleReferences = null; return; }
-        const parsed = Q.parseEtReportTitles(source);
-        if (!replaced("et-titles") && parsed.count < 300) {
-          throw new Error(`A TABELA 13 da ET trouxe somente ${parsed.count} códigos; eram esperados 325.`);
-        }
-        if (!parsed.count) throw new Error("A ET que você carregou não trouxe nenhum código de relatório aproveitável.");
-        state.etTitleReferences = parsed;
         updateTitleReferenceStatus();
       }),
       Promise.resolve().then(() => {

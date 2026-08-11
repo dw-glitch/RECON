@@ -5,10 +5,11 @@
   const F = root.LDConflictCore || (typeof module === "object" && module.exports ? require("./ld_conflicts.js") : null);
   const S = root.RECONDatabookAllocationSources || (typeof module === "object" && module.exports ? require("./databook_allocation_sources.js") : null);
   const N = root.RECONNonTaggedTitles || (typeof module === "object" && module.exports ? require("./non_tagged_title_rules.js") : null);
-  const api = factory(C, A, R, F, S, N);
+  const T = root.RECONDocumentTitleStandard || (typeof module === "object" && module.exports ? require("./document_title_standard.js") : null);
+  const api = factory(C, A, R, F, S, N, T);
   if (typeof module === "object" && module.exports) module.exports = api;
   root.RECONAuditCore = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function (C, A, R, F, S, N) {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (C, A, R, F, S, N, T) {
   "use strict";
 
   function text(value) {
@@ -657,6 +658,118 @@
     return cleanTitlePart(inferredType);
   }
 
+  function titleHistoryTypeKey(record) {
+    const code = T && T.documentTypeCode ? T.documentTypeCode(record && record.document) : "";
+    if (code) return `CODE:${code}`;
+    const kind = A && A.titleKind ? A.titleKind(record && record.title) : "";
+    return kind ? `KIND:${kind}` : "";
+  }
+
+  function buildPreviousTitleIndex(index) {
+    const byDocument = new Map();
+    const byType = new Map();
+    const byTypeDiscipline = new Map();
+    const add = (map, key, item, limit) => {
+      if (!key) return;
+      if (!map.has(key)) map.set(key, { samples: [], prefixCounts: new Map() });
+      const bucket = map.get(key);
+      const prefix = titlePrefixBeforeDescription(item.title);
+      if (prefix) {
+        const prefixKey = norm(prefix);
+        const pattern = bucket.prefixCounts.get(prefixKey) || { title: prefix, support: 0 };
+        pattern.support += 1;
+        bucket.prefixCounts.set(prefixKey, pattern);
+      }
+      if (bucket.samples.length >= limit || bucket.samples.some((entry) => norm(entry.title) === norm(item.title))) return;
+      bucket.samples.push(item);
+    };
+    (index && index.documents || []).forEach((match) => {
+      const group = match.group || { records: [], history: [] };
+      [...(group.records || []), ...(group.history || [])].forEach((record) => {
+        const title = unwrapTitle(record && record.title);
+        if (!title) return;
+        const item = { record, title, documentKey: record.documentKey || C.key(record.document || match.document) };
+        const documentKey = item.documentKey;
+        add(byDocument, documentKey, item, 8);
+        const typeKey = titleHistoryTypeKey(record);
+        if (!typeKey) return;
+        add(byType, typeKey, item, 8);
+        const discipline = disciplineKey(record && record.discipline);
+        if (discipline) {
+          const disciplineKeyValue = `${typeKey}|${discipline}`;
+          add(byTypeDiscipline, disciplineKeyValue, item, 8);
+        }
+      });
+    });
+    return { byDocument, byType, byTypeDiscipline };
+  }
+
+  function previousTitlesFor(record, historyIndex) {
+    if (!historyIndex) return [];
+    const documentKey = record.documentKey || C.key(record.document);
+    const typeKey = titleHistoryTypeKey(record);
+    const discipline = disciplineKey(record.discipline);
+    const samples = (bucket) => bucket && bucket.samples || [];
+    const items = [
+      ...samples(historyIndex.byDocument.get(documentKey)),
+      ...samples(typeKey && discipline ? historyIndex.byTypeDiscipline.get(`${typeKey}|${discipline}`) : null),
+      ...samples(typeKey ? historyIndex.byType.get(typeKey) : null),
+    ];
+    const seen = new Set();
+    const titles = [];
+    items.forEach((item) => {
+      if (!item || item.record === record) return;
+      const key = norm(item.title);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      titles.push(item.title);
+    });
+    return titles.slice(0, 24);
+  }
+
+  function previousTitlePatternFor(record, historyIndex) {
+    if (!historyIndex) return { title: "", support: 0 };
+    const documentKey = record.documentKey || C.key(record.document);
+    const typeKey = titleHistoryTypeKey(record);
+    const discipline = disciplineKey(record.discipline);
+    const currentPrefixKey = norm(titlePrefixBeforeDescription(unwrapTitle(record.title)));
+    const fromBucket = (bucket) => {
+      if (!bucket || !bucket.prefixCounts) return null;
+      return [...bucket.prefixCounts.entries()].map(([key, pattern]) => ({
+        title: pattern.title,
+        support: pattern.support - Number(Boolean(currentPrefixKey && key === currentPrefixKey)),
+      })).filter((pattern) => pattern.support > 0)
+        .sort((left, right) => right.support - left.support || right.title.length - left.title.length)[0] || null;
+    };
+    return fromBucket(historyIndex.byDocument.get(documentKey))
+      || fromBucket(typeKey && discipline ? historyIndex.byTypeDiscipline.get(`${typeKey}|${discipline}`) : null)
+      || fromBucket(typeKey ? historyIndex.byType.get(typeKey) : null)
+      || { title: "", support: 0 };
+  }
+
+  function historicalTitlePrefix(previousTitles, inferredType) {
+    const groups = new Map();
+    (previousTitles || []).forEach((title) => {
+      const prefix = titlePrefixBeforeDescription(unwrapTitle(title));
+      if (!prefix) return;
+      const key = norm(prefix);
+      if (!groups.has(key)) groups.set(key, { title: prefix, support: 0 });
+      groups.get(key).support += 1;
+    });
+    const ranked = [...groups.values()].sort((left, right) => {
+      const inferredMatch = Number(norm(right.title) === norm(inferredType)) - Number(norm(left.title) === norm(inferredType));
+      return right.support - left.support || inferredMatch || right.title.length - left.title.length;
+    });
+    return ranked[0] || { title: "", support: 0 };
+  }
+
+  function titleStartsWithType(title, type) {
+    const current = norm(unwrapTitle(title));
+    const prefix = norm(cleanTitlePart(type));
+    if (!current || !prefix) return false;
+    return current === prefix || current.startsWith(`${prefix} -`) || current.startsWith(`${prefix}:`) || current.startsWith(`${prefix} `);
+  }
+
   function isDrawingRecord(record, prefix, inferredType) {
     const document = norm(record && record.document);
     return document.startsWith("DE-") || /(?:^|_)DE(?:_|$)/.test(document) || /DESENHO/.test(norm(`${prefix} ${inferredType}`));
@@ -878,54 +991,6 @@
       byNormalizedTag,
       metadata: metadata || {},
     };
-  }
-
-  /**
-   * TABELA 13 da ET (norma de codificação do contrato): liga o código do
-   * relatório ao seu título oficial. O código do relatório é o 6º grupo do
-   * código documental e a TAG é o 7º — por isso o título da ET é exatamente a
-   * parte que precede a TAG no título do documento.
-   */
-  function parseEtReportTitles(catalog) {
-    const columns = catalog && catalog.columns || [];
-    const position = new Map(columns.map((name, index) => [name, index]));
-    const at = (row, name) => position.has(name) ? row[position.get(name)] : "";
-    const byCode = new Map();
-    (catalog && catalog.rows || []).forEach((row) => {
-      const code = norm(at(row, "code")).replace(/\s+/g, "");
-      const title = cleanTitlePart(usableDescription(at(row, "title")));
-      if (!code || !title) return;
-      const current = byCode.get(code);
-      // O mesmo código com títulos diferentes na norma se cala: escolher um
-      // deles por conta própria seria inventar norma.
-      if (current && norm(current.title) !== norm(title)) { current.ambiguous = true; current.title = ""; return; }
-      if (!current) byCode.set(code, { code, title });
-    });
-    return {
-      byCode,
-      revision: (catalog && catalog.revision) || "",
-      sourceFile: (catalog && catalog.sourceFile) || "ET",
-      table: (catalog && catalog.table) || "TABELA 13",
-      count: byCode.size,
-    };
-  }
-
-  // O 6º grupo do código documental é o código do relatório. Vale tanto para
-  // "..._CVL_RIR_NT-TAG" quanto para códigos compostos como "RSOFT-CPS".
-  function reportCodeFromDocument(document) {
-    const parts = text(document).split("_");
-    if (parts.length < 6) return "";
-    return norm(parts[5]).replace(/\s+/g, "");
-  }
-
-  function etReportTitleFor(record, references) {
-    const catalog = references && references.etReportTitles;
-    if (!catalog || !catalog.byCode) return null;
-    const code = reportCodeFromDocument(record.document);
-    if (!code) return null;
-    const entry = catalog.byCode.get(code);
-    if (!entry || !entry.title || entry.ambiguous) return null;
-    return { ...entry, revision: catalog.revision, sourceFile: catalog.sourceFile, table: catalog.table };
   }
 
   function parseSconTitleCatalog(catalog) {
@@ -2008,14 +2073,20 @@
     return String(value == null ? "" : value).toLocaleUpperCase("pt-BR");
   }
 
-  function buildTitle(type, description, tag) {
+  function buildTitle(type, description, tag, options) {
+    const settings = options || {};
     const cleanTag = cleanTitlePart(tag);
     let cleanDescription = stripLeadingTitleTags(removeParentheticalContent(description), [cleanTag]);
     if (cleanTag) {
       const trailingPattern = flexibleTagPattern(cleanTag);
       cleanDescription = cleanDescription.replace(new RegExp(`\\s*[-–—:]?\\s*${trailingPattern}\\s*$`, "i"), "");
     }
-    const cleanType = trimTypeDescriptionOverlap(removeParentheticalContent(type), cleanDescription);
+    // O texto definido pela norma deve permanecer literal na frente do título.
+    // Para os demais fallbacks, conserva-se a limpeza anterior de parênteses e
+    // sobreposição com a descrição vinda das bases.
+    const cleanType = settings.preserveType
+      ? cleanTitlePart(type)
+      : trimTypeDescriptionOverlap(removeParentheticalContent(type), cleanDescription);
     const parts = [];
     [cleanType, cleanDescription].map(cleanTitlePart).filter(Boolean).forEach((part) => {
       if (!parts.some((current) => norm(current) === norm(part) || norm(current).includes(norm(part)))) parts.push(part);
@@ -2157,19 +2228,23 @@
   function auditTitles(index, references, options) {
     const documentKeys = options && options.documentKeys instanceof Set ? options.documentKeys : null;
     const sourceRecords = documentKeys ? currentTitleRecords(index).filter((record) => documentKeys.has(record.documentKey)) : currentTitleRecords(index);
+    const previousTitleIndex = buildPreviousTitleIndex(index);
     return sourceRecords.map((record) => {
       if (record._ldConflict) return conflictAuditResult(record, "title");
       const reference = referenceFor(record, references);
       const current = unwrapTitle(record.title);
       const sourceColumn = recordColumn(record, ["TÍTULO", "TITULO", "TÍTULO DO DOCUMENTO", "TITULO DO DOCUMENTO", "NOME DO DOCUMENTO"]);
-      const inferredType = inferType(record) || reference && reference.documentType || "";
-      const prefix = stableTitlePrefix(current, inferredType);
+      const previousTitles = previousTitlesFor(record, previousTitleIndex);
+      const titleStandard = T && T.resolve ? T.resolve(record.document, {
+        previousTitles,
+        referenceType: reference && reference.documentType || "",
+        currentTitle: current,
+      }) : null;
+      const inferredType = titleStandard && titleStandard.title || reference && reference.documentType || inferType(record) || "";
+      const previousPattern = previousTitlePatternFor(record, previousTitleIndex);
+      const prefix = titleStandard && titleStandard.title || previousPattern.title || stableTitlePrefix(current, inferredType);
       const drawing = isDrawingRecord(record, prefix, inferredType);
-      // A ET é a norma do contrato: quando ela define o título para o código do
-      // relatório, ele vence o prefixo lido do título atual e o tipo inferido.
-      // É esse título que entra antes da TAG.
-      const etReport = etReportTitleFor(record, references);
-      const type = etReport && etReport.title || prefix || inferredType;
+      const type = prefix || inferredType;
       const tagEvidence = resolveTagEvidence(record, reference);
       const possibleIdentifier = tagEvidence.possibleTag;
       const sconReference = sconReferenceFor(record, references);
@@ -2250,7 +2325,12 @@
         && !trustedDescription
       );
       const sconEscopoDrivesDescription = Boolean(externalTagDrivesDescription && sconEscopoInDescription);
-      const currentDescription = stripKnownParts(current, type, tag);
+      const currentDetectedPrefix = stableTitlePrefix(current, inferType(record));
+      const currentDescriptionType = titleStandard && titleStandard.normative
+        && currentDetectedPrefix && !titleStartsWithType(current, type)
+        ? currentDetectedPrefix
+        : type;
+      const currentDescription = stripKnownParts(current, currentDescriptionType, tag);
       const description = nonTaggedRule && nonTaggedRule.description
         || sconCombinedDescription
         || trustedDescription && referenceDescription
@@ -2266,6 +2346,13 @@
       const literalTag = /\bTAG\b\s*[:\-]?\s*[A-Z0-9]/i.test(current);
       const formatting = /\s{2,}|--|[-–—]\s*[-–—]|^\s*[-–—]|[-–—]\s*$/.test(current) || literalTag;
       const generic = titleLooksGeneric(current, type);
+      const standardPrefixMismatch = Boolean(
+        !empty
+        && titleStandard
+        && titleStandard.normative
+        && titleStandard.title
+        && !titleStartsWithType(current, titleStandard.title)
+      );
       const needsTag = tagRequired(record, drawing ? "DESENHO" : type, titleTag) && titleTagConfirmed && Boolean(titleTag) && !norm(current).includes(norm(titleTag));
       const controlledDescriptionMismatch = Boolean(
         description
@@ -2281,7 +2368,16 @@
       let issue = "ok";
       let classification = "ok";
       let reason = "Título claro e sem divergência identificada";
-      if (empty) { issue = "empty"; classification = trustedScon || trustedSconEscopo || trustedAppendix || trustedDescription || titleTagConfirmed ? "confirmed_error" : "insufficient"; reason = "Título vazio"; }
+      if (empty) { issue = "empty"; classification = titleStandard && titleStandard.normative || trustedScon || trustedSconEscopo || trustedAppendix || trustedDescription || titleTagConfirmed ? "confirmed_error" : "insufficient"; reason = "Título vazio"; }
+      else if (standardPrefixMismatch) {
+        issue = "document_type";
+        classification = titleStandard.ambiguous ? "suggestion" : "confirmed_error";
+        reason = titleStandard.ambiguous
+          ? titleStandard.chosenByHistory
+            ? `A norma traz mais de uma redação para o Grupo 6 ${titleStandard.code}; foi usada a variante mais compatível com os títulos anteriores`
+            : `A norma traz mais de uma redação para o Grupo 6 ${titleStandard.code}; foi mantida a primeira redação da Tabela 13 para revisão`
+          : `O título deve iniciar com o tipo documental definido para o código ${titleStandard.code}: ${titleStandard.title}`;
+      }
       else if (needsTag) {
         issue = "missing_tag";
         classification = "confirmed_error";
@@ -2321,14 +2417,17 @@
         reason = "A base marcou esta descrição para revisão humana; nenhuma sugestão foi aplicada";
       } else if (issue !== "ok" && issue !== "possible_identifier") {
         if (isCv) {
-          if (referenceDescription) {
-            proposed = buildTitle("CURRÍCULO", referenceDescription, "");
+          const cvDescription = referenceDescription || description;
+          if (cvDescription) {
+            proposed = buildTitle("CURRÍCULO", cvDescription, "", { preserveType: true });
             confidence = reference && !reference.inferred ? "alta" : "media";
           }
-        } else if ((description || tag) && (type || description || tag)) {
-          proposed = buildTitle(type, description, titleTag);
+        } else if ((description || tag || titleStandard && titleStandard.normative) && (type || description || tag)) {
+          proposed = buildTitle(type, description, titleTag, { preserveType: Boolean(titleStandard && titleStandard.normative && titleStandard.title) });
           const hasExternal = Boolean(sconTitleComplement || externalTagDescription || explicitComplementary || explicitDescription || explicitScon || referenceDescription || nonTaggedRule && nonTaggedRule.description);
-          confidence = trustedScon
+          confidence = titleStandard && titleStandard.normative && !titleStandard.ambiguous
+            ? (hasExternal || titleTagConfirmed ? "alta" : "media")
+            : trustedScon
             ? "alta"
             : nonTaggedRule && nonTaggedRule.exact
             ? "alta"
@@ -2360,6 +2459,8 @@
         ? `${tagReference.sourceFile || "Apêndice 3 Rev.B"} · aba ${tagReference.sourceSheet || "Apêndice"} · registro(s) ${(tagReference.sourceRows || [tagReference.row]).filter(Boolean).join(", ") || "não identificado"} · ${tagReference.matchMode || "TAG exata"}`
         : "";
       const evidence = [
+        titleStandard && titleStandard.source,
+        previousPattern.title && `${previousPattern.support} título(s) anterior(es) confirmam o padrão “${previousPattern.title}”`,
         tagEvidence.source,
         sconEscopoReference && sconEscopoReference.lookupTagSource,
         nonTaggedRule && nonTaggedRule.source,
@@ -2463,6 +2564,14 @@
         nonTaggedWhereWhen: nonTaggedRule && nonTaggedRule.whereWhen || "",
         nonTaggedSource: nonTaggedRule && nonTaggedRule.source || "",
         titlePrefix: type,
+        titleStandardCode: titleStandard && titleStandard.code || "",
+        titleStandard: titleStandard && titleStandard.title || "",
+        titleStandardSource: titleStandard && titleStandard.source || "",
+        titleStandardAmbiguous: Boolean(titleStandard && titleStandard.ambiguous),
+        titleStandardChosenByHistory: Boolean(titleStandard && titleStandard.chosenByHistory),
+        previousTitlePattern: previousPattern.title,
+        previousTitleSupport: previousPattern.support,
+        previousTitleExamples: previousTitles.slice(0, 5),
         drawingRule: drawing
           ? "DESENHO — manter tratamento específico e TAG comprovada"
           : nonTaggedRule
@@ -2524,6 +2633,11 @@
     resolveTagEvidence,
     inferType,
     stableTitlePrefix,
+    buildPreviousTitleIndex,
+    previousTitlesFor,
+    previousTitlePatternFor,
+    historicalTitlePrefix,
+    titleStartsWithType,
     referenceDescriptionCandidate,
     parseSconDescription,
     normalizedTagKey,
@@ -2551,8 +2665,6 @@
     sconEscopoReferenceFor,
     technicalIdentifiers,
     parseTitleReferenceWorkbook,
-    parseEtReportTitles,
-    reportCodeFromDocument,
     titleLooksGeneric,
     combineTitleDescriptions,
     stripLeadingTitleTags,
