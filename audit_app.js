@@ -812,7 +812,22 @@
       renderTitles();
       window.setTimeout(() => hideProgress("title"), 450);
       const suffix = titleScopeSpecific() && state.titleUnmatchedCodes.length ? ` · ${state.titleUnmatchedCodes.length} código(s) não localizado(s)` : "";
-      showToast(`${state.titleRows.length.toLocaleString("pt-BR")} título(s) analisado(s)${suffix}.`, state.titleUnmatchedCodes.length ? "warn" : "success");
+      // Cobertura da leitura: o usuário precisa poder comparar o que foi
+      // analisado com o que a planilha tem, e saber o nome de qualquer aba que
+      // ficou de fora. Sem isso, "analisou só parte" vira suspeita sem como
+      // verificar — foi exatamente o que aconteceu antes.
+      const cobertura = state.parsed && state.parsed.coverage;
+      let coberturaTexto = "";
+      if (cobertura) {
+        const abas = (cobertura.sheets || []).filter((item) => item.role === "técnica");
+        const lidas = abas.reduce((total, item) => total + (item.rows || 0), 0);
+        coberturaTexto = ` · ${lidas.toLocaleString("pt-BR")} linha(s) lida(s) em ${abas.length} aba(s) técnica(s)`;
+        const foraDaAnalise = (cobertura.skippedSheets || []).filter((item) => !/aba de apoio/.test(item.reason));
+        if (foraDaAnalise.length) {
+          showToast(`Atenção: ${foraDaAnalise.length} aba(s) ficaram fora da leitura — ${foraDaAnalise.map((item) => `“${item.sheet}” (${item.reason})`).join("; ")}.`, "warn");
+        }
+      }
+      showToast(`${state.titleRows.length.toLocaleString("pt-BR")} título(s) analisado(s)${coberturaTexto}${suffix}.`, state.titleUnmatchedCodes.length ? "warn" : "success");
       if (Tasks) Tasks.finish(taskId, `${state.titleRows.length.toLocaleString("pt-BR")} títulos analisados${suffix}`);
     } catch (error) {
       console.error("RECON: falha na análise de títulos", error);

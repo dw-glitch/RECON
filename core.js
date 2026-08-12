@@ -319,9 +319,20 @@
     return version;
   }
 
+  // Quantas linhas do topo são varridas atrás do cabeçalho. LDs reais trazem
+  // capa, filtros e legendas antes da tabela; 25 linhas cortava abas inteiras.
+  const HEADER_SCAN_ROWS = 60;
+  // O limite de 80 colunas descartava a coluna DOCUMENTO quando ela estava mais
+  // à direita, e com ela a aba inteira.
+  const MAX_COLUMNS = 400;
+
   function parseWorkbook(workbook, sourceName, sourceTimestamp, compatibilityProfile) {
     const records = [];
     const history = [];
+    // Cobertura: tudo o que ficou de fora precisa ser contado e nomeado. Antes
+    // uma aba sem cabeçalho reconhecido, ou uma linha com código curto, sumia
+    // em silêncio e a análise parecia ter "pulado" parte da LD.
+    const coverage = { sheets: [], skippedSheets: [], rowsRead: 0, rowsSkipped: { noDocument: 0, shortKey: 0, endMarker: 0 } };
     const ldVersion = inferLdVersion(workbook);
     const mappedFields = { technical: new Set(), history: new Set() };
     const configuredSheets = compatibilityProfile && compatibilityProfile.sheets || null;
@@ -332,36 +343,43 @@
       const configured = configuredSheets && configuredSheets[sheetName];
       if (configuredSheets && (!configured || configured.role === "ignore")) return;
       const range = XLSX.utils.decode_range(sheet["!ref"]);
-      const lastColumn = Math.min(range.e.c, 80);
+      const lastColumn = Math.min(range.e.c, MAX_COLUMNS);
       let headerIndex = configured && Number.isInteger(configured.headerRow) ? configured.headerRow : -1;
       let header = [];
       if (headerIndex >= 0) {
         for (let c = range.s.c; c <= lastColumn; c += 1) header[c] = sheetCell(sheet, headerIndex, c);
       } else {
-        for (let r = range.s.r; r <= Math.min(range.e.r, range.s.r + 24); r += 1) {
+        for (let r = range.s.r; r <= Math.min(range.e.r, range.s.r + HEADER_SCAN_ROWS - 1); r += 1) {
           const candidate = [];
           for (let c = range.s.c; c <= lastColumn; c += 1) candidate[c] = sheetCell(sheet, r, c);
           const cells = candidate.map(norm);
-          const hasDocument = cells.some((value) => value === "DOCUMENTO" || value.startsWith("DOCUMENTO ") || value.includes("CODIGO DO DOCUMENTO") || value === "CODIGO DOCUMENTO");
-          const hasRevision = cells.some((value) => value === "REVISAO" || value === "REV." || value === "REV");
-          if (hasDocument && (hasRevision || cells.some((value) => value.includes("STATUS")))) {
+          // A coluna DOCUMENTO sozinha já identifica a tabela. Exigir também
+          // REVISÃO ou STATUS descartava abas técnicas legítimas que não têm
+          // essas colunas — e com elas todos os seus documentos.
+          const hasDocument = cells.some((value) => value === "DOCUMENTO" || value.startsWith("DOCUMENTO ")
+            || value.includes("CODIGO DO DOCUMENTO") || value === "CODIGO DOCUMENTO" || value === "CODIGO DOCUMENTAL");
+          if (hasDocument) {
             headerIndex = r;
             header = candidate;
             break;
           }
         }
       }
-      if (headerIndex < 0) return;
+      if (headerIndex < 0) { coverage.skippedSheets.push({ sheet: sheetName, reason: "cabeçalho com coluna DOCUMENTO não encontrado" }); return; }
       const columns = configured && configured.columns ? { ...configured.columns } : columnMap(header);
-      if (columns.document === undefined) return;
+      if (columns.document === undefined) { coverage.skippedSheets.push({ sheet: sheetName, reason: "coluna DOCUMENTO não mapeada" }); return; }
       const historySheet = configured ? configured.role === "history" : norm(sheetName) === "COLAR SIGEM";
-      if (!historySheet && ignoredSheets.has(norm(sheetName))) return;
+      if (!historySheet && ignoredSheets.has(norm(sheetName))) { coverage.skippedSheets.push({ sheet: sheetName, reason: "aba de apoio, fora da análise" }); return; }
+      let sheetRows = 0;
       Object.keys(columns).forEach((field) => mappedFields[historySheet ? "history" : "technical"].add(field));
       for (let i = headerIndex + 1; i <= range.e.r; i += 1) {
         const document = sheetCell(sheet, i, columns.document);
-        if (!document || norm(document) === "FIM") continue;
+        if (!document) { coverage.rowsSkipped.noDocument += 1; continue; }
+        if (norm(document) === "FIM") { coverage.rowsSkipped.endMarker += 1; continue; }
         const documentKey = key(document);
-        if (documentKey.length < 7) continue;
+        if (documentKey.length < 7) { coverage.rowsSkipped.shortKey += 1; continue; }
+        sheetRows += 1;
+        coverage.rowsRead += 1;
         const item = {
           document,
           documentKey,
@@ -399,10 +417,12 @@
         if (historySheet) history.push(normalizedItem);
         else records.push(normalizedItem);
       }
+      coverage.sheets.push({ sheet: sheetName, role: historySheet ? "histórico" : "técnica", headerRow: headerIndex + 1, rows: sheetRows });
     });
     return {
       records,
       history,
+      coverage,
       ldVersion,
       mappedFields: {
         technical: [...mappedFields.technical],

@@ -701,4 +701,54 @@ check("a alocação diz o que falta quando o botão Analisar está desabilitado"
   assert.match(app, /para analisar/, "a mensagem não explica que o botão depende dos itens");
 });
 
+// ===================== COBERTURA DA LEITURA DA LD =====================
+
+check("a leitura da LD não descarta abas por causa do cabeçalho, da posição ou da largura", () => {
+  const require2 = createRequire(import.meta.url);
+  globalThis.window = globalThis; globalThis.self = globalThis;
+  const XLSX = require2("./xlsx.full.min.js") || globalThis.XLSX;
+  const sheetjs = XLSX && XLSX.utils ? XLSX : globalThis.XLSX;
+  assert.ok(sheetjs && sheetjs.utils, "SheetJS indisponível para montar a LD de teste");
+  globalThis.XLSX = sheetjs; // core.js lê o XLSX do escopo global, como no navegador
+  require2("./recon_contracts.js"); require2("./ld_conflicts.js");
+  const C = require2("./core.js");
+
+  const wb = sheetjs.utils.book_new();
+  // 1. cabeçalho na linha 12 e SEM coluna REVISÃO/STATUS
+  const a1 = [...Array(11).fill(["", "", ""]), ["DOCUMENTO", "TÍTULO", "DISCIPLINA"]];
+  for (let i = 0; i < 50; i++) a1.push([`C1O_RNEST_U32_3.1.1.1_TUB_RIR_B-${32000 + i}`, `titulo ${i}`, "TUB"]);
+  sheetjs.utils.book_append_sheet(wb, sheetjs.utils.aoa_to_sheet(a1), "TUBULACAO");
+  // 2. cabeçalho na linha 30, além das 25 linhas que a varredura antiga cobria
+  const a2 = [...Array(29).fill([""]), ["DOCUMENTO", "REVISÃO", "TÍTULO"]];
+  for (let i = 0; i < 40; i++) a2.push([`C1O_RNEST_U32_3.1.1.1_ELE_RNC_B-${41000 + i}`, "0", `titulo ${i}`]);
+  sheetjs.utils.book_append_sheet(wb, sheetjs.utils.aoa_to_sheet(a2), "ELETRICA");
+  // 3. coluna DOCUMENTO além da 80ª, que era o limite antigo
+  const linha = (v) => { const r = Array(95).fill(""); r[90] = v[0]; r[91] = v[1]; return r; };
+  const a3 = [linha(["DOCUMENTO", "TÍTULO"])];
+  for (let i = 0; i < 30; i++) a3.push(linha([`C1O_RNEST_U32_3.1.1.1_CVL_CCM_B-${5000 + i}`, `titulo ${i}`]));
+  sheetjs.utils.book_append_sheet(wb, sheetjs.utils.aoa_to_sheet(a3), "CIVIL");
+
+  const buf = sheetjs.write(wb, { type: "buffer", bookType: "xlsx" });
+  const parsed = C.parseWorkbook(sheetjs.read(buf, { type: "buffer" }), "LD.xlsx", Date.now(), null);
+
+  // O código anterior lia ZERO destes 120: as três abas eram descartadas em
+  // silêncio e a análise parecia ter pulado parte da LD.
+  assert.equal(parsed.records.length, 120, "a leitura da LD voltou a descartar abas");
+  assert.equal(parsed.coverage.rowsRead, 120);
+  assert.deepEqual(parsed.coverage.skippedSheets, [], "nenhuma destas abas pode ficar de fora");
+  assert.deepEqual(parsed.coverage.sheets.map((s) => `${s.sheet}:${s.rows}`), ["TUBULACAO:50", "ELETRICA:40", "CIVIL:30"]);
+});
+
+check("a cobertura da leitura é reportada e chega à tela", () => {
+  const core = read("core.js");
+  assert.match(core, /coverage = \{ sheets: \[\], skippedSheets: \[\]/, "sem relatório de cobertura na leitura");
+  assert.match(core, /skippedSheets\.push\(\{ sheet: sheetName, reason:/, "aba descartada sem motivo registrado");
+  assert.match(core, /HEADER_SCAN_ROWS = 60/, "varredura de cabeçalho voltou a ser curta");
+  assert.match(core, /MAX_COLUMNS = 400/, "limite de colunas voltou a cortar a coluna DOCUMENTO");
+
+  const app = read("audit_app.js");
+  assert.match(app, /state\.parsed && state\.parsed\.coverage/, "a análise de títulos não lê a cobertura");
+  assert.match(app, /ficaram fora da leitura/, "a tela não avisa quando uma aba fica fora");
+});
+
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));
