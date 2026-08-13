@@ -2019,6 +2019,28 @@
     return parts.join(" · ");
   }
 
+  // Alguns complementos da SCON repetem apenas a família genérica do
+  // equipamento. Quando o próprio tipo documental já traz essa informação,
+  // a repetição pode ser retirada. Qualificadores reais nunca são descartados:
+  // "VALVULA MANUAL", por exemplo, identifica o equipamento da TAG e precisa
+  // permanecer antes da localização acrescentada pela SCON ESCOPO.
+  function pruneRedundantTitleDescription(type, description) {
+    const typeNorm = norm(type);
+    const parts = text(description)
+      .split(/\s*·\s*/)
+      .map(cleanTitlePart)
+      .filter(Boolean);
+    const filtered = parts.filter((part) => {
+      const partNorm = norm(part);
+      if (
+        /\bREPARO DE VALVULAS\b/.test(typeNorm)
+        && /^(?:VALVULA|VALVULAS)$/.test(partNorm)
+      ) return false;
+      return true;
+    });
+    return combineTitleDescriptions(...filtered);
+  }
+
   function flexibleTagPattern(value) {
     const tokens = norm(value).split(/[^A-Z0-9]+/).filter(Boolean);
     return tokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[\\s,._/\\-]*");
@@ -2268,7 +2290,12 @@
       const possibleIdentifier = tagEvidence.possibleTag;
       const sconReference = sconReferenceFor(record, references);
       const sconEscopoReference = sconEscopoReferenceFor(record, references, tagEvidence, {
-        allowContextFallback: !(sconReference && sconReference.trusted),
+        // A SCON atualizada descreve muito bem o equipamento pela TAG, mas não
+        // substitui a SCON ESCOPO: é esta segunda base que acrescenta área,
+        // unidade e contexto de montagem. O fallback permanece conservador
+        // (hoje restrito a REP + EAP/atividade/objeto compatíveis), portanto
+        // deve continuar habilitado mesmo quando a TAG já foi achada na SCON.
+        allowContextFallback: true,
       });
       const tagReference = tagReferenceFor(record, references, tagEvidence);
       const sconEscopoConfirmsLookupTag = Boolean(
@@ -2350,7 +2377,7 @@
         ? currentDetectedPrefix
         : type;
       const currentDescription = stripKnownParts(current, currentDescriptionType, tag);
-      const description = nonTaggedRule && nonTaggedRule.description
+      const rawDescription = nonTaggedRule && nonTaggedRule.description
         || sconCombinedDescription
         || trustedDescription && referenceDescription
         || externalTagDrivesDescription && externalTagDescription
@@ -2358,6 +2385,7 @@
         || explicitDescription
         || explicitScon
         || currentDescription;
+      const description = pruneRedundantTitleDescription(type, rawDescription);
       const descriptionIdentifiers = technicalIdentifiers(description);
       const titleTag = nonTaggedRule ? "" : tag;
       const isCv = norm(record.sheet) === "CV" || /-C1O-CV-/.test(norm(record.document));
@@ -2686,6 +2714,7 @@
     parseTitleReferenceWorkbook,
     titleLooksGeneric,
     combineTitleDescriptions,
+    pruneRedundantTitleDescription,
     stripLeadingTitleTags,
     trimTypeDescriptionOverlap,
     buildTitle,

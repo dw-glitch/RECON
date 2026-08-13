@@ -730,6 +730,97 @@ check("parênteses que fazem parte do título normativo não são removidos", ()
     "CERTIFICADO DE TESTE DE PRESSÃO EM EQUIPAMENTOS (SELO MECÂNICO) - BOMBA - B-1");
 });
 
+check("a SCON atualizada não bloqueia área e unidade vindas da SCON ESCOPO", () => {
+  const require = createRequire(import.meta.url);
+  const C = require("./core.js");
+  const Q = require("./audit_core.js");
+  const document = "C1O_RNEST_U32_3.8.10.1_TUB_REP_VM-327721";
+  const record = {
+    document,
+    documentKey: C.key(document),
+    sheet: "ET",
+    row: 306,
+    discipline: "TUBULACAO",
+    revision: "0",
+    title: "RELATÓRIO DE REPARO DE VÁLVULAS - VM-327721",
+  };
+  const index = {
+    documents: [{ document, documentKey: record.documentKey, group: { records: [record], history: [] } }],
+  };
+  const scon = Q.buildSconReferenceIndex([{
+    document: "APR_TUB_U32-VM-327721",
+    titleComplement: "VM-327721 - VALVULA MANUAL",
+    fullDescription: "U32 - UNIDADE HDT | TUBULACAO | VM-327721 - VALVULA MANUAL",
+    sconTag: "APR_TUB_U32-VM-327721",
+    discipline: "TUBULACAO",
+    itemType: "VALVULA(each)",
+    row: 9260,
+  }], { sourceFile: "SCON atualizada" });
+  const sconEscopo = Q.parseSconEscopoTitleCatalog({
+    sourceFile: "SCON ESCOPO",
+    sheet: "MAPA",
+    columns: ["tag", "title", "discipline", "row", "area", "type", "stage", "eap"],
+    rows: [[
+      "MODERADO-6-A-12",
+      "REPARO DE VALVULA(each) - DISCIPLINA: TUBULACAO - ÁREA: U32 - UNIDADE HDT",
+      "TUBULACAO", 7791, "U32 - UNIDADE HDT", "VALVULA(each)", "REPARO", "3.8.10",
+    ]],
+  });
+  const row = Q.auditTitles(index, { scon, sconEscopo }, { titleSourceMode: "auto" })[0];
+  assert.equal(row.sconEscopoMatch, "SIM");
+  assert.match(row.sconEscopoMatchMode, /fallback seguro por EAP \+ atividade documental/i);
+  assert.equal(row.proposed, "RELATÓRIO DE REPARO DE VÁLVULAS - VALVULA MANUAL · ÁREA: U32 - UNIDADE HDT - VM-327721");
+  assert.match(row.proposed, /VALVULA MANUAL/);
+});
+
+check("o título automático combina SCON, Apêndice e SCON ESCOPO no padrão da LD", () => {
+  const require = createRequire(import.meta.url);
+  const C = require("./core.js");
+  const Q = require("./audit_core.js");
+  const document = "C1O_RNEST_U32_6.23.4.1_EST_PPT_P-B-32009A";
+  const record = {
+    document,
+    documentKey: C.key(document),
+    sheet: "ET",
+    row: 342,
+    discipline: "EQP ESTATICO",
+    revision: "0",
+    title: "RELATÓRIO DE PREPARAÇÃO PARA TRANSPORTE - P-B-32009A",
+  };
+  const index = {
+    documents: [{ document, documentKey: record.documentKey, group: { records: [record], history: [] } }],
+  };
+  const scon = Q.buildSconReferenceIndex([{
+    document: "APR_EQE_210-P-B-32009A",
+    titleComplement: "P-B-32009A - TROCADOR CASCO TUBO DA B-32009A",
+    fullDescription: "210 - PIPE RACK | EQUIPAMENTO ESTÁTICO | P-B-32009A - TROCADOR CASCO TUBO DA B-32009A",
+    sconTag: "APR_EQE_210-P-B-32009A",
+    discipline: "EQP ESTATICO",
+    itemType: "PERMUTADOR(each)",
+    row: 1394,
+  }], { sourceFile: "SCON atualizada" });
+  const sconEscopo = Q.parseSconEscopoTitleCatalog({
+    sourceFile: "SCON ESCOPO",
+    sheet: "MAPA",
+    columns: ["tag", "title", "discipline", "row", "area", "type", "stage", "eap"],
+    rows: [[
+      "P-B-32009A",
+      "6.23.2.1 - PREPARACAO PARA TRANSPORTE DE PERMUTADOR(each) - DISCIPLINA: EQP ESTATICO - ÁREA: 210 - PIPE RACK",
+      "EQP ESTATICO", 3856, "210 - PIPE RACK", "PERMUTADOR(each)", "6.23.2.1 - PREPARACAO PARA TRANSPORTE", "6.23.4",
+    ]],
+  });
+  const tagReference = Q.parseTagReferenceCatalog({
+    meta: { source: "Apêndice 3 Rev.B", sheet: "Apêndice" },
+    entries: [{ tag: "P-B-32009A", description: "TROCADOR CASCO TUBO DA B-32009A", discipline: "EQP ESTATICO", row: 5172 }],
+  });
+  const row = Q.auditTitles(index, { scon, sconEscopo, tagReference }, { titleSourceMode: "auto" })[0];
+  assert.equal(row.proposed,
+    "RELATÓRIO DE PREPARAÇÃO PARA TRANSPORTE - TROCADOR CASCO TUBO DA B-32009A · PERMUTADOR - ÁREA: 210 - PIPE RACK - P-B-32009A");
+  assert.equal(row.sconEscopoMatch, "SIM");
+  assert.equal(row.appendixMatch, "SIM");
+  assert.match(row.reason, /SCON TAG SGP, do SCON ESCOPO e do Apêndice 3 Rev\.B/i);
+});
+
 // ===================== BANCO LOCAL =====================
 
 check("a versão do banco avança quando uma store nova é adicionada", () => {
