@@ -85,17 +85,17 @@
     },
     {
       id: "scon-tag-sgp",
-      label: "SCON TAG SGP",
-      summary: "Extrato do SGP que liga código documental, TAG e descrição por disciplina.",
+      label: "SCON Componentes e Programação",
+      summary: "Extrato atualizado que liga TAG e descrição, independentemente da disciplina da LD.",
       consumer: "Corrigir títulos",
       kind: "rows-catalog",
       schema: "recon.scon-tag-sgp.v1",
-      bundled: { source: "SCON - TAG SGP 3.xlsm", sheet: "WRHDT_VW_EXTRATO_SGP", version: "2026-07-24", count: 19884, unit: "linhas" },
+      bundled: { source: "SCON - COMPONENTES E PROGRAMAÇÃO 2 (1).xlsx", sheet: "Componentes + Programação", version: "2026-08-13", count: 23341, unit: "TAGs únicas" },
       minRows: 1,
       columns: [
-        column("document", "Documento", ["codigo documental", "documento planilha1", "codigo"], true),
-        column("fullDescription", "Descrição completa", ["descricao", "descricao completa", "titulo"], true),
-        column("sconTag", "TAG SCON", ["tag"], false),
+        column("document", "Documento", ["codigo documental", "documento planilha1", "codigo"], false),
+        column("fullDescription", "Descrição completa", ["descricao", "descricao completa", "titulo", "tag desc", "tag descricao"], true),
+        column("sconTag", "TAG SCON", ["tag"], true),
         column("titleComplement", "Complemento do título", ["complemento"], false),
         column("discipline", "Disciplina", [], false),
         column("itemType", "Tipo de item", ["tipo"], false),
@@ -266,6 +266,19 @@
     const catalogRows = body.map((row, index) => keys.map((key) => (
       key === "row" && !found.has("row") ? index + located.index + 2 : readCell(row, found.get(key))
     )));
+    if (item.id === "scon-tag-sgp") {
+      const documentIndex = keys.indexOf("document");
+      const descriptionIndex = keys.indexOf("fullDescription");
+      const tagIndex = keys.indexOf("sconTag");
+      const complementIndex = keys.indexOf("titleComplement");
+      catalogRows.forEach((row) => {
+        if (documentIndex >= 0 && !text(row[documentIndex])) row[documentIndex] = text(row[tagIndex]);
+        if (complementIndex >= 0 && !text(row[complementIndex])) {
+          const parts = text(row[descriptionIndex]).split(/\s*\|\s*/).map(text).filter(Boolean);
+          row[complementIndex] = parts[2] || parts[parts.length - 1] || "";
+        }
+      });
+    }
     const tagIndex = keys.indexOf("tag");
     const eapIndex = keys.indexOf("eap");
     const unique = (columnIndex) => (columnIndex < 0

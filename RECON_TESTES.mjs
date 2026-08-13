@@ -263,6 +263,56 @@ check("a base SCON TAG SGP embutida tolera falha de rede em uma disciplina sem d
     "falha ao carregar a base embutida ainda pode abortar analyzeTitles inteiro, como se nada tivesse sido gerado");
 });
 
+check("a descrição SCON é localizada pela TAG sem limitar pela disciplina da LD", () => {
+  const require = createRequire(import.meta.url);
+  const Q = require("./audit_core.js");
+  const C = require("./core.js");
+  const scon = Q.buildSconReferenceIndex([
+    {
+      document: "INS_CIV_110-FT-32001A",
+      titleComplement: "FT-32001A - FILTRO",
+      fullDescription: "110 - FILTRAGEM | BASE DE EQUIPAMENTO | FT-32001A - FILTRO",
+      sconTag: "INS_CIV_110-FT-32001A",
+      discipline: "CIVIL",
+      itemType: "BASE DE EQUIPAMENTO(each)",
+      row: 10,
+    },
+    {
+      document: "INS_EQE_110-FT-32001A",
+      titleComplement: "FT-32001A - FILTRO DE CARGA DE DIESEL DE DESTILAÇÃO DIRETA",
+      fullDescription: "110 - FILTRAGEM | EQUIPAMENTO ESTÁTICO | FT-32001A - FILTRO DE CARGA DE DIESEL DE DESTILAÇÃO DIRETA",
+      sconTag: "INS_EQE_110-FT-32001A",
+      discipline: "EQP ESTATICO",
+      itemType: "FILTRO(each)",
+      row: 20,
+    },
+  ], { sourceFile: "SCON atualizada" });
+  const document = "C1O_RNEST_U32_3.1.1.1_CVL_RIR_FT-32001A";
+  const result = Q.sconReferenceFor({ document, documentKey: C.key(document), discipline: "CIVIL" }, { scon });
+  assert.ok(result && result.trusted, "a mesma TAG em outra disciplina não foi aceita");
+  assert.match(result.titleComplement, /FILTRO DE CARGA/, "a descrição técnica mais específica da TAG não foi escolhida");
+  assert.equal(result.discipline, "EQP ESTATICO");
+  assert.match(result.matchMode, /independentemente da disciplina/i);
+});
+
+check("o Excel de títulos exporta toda a análise e não somente as linhas visíveis", () => {
+  const source = read("audit_app.js");
+  assert.match(source, /kind === "title" \? state\.titleRows\.slice\(\) : visibleRows\(kind\)/,
+    "filtros ou paginação da tela ainda podem retirar títulos do Excel");
+  assert.match(source, /kind === "title" \? "Toda a análise"/,
+    "o cabeçalho do Excel não identifica que a exportação cobre toda a análise");
+});
+
+check("o catálogo incorporado usa a SCON atualizada de Componentes e Programação", () => {
+  const loader = read("scon_catalog_loader.js");
+  assert.match(loader, /SCON - COMPONENTES E PROGRAMAÇÃO 2 \(1\)\.xlsx/);
+  assert.match(loader, /total: 23341/);
+  assert.match(loader, /Object\.keys\(manifest\.chunks\)/,
+    "o carregador ainda limita a base SCON à disciplina da LD");
+  ["scon_andaime.js", "scon_apoio.js", "scon_canteiro.js", "scon_loa.js", "scon_recursos_etf.js"]
+    .forEach((name) => assert.ok(exists(name), `fragmento novo ausente: ${name}`));
+});
+
 check("é possível abrir a LD e salvar a revisão direto no arquivo original (File System Access API)", () => {
   assert.ok(exists("recon_file_handles.js"), "módulo recon_file_handles.js ausente");
   const handles = read("recon_file_handles.js");
@@ -418,6 +468,19 @@ check("uma planilha substituta é convertida no formato que o audit_core espera"
   assert.equal(catalog.entries[0].description, "BOMBA DE ÁGUA GELADA");
   assert.equal(catalog.meta.source, "meu_apendice.xlsx");
   assert.equal(catalog.meta.sheet, "Apêndice");
+});
+
+check("a SCON atualizada pode ser fixada diretamente pelas colunas TAG e TAG_DESC", () => {
+  const item = Bases.descriptor("scon-tag-sgp");
+  const rows = [
+    ["TAG", "TAG_DESC", "DISCIPLINA", "TIPO"],
+    ["INS_EQE_110-FT-32001A", "110 - FILTRAGEM | EQUIPAMENTO ESTÁTICO | FT-32001A - FILTRO DE CARGA", "EQP ESTATICO", "FILTRO(each)"],
+  ];
+  const catalog = Bases.buildCatalog(item, rows, { source: "SCON atualizada.xlsx", sheet: "Componentes" });
+  const first = catalog.rows[0];
+  assert.equal(first[catalog.columns.indexOf("document")], "INS_EQE_110-FT-32001A");
+  assert.equal(first[catalog.columns.indexOf("sconTag")], "INS_EQE_110-FT-32001A");
+  assert.equal(first[catalog.columns.indexOf("titleComplement")], "FT-32001A - FILTRO DE CARGA");
 });
 
 check("cabeçalho com acento, caixa ou pontuação diferente ainda é reconhecido", () => {

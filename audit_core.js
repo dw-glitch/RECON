@@ -2109,7 +2109,31 @@
     return null;
   }
 
-  function sconReferenceFromTagMatch(match, targetTag, disciplineMismatch) {
+  function sconDescriptionPreference(item, targetTag) {
+    const entry = item && item.entry || item;
+    const discipline = sconEscopoDisciplineKey(entry && entry.discipline);
+    const preferredDisciplines = new Set([
+      "EQP ESTATICO", "EQP DINAMICO", "INSTRUMENTACAO", "TUBULACAO",
+      "ELETRICA", "HVAC", "SEGURANCA",
+    ]);
+    const genericDisciplines = new Set(["ANDAIME", "APOIO", "CANTEIRO", "LOA", "RECURSOS ETF"]);
+    const description = usableDescription(entry && entry.titleComplement);
+    const body = stripLeadingTitleTags(description, [targetTag]);
+    const leadingTag = leadingTechnicalIdentifier(description);
+    const targetKey = normalizedTagKey(targetTag);
+    const leadingKey = normalizedTagKey(leadingTag);
+    let score = body.length;
+    if (leadingKey && leadingKey === targetKey) score += 1000;
+    else if (leadingKey && (targetKey.includes(leadingKey) || leadingKey.includes(targetKey))) score += 600;
+    if (item && item.aliasSource === "início da descrição SCON") score += 300;
+    if (item && item.aliasSource === "CÓDIGO SGP do SCON" && !leadingKey) score -= 150;
+    if (preferredDisciplines.has(discipline)) score += 200;
+    if (genericDisciplines.has(discipline)) score -= 200;
+    if (/BASE DE EQUIPAMENTO|SUPORTE|FUNDA[CÇ][AÃ]O|ANDAIME/.test(norm(entry && entry.itemType))) score -= 40;
+    return { entry, description, body, score };
+  }
+
+  function sconReferenceFromTagMatch(match, targetTag) {
     if (!match || !match.candidates || !match.candidates.length) return null;
     const groups = new Map();
     match.candidates.forEach((item) => {
@@ -2117,17 +2141,20 @@
       groups.get(item.aliasKey).push(item);
     });
     const descriptions = [];
-    let ambiguousDescription = false;
     groups.forEach((items) => {
       const distinct = [...new Map(items
         .map((item) => item.entry)
         .filter((entry) => entry.titleComplement)
         .map((entry) => [norm(entry.titleComplement), entry.titleComplement])).values()];
-      if (distinct.length !== 1) ambiguousDescription = true;
-      else descriptions.push(distinct[0]);
+      descriptions.push(...distinct);
     });
     const entries = match.candidates.map((item) => item.entry);
-    const first = entries[0];
+    const ranked = match.candidates
+      .map((item) => sconDescriptionPreference(item, targetTag))
+      .filter((item) => item.description)
+      .sort((left, right) => right.score - left.score || right.body.length - left.body.length || left.description.localeCompare(right.description, "pt-BR"));
+    const first = ranked[0] && ranked[0].entry || entries[0];
+    const selectedDescription = ranked[0] && ranked[0].description || "";
     const matchedAliases = [...new Set(match.candidates.map((item) => item.alias))];
     const matchSources = [...new Set(match.candidates.map((item) => item.aliasSource).filter(Boolean))];
     const sourceRows = [...new Set(entries.map((entry) => entry.row).filter(Boolean))];
@@ -2140,13 +2167,13 @@
       : match.contained
         ? containedLabel
         : "TAG equivalente após normalizar pontuação";
-    if (disciplineMismatch || ambiguousDescription || !descriptions.length) {
+    if (!selectedDescription) {
       return {
         ...first,
         titleComplement: "",
         ambiguousDescription: true,
         manualReview: true,
-        matchMode: disciplineMismatch ? `${baseMode}; disciplina diferente da LD` : `${baseMode}; descrições diferentes na base`,
+        matchMode: `${baseMode}; descrição ausente na base`,
         candidates: entries.length,
         candidateTitles: [...new Set(entries.map((entry) => entry.titleComplement).filter(Boolean))].slice(0, 12),
         matchedAliases,
@@ -2157,15 +2184,18 @@
     }
     return {
       ...first,
-      titleComplement: combineTitleDescriptions(...descriptions),
+      titleComplement: selectedDescription,
       sourceRows,
       matchedAliases,
       matchedTag: targetTag,
-      matchMode: baseMode,
+      matchMode: `${baseMode}; descrição escolhida pela TAG independentemente da disciplina`,
       trusted: true,
       normalizedMatch: true,
       containedTag: match.contained,
       tagMatch: true,
+      candidateCount: new Set(descriptions.map(norm)).size,
+      candidateTitles: [...new Map(descriptions.map((description) => [norm(description), description])).values()].slice(0, 12),
+      disciplineIndependent: true,
     };
   }
 
@@ -2210,19 +2240,8 @@
 
     const groupTag = extractTagFromDocument(record && record.document);
     if (!groupTag || !scon.byNormalizedTag) return null;
-    const tagMatch = normalizedTagMatches(scon.byNormalizedTag, groupTag, record && record.discipline, true);
-    if (tagMatch) return sconReferenceFromTagMatch(tagMatch, groupTag, false);
-
-    const otherDiscipline = scon.byNormalizedTag.get(normalizedTagKey(groupTag)) || [];
-    if (otherDiscipline.length) {
-      return sconReferenceFromTagMatch({
-        candidates: otherDiscipline,
-        exactNormalized: true,
-        contained: false,
-        matchedKeys: [normalizedTagKey(groupTag)],
-      }, groupTag, true);
-    }
-    return null;
+    const tagMatch = normalizedTagMatches(scon.byNormalizedTag, groupTag, "", true);
+    return tagMatch ? sconReferenceFromTagMatch(tagMatch, groupTag) : null;
   }
 
   function auditTitles(index, references, options) {

@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.36**.
+Versão atual: **1.26.37**.
 
 ## Execução
 
@@ -18,8 +18,9 @@ Aplicativo local em HTML, CSS e JavaScript, sem React e sem servidor obrigatóri
 
 Os módulos (Relações, Alocação, Databook, Títulos, TAGs, Renomeador e Bases) são
 carregados sob demanda por `recon_module_loader.js`. Os catálogos de referência
-(`scon_*.js`, `tag_reference_catalog.js`) também são carregados apenas quando a
-disciplina correspondente é necessária.
+(`scon_*.js`, `tag_reference_catalog.js`) também são carregados sob demanda. Na
+revisão de títulos, todos os fragmentos SCON são reunidos para permitir a busca
+da mesma TAG mesmo quando sua descrição está registrada em outra disciplina.
 
 Na correção de títulos, o tipo documental é colocado na frente da descrição
 localizada nas bases. O RECON usa a ET-5290.00-22000-912-1LV-001 Rev. P como

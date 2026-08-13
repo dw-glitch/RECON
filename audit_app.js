@@ -1113,7 +1113,10 @@
 
   async function buildAuditWorkbook(kind) {
     await ensureExportLibraries();
-    const rows = visibleRows(kind);
+    // O Excel de títulos é o relatório completo da análise. Filtros de busca,
+    // situação, decisão, paginação ou aba servem apenas para revisar a tela e
+    // não podem retirar recomendações já calculadas do arquivo final.
+    const rows = kind === "title" ? state.titleRows.slice() : visibleRows(kind);
     if (!rows.length) throw new Error("Selecione uma aba com resultados antes de baixar o relatório.");
     const name = kind === "databook" ? "Caminho Databook" : "Revisão de Títulos";
     const workbook = new ExcelJS.Workbook(); workbook.creator = "RECON"; workbook.lastModifiedBy = "RECON"; workbook.company = "CONSAG Engenharia"; workbook.title = `RECON · ${name}`; workbook.created = new Date(); workbook.modified = new Date();
@@ -1122,7 +1125,7 @@
     fillRange(summary, "A1:H3", "FF153A5C"); summary.mergeCells("C1:H2"); summary.getCell("C1").value = `RECON · ${name}`; summary.getCell("C1").font = { name: "Aptos Display", size: 18, bold: true, color: { argb: "FFFFFFFF" } }; summary.getCell("C1").alignment = { vertical: "middle" };
     if (logoId !== null) summary.addImage(logoId, { tl: { col: .12, row: .18 }, ext: { width: 158, height: 58 } });
     const selectedSheet = (kind === "databook" ? els.dbSheet : els.titleSheet).value;
-    const selectedSheetLabel = selectedSheet || "Todas as abas";
+    const selectedSheetLabel = kind === "title" ? "Toda a análise" : selectedSheet || "Todas as abas";
     summary.mergeCells("A4:H4"); summary.getCell("A4").value = `LD: ${state.file.name}  ·  Aba: ${selectedSheetLabel}  ·  Gerado em ${new Date().toLocaleString("pt-BR")}`; summary.getCell("A4").font = { name: "Aptos", size: 9, color: { argb: "FF52687B" } }; summary.getCell("A4").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEAF0F4" } };
     const totals = Q.summarize(rows); const cards = [["ANALISADOS", totals.all, "FF246FA3"], ["ADEQUADOS", totals.ok, "FF0C7657"], ["PARA REVISAR", totals.review, "FFA56812"], ["SEM SUGESTÃO SEGURA", totals.unsafe, "FF8A5C38"]];
     cards.forEach(([label, value, color], index) => { const start = index * 2 + 1; summary.mergeCells(6, start, 8, start + 1); const cell = summary.getCell(6, start); cell.value = { richText: [{ font: { name: "Aptos", size: 9, bold: true, color: { argb: "FF6F7E8C" } }, text: `${label}\n` }, { font: { name: "Aptos Display", size: 19, bold: true, color: { argb: color } }, text: Number(value).toLocaleString("pt-BR") }] }; cell.alignment = { vertical: "middle", wrapText: true }; fillRange(summary, `${columnLetter(start)}6:${columnLetter(start + 1)}8`, "FFF5F8FA"); cell.border = { left: { style: "medium", color: { argb: color } } }; });

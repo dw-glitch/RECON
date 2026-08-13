@@ -1,12 +1,14 @@
 (function (root) {
   "use strict";
   const manifest = {
-    version: "2026-07-24", sourceFile: "SCON - TAG SGP 3.xlsm", sheet: "WRHDT_VW_EXTRATO_SGP", total: 19884,
+    version: "2026-08-13", sourceFile: "SCON - COMPONENTES E PROGRAMAÇÃO 2 (1).xlsx", sheet: "WRHDT_VW_EXTRATO_COMPONENTES + WRHDT_BI_VW_EXTRATO_PROGRAMACAO", total: 23341,
     columns: ["document","titleComplement","fullDescription","sconTag","discipline","itemType","drawingReference","row"],
     chunks: {
-      CIVIL: ["scon_civil.js",442], ELETRICA: ["scon_eletrica.js",2549], EQP_DINAMICO: ["scon_eqp_dinamico.js",92],
-      EQP_ESTATICO: ["scon_eqp_estatico.js",192], EST_METALICA: ["scon_est_metalica.js",302], HVAC: ["scon_hvac.js",27],
-      INSTRUMENTACAO: ["scon_instrumentacao.js",10774], SEGURANCA: ["scon_seguranca.js",18], TUBULACAO: ["scon_tubulacao.js",5488]
+      ANDAIME: ["scon_andaime.js",93], APOIO: ["scon_apoio.js",73], CIVIL: ["scon_civil.js",1470],
+      ELETRICA: ["scon_eletrica.js",2905], EQP_DINAMICO: ["scon_eqp_dinamico.js",324], EQP_ESTATICO: ["scon_eqp_estatico.js",736],
+      EST_METALICA: ["scon_est_metalica.js",1145], HVAC: ["scon_hvac.js",121], INSTRUMENTACAO: ["scon_instrumentacao.js",9818],
+      SEGURANCA: ["scon_seguranca.js",36], TUBULACAO: ["scon_tubulacao.js",6086], CANTEIRO: ["scon_canteiro.js",480],
+      LOA: ["scon_loa.js",23], RECURSOS_ETF: ["scon_recursos_etf.js",31]
     }
   };
   const loaded = new Set();
@@ -52,9 +54,13 @@
     return { version: manifest.version, sourceFile: manifest.sourceFile, sheet: manifest.sheet, columns: manifest.columns, rows };
   }
   async function ensureForIndex(index, documentKeys) {
-    let documents = (index && index.documents) || [];
-    if (documentKeys && documentKeys.size) documents = documents.filter((item) => documentKeys.has(item.documentKey));
-    return ensureDisciplines(disciplinesForDocuments(documents));
+    // A descrição é definida pela TAG, mesmo quando a ocorrência disponível na
+    // SCON está classificada em outra disciplina. Por isso a auditoria carrega o
+    // catálogo completo; limitar pelos grupos da LD esconderia justamente essas
+    // correspondências cruzadas.
+    void index;
+    void documentKeys;
+    return ensureDisciplines(Object.keys(manifest.chunks));
   }
   function clear() { Object.keys(root.RECON_SCON_CHUNKS).forEach((key) => delete root.RECON_SCON_CHUNKS[key]); loaded.clear(); }
   root.RECONSconCatalog = Object.freeze({ manifest, ensureDisciplines, ensureForIndex, catalog, clear, loaded: () => [...loaded] });
