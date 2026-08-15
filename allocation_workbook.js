@@ -181,8 +181,8 @@
   function updateCoreProperties(coreXml) {
     const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
     let output = coreXml
-      .replace(/<dc:creator>[\s\S]*?<\/dc:creator>/, "<dc:creator>RECON 1.26.42</dc:creator>")
-      .replace(/<cp:lastModifiedBy>[\s\S]*?<\/cp:lastModifiedBy>/, "<cp:lastModifiedBy>RECON 1.26.42</cp:lastModifiedBy>");
+      .replace(/<dc:creator>[\s\S]*?<\/dc:creator>/, "<dc:creator>RECON 1.26.44</dc:creator>")
+      .replace(/<cp:lastModifiedBy>[\s\S]*?<\/cp:lastModifiedBy>/, "<cp:lastModifiedBy>RECON 1.26.44</cp:lastModifiedBy>");
     output = output.replace(
       /(<dcterms:modified\b[^>]*>)[\s\S]*?(<\/dcterms:modified>)/,
       (_match, opening, closing) => `${opening}${now}${closing}`,
@@ -190,7 +190,7 @@
     return output;
   }
 
-  async function buildAllocation(results, ExcelJS) {
+  async function buildAllocation(results, ExcelJS, meta) {
     const template = typeof globalThis !== "undefined" ? globalThis.RECONAllocationTemplate : null;
     const Zip = typeof globalThis !== "undefined" ? globalThis.JSZip : null;
     if (!template || !template.base64) throw new Error("Modelo oficial de alocação não foi carregado.");
@@ -210,7 +210,7 @@
     if (!headerMatch) throw new Error("O cabeçalho do modelo oficial de alocação não foi localizado.");
     const rows = [headerMatch[0]];
     list.forEach((result, index) => {
-      rows.push(allocationRowXml(index + 2, dateCells(A.allocationRow(result), [1, 5])));
+      rows.push(allocationRowXml(index + 2, dateCells(A.allocationRow(result, meta && meta.allocationDate), [1, 5])));
     });
     for (let rowNumber = dataEndRow + 1; rowNumber <= lastStyledRow; rowNumber += 1) rows.push(blankAllocationRowXml(rowNumber));
 
@@ -318,7 +318,7 @@
 
   async function buildAnalysisReport(results, meta, ExcelJS) {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = "RECON 1.26.42";
+    workbook.creator = "RECON 1.26.44";
     workbook.created = new Date();
     workbook.modified = new Date();
     const settings = meta || {};

@@ -225,12 +225,14 @@ check("as colunas fixas da tabela de alocação usam a mesma largura das colunas
     "deslocamento sticky da coluna 3 não bate com a soma das larguras reais");
 });
 
-check("o título recomendado combina SCON TAG SGP com Apêndice/SCON ESCOPO quando ambos confirmam a TAG", () => {
+check("o título recomendado usa SCON ESCOPO somente como último recurso", () => {
   const source = read("audit_core.js");
-  assert.match(source, /sconCombinesWithSconEscopo\s*=\s*Boolean\(trustedScon/, "combinação com SCON ESCOPO não está gerada a partir de trustedScon");
-  assert.match(source, /sconCombinesWithAppendix\s*=\s*Boolean\(trustedScon/, "combinação com Apêndice não está gerada a partir de trustedScon");
+  assert.match(source, /sconCombinesWithAppendix\s*=\s*Boolean\(!manualValve && sconInDescription && appendixInDescription\)/,
+    "SCON e Apêndice deixaram de se complementar para TAGs que não são válvulas manuais");
+  assert.match(source, /trustedSconEscopo[\s\S]{0,160}!strongTagDescription[\s\S]{0,80}!trustedDescription/,
+    "SCON ESCOPO pode substituir uma descrição já encontrada em outra base");
   assert.match(source, /"SCON TAG SGP \+ Apêndice 3 Rev\.B/, "categoria de origem combinada SCON+Apêndice nunca é gerada");
-  assert.match(source, /"SCON TAG SGP \+ SCON ESCOPO \+ Apêndice 3 Rev\.B/, "categoria de origem combinada com as três bases nunca é gerada");
+  assert.doesNotMatch(source, /"SCON TAG SGP \+ SCON ESCOPO/, "SCON ESCOPO ainda é combinada com uma fonte prioritária");
 });
 
 check("existe uma opção global para restringir a fonte do título a Apêndice ou SCON", () => {
@@ -296,6 +298,126 @@ check("a descrição SCON é localizada pela TAG sem limitar pela disciplina da 
   assert.match(result.matchMode, /independentemente da disciplina/i);
 });
 
+check("a LI incorporada contém todas as TAGs de válvulas e separa as canceladas", () => {
+  const require = createRequire(import.meta.url);
+  require("./valve_list_catalog.js");
+  const Q = require("./audit_core.js");
+  const C = require("./core.js");
+  const valveList = Q.parseValveListCatalog(globalThis.RECONValveListCatalog);
+
+  assert.equal(valveList.uniqueTagCount, 3066);
+  assert.equal(valveList.activeTagCount, 2859);
+  assert.equal(valveList.cancelledTagCount, 207);
+  assert.match(html, /<option value="valve_list">LI de válvulas Rev\. C<\/option>/,
+    "a tela não oferece filtro para as recomendações originadas na LI");
+
+  const activeDocument = "C1O_RNEST_U32_3.8.10.1_TUB_REP_VM-320002";
+  const activeRecord = { document: activeDocument, documentKey: C.key(activeDocument), discipline: "TUBULACAO" };
+  const active = Q.valveReferenceFor(activeRecord, { valveList }, Q.resolveTagEvidence(activeRecord, null));
+  assert.ok(active && active.trusted);
+  assert.equal(active.description, "VÁLVULA MANUAL Gaveta");
+  assert.equal(active.diameter, '3"');
+  assert.equal(active.page, 2);
+
+  const cancelledDocument = "C1O_RNEST_U32_3.8.10.1_TUB_REP_VM-320329";
+  const cancelledRecord = { document: cancelledDocument, documentKey: C.key(cancelledDocument), discipline: "TUBULACAO" };
+  const cancelled = Q.valveReferenceFor(cancelledRecord, { valveList }, Q.resolveTagEvidence(cancelledRecord, null));
+  assert.ok(cancelled && cancelled.cancelled);
+  assert.equal(cancelled.trusted, false);
+});
+
+check("uma TAG VM ativa usa a LI antes de SCON, Apêndice e SCON ESCOPO", () => {
+  const require = createRequire(import.meta.url);
+  require("./valve_list_catalog.js");
+  const C = require("./core.js");
+  const Q = require("./audit_core.js");
+  const valveList = Q.parseValveListCatalog(globalThis.RECONValveListCatalog);
+  const document = "C1O_RNEST_U32_3.8.10.1_TUB_REP_VM-320002";
+  const record = {
+    document,
+    documentKey: C.key(document),
+    sheet: "ET",
+    row: 10,
+    discipline: "TUBULACAO",
+    revision: "0",
+    title: "RELATÓRIO DE REPARO DE VÁLVULAS",
+  };
+  const index = { documents: [{ document, documentKey: record.documentKey, group: { records: [record], history: [] } }] };
+  const scon = Q.buildSconReferenceIndex([{
+    document: "APR_TUB_U32-VM-320002",
+    titleComplement: "VM-320002 - DESCRIÇÃO SCON QUE NÃO DEVE SUBSTITUIR A LI",
+    fullDescription: "U32 | TUBULACAO | VM-320002 - DESCRIÇÃO SCON QUE NÃO DEVE SUBSTITUIR A LI",
+    sconTag: "APR_TUB_U32-VM-320002",
+    discipline: "OUTRA DISCIPLINA",
+    row: 99,
+  }]);
+  const sconEscopo = Q.parseSconEscopoTitleCatalog({
+    sourceFile: "SCON ESCOPO",
+    sheet: "MAPA",
+    columns: ["tag", "title", "discipline", "row", "area", "type", "stage", "eap"],
+    rows: [["VM-320002", "OUTRA DESCRIÇÃO - ÁREA: U32", "TUBULACAO", 1, "U32", "VALVULA(each)", "REPARO", "3.8.10"]],
+  });
+  const tagReference = Q.parseTagReferenceCatalog({
+    meta: { source: "Apêndice 3 Rev.B", sheet: "Apêndice" },
+    entries: [{ tag: "VM-320002", description: "OUTRA DESCRIÇÃO DO APÊNDICE", discipline: "TUBULACAO", row: 1 }],
+  });
+
+  const row = Q.auditTitles(index, { valveList, scon, sconEscopo, tagReference }, { titleSourceMode: "auto" })[0];
+  assert.equal(row.valveMatch, "SIM");
+  assert.equal(row.descriptionSource, "LI de válvulas Rev. C · TAG exata");
+  assert.match(row.proposed, /VÁLVULA MANUAL GAVETA/);
+  assert.match(row.proposed, /VM-320002$/);
+  assert.doesNotMatch(row.proposed, /SCON QUE|APÊNDICE|ÁREA: U32/);
+});
+
+check("SCON ESCOPO e a regra mínima VM impedem recomendações vazias", () => {
+  const require = createRequire(import.meta.url);
+  const C = require("./core.js");
+  const Q = require("./audit_core.js");
+  const makeIndex = (record) => ({ documents: [{
+    document: record.document,
+    documentKey: record.documentKey,
+    group: { records: [record], history: [] },
+  }] });
+  const sconEscopo = Q.parseSconEscopoTitleCatalog({
+    sourceFile: "SCON ESCOPO",
+    sheet: "MAPA",
+    columns: ["tag", "title", "discipline", "row", "area", "type", "stage", "eap"],
+    rows: [["P-99999", "BOMBA DE TESTE - ÁREA: 210 - PIPE RACK", "EQP ESTATICO", 50, "210 - PIPE RACK", "BOMBA(each)", "REPARO", "6.23.4"]],
+  });
+  const scopedDocument = "C1O_RNEST_U32_6.23.4.1_EST_REP_P-99999";
+  const scopedRecord = {
+    document: scopedDocument,
+    documentKey: C.key(scopedDocument),
+    sheet: "ET",
+    row: 50,
+    discipline: "EQP ESTATICO",
+    revision: "0",
+    title: "",
+  };
+  const scoped = Q.auditTitles(makeIndex(scopedRecord), { sconEscopo }, { titleSourceMode: "auto" })[0];
+  assert.match(scoped.descriptionSource, /^SCON ESCOPO/);
+  assert.ok(scoped.proposed);
+  assert.match(scoped.proposed, /BOMBA/);
+  assert.match(scoped.proposed, /P-99999$/);
+
+  const valveDocument = "C1O_RNEST_U32_3.8.10.1_TUB_REP_VM-999999";
+  const valveRecord = {
+    document: valveDocument,
+    documentKey: C.key(valveDocument),
+    sheet: "ET",
+    row: 51,
+    discipline: "TUBULACAO",
+    revision: "0",
+    title: "",
+  };
+  const minimum = Q.auditTitles(makeIndex(valveRecord), {}, { titleSourceMode: "auto" })[0];
+  assert.equal(minimum.descriptionSource, "Regra mínima da TAG VM · VÁLVULA MANUAL");
+  assert.ok(minimum.proposed);
+  assert.match(minimum.proposed, /VÁLVULA MANUAL/);
+  assert.match(minimum.proposed, /VM-999999$/);
+});
+
 check("o Excel de títulos exporta toda a análise e não somente as linhas visíveis", () => {
   const source = read("audit_app.js");
   assert.match(source, /kind === "title" \? state\.titleRows\.slice\(\) : visibleRows\(kind\)/,
@@ -312,6 +434,16 @@ check("o catálogo incorporado usa a SCON atualizada de Componentes e Programaç
     "o carregador ainda limita a base SCON à disciplina da LD");
   ["scon_andaime.js", "scon_apoio.js", "scon_canteiro.js", "scon_loa.js", "scon_recursos_etf.js"]
     .forEach((name) => assert.ok(exists(name), `fragmento novo ausente: ${name}`));
+
+  const require = createRequire(import.meta.url);
+  require("./scon_tubulacao.js");
+  const C = require("./core.js");
+  const Q = require("./audit_core.js");
+  const scon = Q.parseSconTitleCatalog(globalThis.RECON_SCON_CHUNKS.TUBULACAO);
+  const document = "C1O_RNEST_U32_3.8.10.1_TUB_REP_VM-327721";
+  const match = Q.sconReferenceFor({ document, documentKey: C.key(document), discipline: "OUTRA DISCIPLINA" }, { scon });
+  assert.ok(match && match.trusted, "a TAG VM-327721 não foi localizada na SCON incorporada");
+  assert.equal(match.titleComplement, "VM-327721 - VALVULA MANUAL");
 });
 
 check("é possível abrir a LD e salvar a revisão direto no arquivo original (File System Access API)", () => {
@@ -805,7 +937,7 @@ check("a correção remove também a forma literal TAG: antes do identificador e
   assert.ok(!row.proposed.includes("B-32014B"));
 });
 
-check("a SCON atualizada não bloqueia área e unidade vindas da SCON ESCOPO", () => {
+check("uma válvula ausente da LI usa a descrição da SCON antes da SCON ESCOPO", () => {
   const require = createRequire(import.meta.url);
   const C = require("./core.js");
   const Q = require("./audit_core.js");
@@ -844,11 +976,13 @@ check("a SCON atualizada não bloqueia área e unidade vindas da SCON ESCOPO", (
   const row = Q.auditTitles(index, { scon, sconEscopo }, { titleSourceMode: "auto" })[0];
   assert.equal(row.sconEscopoMatch, "SIM");
   assert.match(row.sconEscopoMatchMode, /fallback seguro por EAP \+ atividade documental/i);
-  assert.equal(row.proposed, "RELATÓRIO DE REPARO DE VÁLVULAS - VALVULA MANUAL · ÁREA: U32 - UNIDADE HDT - VM-327721");
-  assert.match(row.proposed, /VALVULA MANUAL/);
+  assert.equal(row.proposed, "RELATÓRIO DE REPARO DE VÁLVULAS - VÁLVULA MANUAL - VM-327721");
+  assert.equal(row.descriptionSource, "SCON TAG SGP · fallback da LI de válvulas");
+  assert.match(row.proposed, /VÁLVULA MANUAL/);
+  assert.doesNotMatch(row.proposed, /ÁREA: U32/, "SCON ESCOPO não permaneceu como último recurso");
 });
 
-check("o título automático combina SCON, Apêndice e SCON ESCOPO no padrão da LD", () => {
+check("SCON e Apêndice resolvem a TAG sem incorporar a SCON ESCOPO", () => {
   const require = createRequire(import.meta.url);
   const C = require("./core.js");
   const Q = require("./audit_core.js");
@@ -890,10 +1024,12 @@ check("o título automático combina SCON, Apêndice e SCON ESCOPO no padrão da
   });
   const row = Q.auditTitles(index, { scon, sconEscopo, tagReference }, { titleSourceMode: "auto" })[0];
   assert.equal(row.proposed,
-    "RELATÓRIO DE PREPARAÇÃO PARA TRANSPORTE - TROCADOR CASCO TUBO DA B-32009A · PERMUTADOR - ÁREA: 210 - PIPE RACK - P-B-32009A");
+    "RELATÓRIO DE PREPARAÇÃO PARA TRANSPORTE - TROCADOR CASCO TUBO DA B-32009A - P-B-32009A");
   assert.equal(row.sconEscopoMatch, "SIM");
   assert.equal(row.appendixMatch, "SIM");
-  assert.match(row.reason, /SCON TAG SGP, do SCON ESCOPO e do Apêndice 3 Rev\.B/i);
+  assert.equal(row.descriptionSource, "SCON TAG SGP + Apêndice 3 Rev.B · 3º campo da DESCRIÇÃO");
+  assert.match(row.reason, /SCON TAG SGP e do Apêndice 3 Rev\.B/i);
+  assert.doesNotMatch(row.proposed, /ÁREA: 210/, "SCON ESCOPO não permaneceu como último recurso");
 });
 
 // ===================== BANCO LOCAL =====================
@@ -972,6 +1108,44 @@ check("o diagnóstico explica alocado, pendente no controle, novo e recusado", (
   const accepted = A.allocationDiagnosis({ record: { allocationStatus: "ALOCADO" }, resolution: { kind: "accepted" } });
   assert.equal(accepted.kind, "allocated");
   assert.match(accepted.label, /JÁ CONFIRMADO/);
+});
+
+check("a Central usa o número da LD do arquivo, preserva a versão e força a data atual", () => {
+  const A = createRequire(import.meta.url)("./allocation_core.js");
+  const ld003 = "LD-5290.00-22313-91A-C1O-003_0001_0.xlsx";
+  const ld004 = "LD-5290.00-22313-91A-C1O-004_0001_B.xlsx";
+  const ld001 = "LD-5290.00-22313-91A-C1O-001_0001_C2.xlsx";
+  assert.equal(A.ldNumberFromSource(ld003), "003");
+  assert.equal(A.ldNumberFromSource(ld004), "004");
+  assert.equal(A.ldNumberFromSource(ld001), "001");
+  assert.equal(A.ldVersionFromSource(ld003), "0");
+  assert.equal(A.ldVersionFromSource(ld004), "B");
+  assert.equal(A.newestLdVersion("0", "A", "A2"), "A2");
+
+  const makeResult = (sheet, source, version) => ({
+    document: "C1O_RNEST_U32_3.1.1.1_TUB_REP_VM-320001",
+    sheet,
+    ldSource: source,
+    ldVersion: version,
+    record: { sheet, source, ldVersion: version },
+    base: null,
+    output: {
+      document: "C1O_RNEST_U32_3.1.1.1_TUB_REP_VM-320001",
+      plannedDate: "2020-01-01",
+      workflow: "TUBULAÇÃO",
+      levels: [],
+    },
+  });
+  const meta = { allocationDate: "2026-08-15", allocationCode: "C1O-ALOC-CM-0001-2026", status: "PENDENTE ENVIO DE LD" };
+  const et003 = A.controlRow(makeResult("ET", ld003, "0"), meta);
+  const et004 = A.controlRow(makeResult("ET", ld004, "B"), meta);
+  const n1710 = A.controlRow(makeResult("N-1710", ld001, "C2"), meta);
+  assert.equal(et003[A.CONTROL_HEADERS.indexOf("ABA")], "ET_LD_003");
+  assert.equal(et004[A.CONTROL_HEADERS.indexOf("ABA")], "ET_LD_004");
+  assert.equal(n1710[A.CONTROL_HEADERS.indexOf("ABA")], "N-1710_LD_001");
+  assert.equal(et003[A.CONTROL_HEADERS.indexOf("VERSÃO \nDA LD")], "0");
+  assert.equal(et003[A.CONTROL_HEADERS.indexOf("Data Prevista")], "2026-08-15");
+  assert.equal(A.allocationRow(makeResult("ET", ld003, "0"), meta.allocationDate)[1], "2026-08-15");
 });
 
 check("a seleção manual inclui resultados bloqueados sem selecionar itens impossíveis", () => {

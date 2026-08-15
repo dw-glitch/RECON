@@ -398,22 +398,50 @@
 
   function versionParts(value) {
     const raw = text(value).toUpperCase().replace(/\s+/g, "");
+    if (/^\d+$/.test(raw)) return { raw, phase: 0, prefix: "", sequence: Number(raw) };
     const match = raw.match(/^([A-Z]+)(\d*)$/);
     if (!match) return null;
-    return { raw, prefix: match[1], sequence: match[2] ? Number(match[2]) : 0 };
+    return { raw, phase: 1, prefix: match[1], sequence: match[2] ? Number(match[2]) : 0 };
   }
 
   function newestLdVersion() {
     return [...arguments].map(versionParts).filter(Boolean).sort((left, right) => {
+      const phase = left.phase - right.phase;
+      if (phase) return phase;
       const prefix = left.prefix.localeCompare(right.prefix, "pt-BR");
       return prefix || left.sequence - right.sequence;
     }).at(-1)?.raw || "";
   }
 
+  function ldNumberFromSource(value) {
+    const source = text(value).split(/[\\/]/).at(-1).toUpperCase();
+    const patterns = [
+      /(?:C1O|CIO)[-_](\d{3})(?=[_-])/,
+      /[-_](\d{3})(?=_\d{4}(?:[_-]|$))/,
+      /(?:^|[^A-Z0-9])LD[-_\s]*(\d{3})(?=[^0-9]|$)/,
+    ];
+    for (const pattern of patterns) {
+      const match = source.match(pattern);
+      if (match) return match[1];
+    }
+    return "";
+  }
+
+  function ldVersionFromSource(value) {
+    const source = text(value).split(/[\\/]/).at(-1)
+      .replace(/\.(?:XLSX|XLSM|XLS)$/i, "")
+      .replace(/\s+\(\d+\)$/, "")
+      .toUpperCase();
+    const standard = source.match(/_\d{4}[_-](\d+|[A-Z]+\d*)$/);
+    if (standard) return standard[1];
+    const explicit = source.match(/(?:^|[_\s-])REV(?:ISAO)?[_\s-]*(\d+|[A-Z]+\d*)$/);
+    return explicit ? explicit[1] : "";
+  }
+
   function recordVersion(record, fallbackVersion) {
     const direct = recordValue(record, ["VERSÃO DA LD ENVIADA"]);
     if (direct) return direct;
-    return newestLdVersion(record && record.ldVersion, fallbackVersion);
+    return newestLdVersion(record && record.ldVersion, fallbackVersion) || ldVersionFromSource(record && record.source);
   }
 
   function rowValue(row, headerMap, aliases) {
@@ -1056,7 +1084,10 @@
     const discipline = recordValue(record, ["DISCIPLINA", "WORKFLOW", "QUEM?"]) || (history && history.workflow) || "";
     return {
       document: record.document,
-      plannedDate: text(history && history["Data Prevista"]) || text(allocationDate),
+      // A Data Prevista representa o dia em que a nova alocação é gerada.
+      // Datas antigas do controle servem como histórico, não como valor da
+      // nova linha ou da planilha oficial.
+      plannedDate: text(allocationDate),
       discipline,
       workflow: workflowForPurpose(purpose, discipline),
       active: recordValue(record, ["DOCUMENTO ATIVO"]) || text(history && history["Documento Ativo"]),
@@ -1521,11 +1552,21 @@
     return { results, duplicateCount, index };
   }
 
-  function allocationRow(result) {
+  function centralSheetLabel(result) {
+    const record = result && result.record || {};
+    const source = result && result.ldSource || record.source || "";
+    const ldNumber = ldNumberFromSource(source) || "000";
+    const rawSheet = text(record.sheet || result && result.sheet);
+    const normalizedSheet = norm(rawSheet).replace(/[_\s-]*LD[_\s-]*\d{3}$/, "");
+    const sheet = normalizedSheet.includes("N-1710") || normalizedSheet.includes("N1710") ? "N-1710" : "ET";
+    return `${sheet}_LD_${ldNumber}`;
+  }
+
+  function allocationRow(result, allocationDate) {
     const output = result.output || {};
     return [
       output.document || result.document || "",
-      output.plannedDate || "",
+      text(allocationDate) || output.plannedDate || "",
       output.workflow || "",
       output.active || "",
       output.action || "",
@@ -1542,9 +1583,10 @@
     const record = result.record || {};
     const base = result.base || {};
     const output = result.output || {};
+    const source = result.ldSource || record.source || "";
     return [
-      record.sheet || result.sheet || "",
-      result.ldVersion || recordVersion(record),
+      centralSheetLabel(result),
+      result.ldVersion || recordVersion(record) || ldVersionFromSource(source),
       text(meta.allocationDate),
       "",
       "",
@@ -1552,7 +1594,7 @@
       text(meta.status) || "PENDENTE ENVIO DE LD",
       text(meta.allocationCode),
       base.document ? 1 : 0,
-      ...allocationRow(result),
+      ...allocationRow(result, meta.allocationDate),
       ...Array.from({ length: 4 }, (_, index) => (output.levels || [])[index + 6] || ""),
     ];
   }
@@ -1602,6 +1644,8 @@
     recordValue,
     hasAllocationStatusColumn,
     newestLdVersion,
+    ldNumberFromSource,
+    ldVersionFromSource,
     recordVersion,
     splitBaseLevels,
     parseControlWorkbook,
@@ -1621,6 +1665,7 @@
     postingEvidenceForRecord,
     allocationExplanation,
     allocationRow,
+    centralSheetLabel,
     controlRow,
     canSelectForAllocation,
     defaultSelectedForAllocation,

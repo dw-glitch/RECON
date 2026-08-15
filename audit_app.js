@@ -32,6 +32,7 @@
     titleSupplementalReferences: null,
     sconEscopoTitleReferences: null,
     tagReferenceTitleReferences: null,
+    valveListTitleReferences: null,
     sconReferenceFile: null,
     sconTitleReferences: null,
     titleBaseLoading: true,
@@ -390,6 +391,7 @@
     merged.scon = state.sconTitleReferences || null;
     merged.sconEscopo = state.sconEscopoTitleReferences || null;
     merged.tagReference = state.tagReferenceTitleReferences || null;
+    merged.valveList = state.valveListTitleReferences || null;
     return merged;
   }
 
@@ -399,13 +401,15 @@
     const sconCount = state.sconTitleReferences && state.sconTitleReferences.entries ? state.sconTitleReferences.entries.length : 0;
     const sconEscopoCount = state.sconEscopoTitleReferences && state.sconEscopoTitleReferences.uniqueTagCount || 0;
     const appendixCount = state.tagReferenceTitleReferences && state.tagReferenceTitleReferences.uniqueTagCount || 0;
+    const valveCount = state.valveListTitleReferences && state.valveListTitleReferences.activeTagCount || 0;
     const sconEscopoEapCount = state.sconEscopoTitleReferences && state.sconEscopoTitleReferences.uniqueEapCount || 0;
     const baseText = `${baseCount.toLocaleString("pt-BR")} conclusões controladas`;
     const sconText = sconCount ? `${sconCount.toLocaleString("pt-BR")} códigos SCON TAG SGP` : "SCON TAG SGP sob demanda";
     const sconEscopoText = sconEscopoCount ? `${sconEscopoCount.toLocaleString("pt-BR")} TAGs · ${sconEscopoEapCount.toLocaleString("pt-BR")} EAPs no SCON ESCOPO` : "SCON ESCOPO indisponível";
     const appendixText = appendixCount ? `${appendixCount.toLocaleString("pt-BR")} TAGs no Apêndice 3 Rev.B` : "Apêndice 3 Rev.B indisponível";
+    const valveText = valveCount ? `${valveCount.toLocaleString("pt-BR")} válvulas ativas na LI Rev. C` : "LI de válvulas indisponível";
     const extraText = extraCount ? ` · ${extraCount.toLocaleString("pt-BR")} referências adicionais` : "";
-    els.titleBaseStatus.textContent = `${baseText} · ${sconText} · ${sconEscopoText} · ${appendixText}${extraText}`;
+    els.titleBaseStatus.textContent = `${baseText} · ${valveText} · ${sconText} · ${appendixText} · ${sconEscopoText}${extraText}`;
     if (els.titleSconReferenceMeta && !state.sconReferenceFile) {
       els.titleSconReferenceMeta.textContent = sconCount ? `Base incorporada · ${sconCount.toLocaleString("pt-BR")} códigos` : "Base incorporada indisponível";
     }
@@ -425,10 +429,8 @@
     if (!row) return "without_evidence";
     if (row.issue === "ok") return "already_correct";
     if (row.learnedTitle) return "learned_memory";
-    if (/^SCON TAG SGP \+ SCON ESCOPO \+ Apêndice/i.test(row.descriptionSource || "")) return "all_tag_bases";
+    if (/^LI de válvulas/i.test(row.descriptionSource || "")) return "valve_list";
     if (/^SCON TAG SGP \+ Apêndice/i.test(row.descriptionSource || "")) return "scon_appendix";
-    if (row.descriptionSource === "SCON TAG SGP + SCON ESCOPO") return "scon_combined";
-    if (row.descriptionSource === "SCON ESCOPO + Apêndice 3 Rev.B") return "tag_eap_dual";
     if (/^Apêndice 3 Rev.B/i.test(row.descriptionSource || "")) return "appendix";
     if (row.sconEscopoMatch === "SIM" && /^SCON ESCOPO/i.test(row.descriptionSource || "")) {
       if (row.sconEscopoTagFallback || /EAP \+ ATIVIDADE DOCUMENTAL/i.test(row.descriptionSource || "")) return "scon_escopo_activity";
@@ -476,7 +478,7 @@
       if (sheet && row.sheet !== sheet) return false;
       if (confidence && row.confidence !== confidence) return false;
       if (kind === "title" && source && titleSourceCategory(row) !== source) return false;
-      if (search && !Q.norm(`${row.document} ${row.sheet} ${row.allocation || ""} ${row.controlledSourceKind || ""} ${row.controlledSourceFile || ""} ${row.title || ""} ${row.current} ${row.proposed} ${row.tag || ""} ${row.titleStandard || ""} ${row.titleStandardCode || ""} ${row.previousTitlePattern || ""} ${row.sconEscopoLookupTag || ""} ${row.sconEscopoDocumentEap || ""} ${(row.sconEscopoCandidateEaps || []).join(" ")} ${row.description || ""} ${row.descriptionSource || ""} ${row.sconTitleComplement || ""} ${row.sconFullDescription || ""} ${row.sconEscopoTitle || ""} ${(row.sconEscopoCandidateTitles || []).join(" ")} ${row.appendixTitle || ""} ${(row.appendixMatchedTags || []).join(" ")} ${(row.appendixCandidateTitles || []).join(" ")} ${row.reason}`).includes(search)) return false;
+      if (search && !Q.norm(`${row.document} ${row.sheet} ${row.allocation || ""} ${row.controlledSourceKind || ""} ${row.controlledSourceFile || ""} ${row.title || ""} ${row.current} ${row.proposed} ${row.tag || ""} ${row.titleStandard || ""} ${row.titleStandardCode || ""} ${row.previousTitlePattern || ""} ${row.valveTitle || ""} ${row.valveType || ""} ${row.valveDiameter || ""} ${row.sconEscopoLookupTag || ""} ${row.sconEscopoDocumentEap || ""} ${(row.sconEscopoCandidateEaps || []).join(" ")} ${row.description || ""} ${row.descriptionSource || ""} ${row.sconTitleComplement || ""} ${row.sconFullDescription || ""} ${row.sconEscopoTitle || ""} ${(row.sconEscopoCandidateTitles || []).join(" ")} ${row.appendixTitle || ""} ${(row.appendixMatchedTags || []).join(" ")} ${(row.appendixCandidateTitles || []).join(" ")} ${row.reason}`).includes(search)) return false;
       return true;
     });
   }
@@ -623,10 +625,8 @@
     const category = titleSourceCategory(row);
     const sourceLabel = {
       learned_memory: "Memória de correções (sua edição anterior)",
-      all_tag_bases: "SCON TAG SGP + SCON ESCOPO + Apêndice 3 Rev.B",
+      valve_list: "LI de válvulas Rev. C · TAG exata",
       scon_appendix: "SCON TAG SGP + Apêndice 3 Rev.B",
-      scon_combined: "SCON TAG SGP + SCON ESCOPO",
-      tag_eap_dual: "SCON ESCOPO + Apêndice 3 Rev.B",
       appendix: "Apêndice 3 Rev.B · TAG do equipamento",
       scon_exact: "SCON TAG SGP · Código SGP exato",
       scon_normalized: "SCON TAG SGP · correspondência normalizada única",
@@ -641,7 +641,7 @@
       without_evidence: "Sem correspondência segura",
       already_correct: "Título já adequado",
     }[category] || row.descriptionSource || "Evidência";
-    const sourceRows = [...new Set([...(row.sconSourceRows || []), ...(row.sconEscopoSourceRows || []), ...(row.appendixSourceRows || [])])].join(", ");
+    const sourceRows = [...new Set([...(row.valveSourcePages || []), ...(row.sconSourceRows || []), ...(row.sconEscopoSourceRows || []), ...(row.appendixSourceRows || [])])].join(", ");
     const sconOnlyAmbiguous = row.sconMatch === "AMBÍGUO" && (!row.sconTitleComplement && !row.sconEscopoTitle);
     const sconEscopoOnlyAmbiguous = row.sconEscopoMatch === "AMBÍGUO" && (!row.descriptionSource || row.descriptionSource === "Título atual");
     const sconCandidates = (row.sconCandidateTitles || [])
@@ -673,6 +673,7 @@
     const controlledDescriptions = [
       row.titleStandard ? `Padrão documental ${row.titleStandardCode || ""} (ET-5290.00-22000-912-1LV-001 Rev. P): ${row.titleStandard}` : "",
       row.previousTitlePattern ? `Títulos anteriores (${row.previousTitleSupport || 1}): ${row.previousTitlePattern}` : "",
+      row.valveTitle ? `LI de válvulas Rev. C (${row.valveMatchMode || "TAG exata"}): ${cleanTitleReportValue(row.valveTitle)}${row.valveDiameter ? ` · diâmetro ${row.valveDiameter}` : ""}` : row.valveCancelled ? "LI de válvulas Rev. C: TAG marcada como CANCELADA; a descrição ativa foi procurada na SCON" : "",
       row.sconTitleComplement ? `SCON TAG SGP${sconMatchDetail}: ${cleanTitleReportValue(row.sconTitleComplement)}` : "",
       row.sconEscopoTitle ? `SCON ESCOPO${sconEscopoMatchDetail}: ${cleanTitleReportValue(row.sconEscopoTitle)}` : "",
       row.appendixTitle ? `Apêndice 3 Rev.B (${(row.appendixMatchedTags || []).join(", ") || row.tag || "TAG"}): ${cleanTitleReportValue(row.appendixTitle)}` : "",
@@ -686,7 +687,7 @@
         : controlledDescriptions.join(" | ") || row.description || row.evidence || row.reason || "Nenhuma descrição segura foi localizada.";
     const description = cleanTitleReportValue(rawDescription) || "Nenhuma descrição segura foi localizada.";
     const identifier = cleanTitleReportValue(row.nonTaggedRule ? `nt-${row.nonTaggedIdentifier || ""}` : row.tag || row.possibleIdentifier);
-    return `<div class="title-evidence-source ${category}"><span>${escapeHtml(sourceLabel)}</span>${sourceRows ? `<small>Linha(s) ${escapeHtml(sourceRows)}</small>` : ""}</div><p>${escapeHtml(description)}</p>${identifier ? `<code>${escapeHtml(identifier)}</code>` : ""}`;
+    return `<div class="title-evidence-source ${category}"><span>${escapeHtml(sourceLabel)}</span>${sourceRows ? `<small>Referência(s) ${escapeHtml(sourceRows)}</small>` : ""}</div><p>${escapeHtml(description)}</p>${identifier ? `<code>${escapeHtml(identifier)}</code>` : ""}`;
   }
 
   function renderTitles() {
@@ -796,7 +797,7 @@
     const taskId = Tasks ? Tasks.start("Auditoria de títulos", taskDetail) : "";
     state.busyKinds.add("title"); updateReady(); setProgress("title", 15, "Preparando títulos, descrições e tags…"); await yieldFrame();
     try {
-      setProgress("title", 32, "Carregando evidências SCON TAG SGP, SCON ESCOPO e Apêndice 3 Rev.B…");
+      setProgress("title", 32, "Carregando LI de válvulas, SCON TAG SGP, Apêndice 3 Rev.B e SCON ESCOPO…");
       await ensureSconForTitles(requestedKeys);
       setProgress("title", 48, "Verificando especificidade e padronização…"); if (Tasks) Tasks.update(taskId, 48, "Conferindo documento exato, tag e disciplina"); await yieldFrame();
       const titleOptions = { titleSourceMode: state.titleSourceMode };
@@ -1031,6 +1032,7 @@
     const references = [
       row.titleStandard ? `Padrão documental ${row.titleStandardCode || ""} (ET-5290.00-22000-912-1LV-001 Rev. P): ${row.titleStandard}` : "",
       row.previousTitlePattern ? `Títulos anteriores (${row.previousTitleSupport || 1}): ${row.previousTitlePattern}` : "",
+      row.valveTitle ? `LI de válvulas Rev. C (${row.valveType || row.tag || "TAG"}): ${row.valveTitle}` : row.valveCancelled ? "LI de válvulas Rev. C: TAG cancelada; aplicado fallback" : "",
       row.sconTitleComplement ? `SCON TAG SGP: ${row.sconTitleComplement}` : "",
       row.sconEscopoTitle ? `SCON ESCOPO (${row.sconEscopoLookupTag || row.tag || "TAG"} · EAP ${row.sconEscopoDocumentEap || "não informado"}): ${row.sconEscopoTitle}` : "",
       row.appendixTitle ? `Apêndice 3 Rev.B (${(row.appendixMatchedTags || []).join(", ") || row.tag || "TAG"}): ${row.appendixTitle}` : "",
@@ -1054,6 +1056,7 @@
       row.titleStandardSource || "",
       row.previousTitlePattern ? `${row.previousTitleSupport || 1} título(s) anterior(es)` : "",
       row.descriptionSource || "",
+      row.valveMatchMode && row.valveMatch !== "NÃO" ? `LI de válvulas: ${row.valveMatchMode}` : "",
       row.sconMatchMode && row.sconMatch !== "NÃO" ? `SCON TAG SGP: ${row.sconMatchMode}` : "",
       row.sconEscopoMatchMode && row.sconEscopoMatch !== "NÃO" ? `SCON ESCOPO: ${row.sconEscopoMatchMode}` : "",
       row.appendixMatchMode && row.appendixMatch !== "NÃO" ? `Apêndice 3 Rev.B: ${row.appendixMatchMode}` : "",
@@ -1134,12 +1137,12 @@
     summary.mergeCells("A10:H10"); summary.getCell("A10").value = "CRITÉRIOS DA ANÁLISE"; summary.getCell("A10").font = { name: "Aptos", size: 9, bold: true, color: { argb: "FFFFFFFF" } }; summary.getCell("A10").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF24689A" } };
     const controlledSourceSummary = kind === "databook"
       ? `${state.databookSourceRows.confirmation.length.toLocaleString("pt-BR")} registro(s) de confirmação · ${state.databookSourceRows.allocation.length.toLocaleString("pt-BR")} registro(s) de arquivo de alocação`
-      : `${state.sconTitleReferences && state.sconTitleReferences.entries ? state.sconTitleReferences.entries.length.toLocaleString("pt-BR") : "0"} códigos SCON TAG SGP · ${state.sconEscopoTitleReferences && state.sconEscopoTitleReferences.uniqueTagCount ? state.sconEscopoTitleReferences.uniqueTagCount.toLocaleString("pt-BR") : "0"} TAGs / ${state.sconEscopoTitleReferences && state.sconEscopoTitleReferences.uniqueEapCount ? state.sconEscopoTitleReferences.uniqueEapCount.toLocaleString("pt-BR") : "0"} EAPs SCON ESCOPO · ${state.tagReferenceTitleReferences && state.tagReferenceTitleReferences.uniqueTagCount ? state.tagReferenceTitleReferences.uniqueTagCount.toLocaleString("pt-BR") : "0"} TAGs Apêndice 3 Rev.B · ${state.titleReferences && state.titleReferences.entries ? state.titleReferences.entries.length.toLocaleString("pt-BR") : "0"} conclusões controladas`;
+      : `${state.valveListTitleReferences && state.valveListTitleReferences.activeTagCount ? state.valveListTitleReferences.activeTagCount.toLocaleString("pt-BR") : "0"} válvulas ativas na LI Rev. C · ${state.sconTitleReferences && state.sconTitleReferences.entries ? state.sconTitleReferences.entries.length.toLocaleString("pt-BR") : "0"} códigos SCON TAG SGP · ${state.tagReferenceTitleReferences && state.tagReferenceTitleReferences.uniqueTagCount ? state.tagReferenceTitleReferences.uniqueTagCount.toLocaleString("pt-BR") : "0"} TAGs Apêndice 3 Rev.B · ${state.sconEscopoTitleReferences && state.sconEscopoTitleReferences.uniqueTagCount ? state.sconEscopoTitleReferences.uniqueTagCount.toLocaleString("pt-BR") : "0"} TAGs / ${state.sconEscopoTitleReferences && state.sconEscopoTitleReferences.uniqueEapCount ? state.sconEscopoTitleReferences.uniqueEapCount.toLocaleString("pt-BR") : "0"} EAPs SCON ESCOPO · ${state.titleReferences && state.titleReferences.entries ? state.titleReferences.entries.length.toLocaleString("pt-BR") : "0"} conclusões controladas`;
     const criteriaRows = [["Princípio", kind === "databook" ? "A LD só é alterada em uma nova cópia após confirmação do download; caminhos controlados são copiados sem reescrever o texto" : "A LD só é alterada em uma nova cópia após confirmação do download"], ["Decisões aprovadas", totals.approved], [kind === "databook" ? "Fontes controladas" : "Bases da análise", controlledSourceSummary]];
     if (kind === "title") {
       criteriaRows.push(["Como ler", "“Título atual na LD” é o valor encontrado; “O que as bases informam” mostra as referências limpas; “Título recomendado” é a proposta para conferência antes da aprovação"]);
-      criteriaRows.push(["Ordem da busca", "1. Separar o código EAP do 4º grupo e a TAG/combinação de TAGs do 7º grupo; 2. pesquisar TAG exata, normalizada e progressivamente em partes; 3. no SCON ESCOPO, priorizar TAG + EAP e depois usar a mesma TAG em outro EAP; 4. no Apêndice 3 Rev.B, localizar cada TAG de equipamento independentemente do EAP; 5. combinar descrições sem duplicação e preservar o tipo de relatório da LD"]);
-      criteriaRows.push(["Regra TAG + EAP", "O EAP define o critério de medição, mas não muda a identidade da TAG. Quando o EAP exato não existe, o RECON pode usar a descrição da mesma TAG em outro EAP. Do SCON ESCOPO, usa o item/área; do Apêndice 3 Rev.B, usa a descrição do equipamento"]);
+      criteriaRows.push(["Ordem da busca", "1. Extrair fielmente a TAG do Grupo 7 do nome do documento; 2. para TAG VM, consultar primeiro a LI de válvulas Rev. C e ignorar linhas canceladas; 3. se a válvula não estiver ativa na LI, consultar a SCON TAG SGP; 4. para as demais TAGs, usar as bases controladas e o Apêndice; 5. somente quando nenhuma fonte anterior trouxer descrição, usar o SCON ESCOPO como último recurso; 6. preservar o tipo documental e a TAG literal do nome"]);
+      criteriaRows.push(["Regra TAG + EAP", "A TAG do nome identifica o equipamento. O EAP ajuda a escolher o contexto, mas o SCON ESCOPO só preenche a lacuna quando LI, SCON, bases controladas e Apêndice não fornecerem descrição segura"]);
       criteriaRows.push(["Escopo da revisão", titleScopeSpecific() ? `${state.titleRequestedCodes.length} código(s) solicitado(s) · ${state.titleMatchedCodes.length} localizado(s) · ${state.titleUnmatchedCodes.length} não localizado(s)` : "Toda a LD"]);
     }
     criteriaRows.forEach(([label, value], index) => { const row = 11 + index; summary.mergeCells(`A${row}:B${row}`); summary.mergeCells(`C${row}:H${row}`); summary.getCell(`A${row}`).value = label; summary.getCell(`C${row}`).value = value; summary.getCell(`A${row}`).font = { name: "Aptos", size: 9, bold: true, color: { argb: "FF53697B" } }; summary.getCell(`C${row}`).font = { name: "Aptos", size: 9, color: { argb: "FF263E52" } }; summary.getCell(`C${row}`).alignment = { vertical: "middle", horizontal: "left", wrapText: true }; });
@@ -1298,6 +1301,16 @@
         const merged = new Map([...state.catalog, ...parsed.entries].map((item) => [`${Q.norm(item.description)}|${A.pathKey(item.databook)}`, item]));
         state.catalog = [...merged.values()];
         els.dbBaseStatus.textContent = `${parsed.entries.length} referências validadas · ${replaced("databook-rev-a") ? "base substituída" : "base Rev.A"}`;
+      }),
+      Promise.resolve().then(() => {
+        const source = window.RECONValveListCatalog;
+        if (!source) throw new Error("A LI de válvulas incorporada não foi carregada.");
+        const parsed = Q.parseValveListCatalog(source);
+        if (parsed.uniqueTagCount !== 3066 || parsed.activeTagCount !== 2859 || parsed.cancelledTagCount !== 207) {
+          throw new Error(`A LI de válvulas contém ${parsed.uniqueTagCount} TAGs, ${parsed.activeTagCount} ativas e ${parsed.cancelledTagCount} canceladas; eram esperadas 3.066, 2.859 e 207.`);
+        }
+        state.valveListTitleReferences = parsed;
+        updateTitleReferenceStatus();
       }),
       Promise.resolve().then(() => {
         const source = (bases && bases.catalog("scon-escopo")) || window.RECONSconEscopoTitleCatalog;

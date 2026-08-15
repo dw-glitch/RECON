@@ -1429,6 +1429,117 @@
     } : null;
   }
 
+  function isManualValveTag(value) {
+    return /^VM[-_.]\d/i.test(cleanSpaces(value));
+  }
+
+  function manualValveDescription(type) {
+    const cleanType = cleanTitlePart(type);
+    const subtype = cleanTitlePart(cleanType.replace(/^V[ÁA]LVULA\s+/i, ""));
+    return subtype ? `VÁLVULA MANUAL ${subtype}` : "VÁLVULA MANUAL";
+  }
+
+  function ensureManualValveDescription(value) {
+    const clean = cleanTitlePart(value);
+    if (!clean) return "VÁLVULA MANUAL";
+    if (/^VALVULA\s+MANUAL\b/.test(norm(clean))) {
+      return clean.replace(/^V[ÁA]LVULA\s+MANUAL\b/i, "VÁLVULA MANUAL");
+    }
+    if (/^VALVULA\b/.test(norm(clean))) {
+      return clean.replace(/^V[ÁA]LVULA\b/i, "VÁLVULA MANUAL");
+    }
+    return combineTitleDescriptions("VÁLVULA MANUAL", clean);
+  }
+
+  function parseValveListCatalog(catalog) {
+    const columns = catalog && catalog.columns || [];
+    const position = new Map(columns.map((name, index) => [name, index]));
+    const at = (row, name) => position.has(name) ? row[position.get(name)] : "";
+    const meta = catalog && catalog.meta || {};
+    const entries = (catalog && catalog.rows || []).map((row, index) => ({
+      tag: cleanSpaces(at(row, "tag")),
+      type: cleanSpaces(at(row, "type")),
+      diameter: cleanSpaces(at(row, "diameter")),
+      page: Number(at(row, "page")) || 0,
+      row: index + 1,
+      cancelled: Boolean(Number(at(row, "cancelled"))),
+      description: manualValveDescription(at(row, "type")),
+      sourceFile: meta.source || "LI-5290.00-22313-940-CHZ-202_0001_C.PDF",
+      sourceSheet: `LI de válvulas Rev. ${meta.revision || "C"}`,
+    })).filter((entry) => isManualValveTag(entry.tag) && entry.description);
+    const activeEntries = entries.filter((entry) => !entry.cancelled);
+    const byExactTag = new Map();
+    const byCanonicalTag = new Map();
+    const cancelledByExactTag = new Map();
+    const cancelledByCanonicalTag = new Map();
+    const add = (index, key, entry) => {
+      if (!key) return;
+      if (!index.has(key)) index.set(key, []);
+      index.get(key).push(entry);
+    };
+    entries.forEach((entry) => {
+      if (entry.cancelled) {
+        add(cancelledByExactTag, strictTagKey(entry.tag), entry);
+        add(cancelledByCanonicalTag, canonicalTagKey(entry.tag), entry);
+      } else {
+        add(byExactTag, strictTagKey(entry.tag), entry);
+        add(byCanonicalTag, canonicalTagKey(entry.tag), entry);
+      }
+    });
+    return {
+      kind: "valve-list-catalog",
+      entries,
+      activeEntries,
+      byExactTag,
+      byCanonicalTag,
+      cancelledByExactTag,
+      cancelledByCanonicalTag,
+      uniqueTagCount: new Set(entries.map((entry) => strictTagKey(entry.tag))).size,
+      activeTagCount: activeEntries.length,
+      cancelledTagCount: entries.length - activeEntries.length,
+      sourceFile: meta.source || "LI-5290.00-22313-940-CHZ-202_0001_C.PDF",
+      revision: meta.revision || "C",
+    };
+  }
+
+  function valveReferenceFor(record, references, tagEvidence) {
+    const catalog = references && references.valveList;
+    const lookup = sconEscopoLookupTag(record, tagEvidence);
+    if (!catalog || !isManualValveTag(lookup.tag)) return null;
+    const exactKey = strictTagKey(lookup.tag);
+    const canonicalKey = canonicalTagKey(lookup.tag);
+    const entries = catalog.byExactTag.get(exactKey) || catalog.byCanonicalTag.get(canonicalKey) || [];
+    if (!entries.length) {
+      const cancelled = catalog.cancelledByExactTag.get(exactKey)
+        || catalog.cancelledByCanonicalTag && catalog.cancelledByCanonicalTag.get(canonicalKey)
+        || [];
+      if (!cancelled.length) return null;
+      const firstCancelled = cancelled[0];
+      return {
+        ...firstCancelled,
+        trusted: false,
+        cancelled: true,
+        lookupTag: lookup.tag,
+        lookupTagSource: lookup.source,
+        matchMode: "TAG exata localizada na LI, porém marcada como CANCELADA",
+        sourceRows: [...new Set(cancelled.map((entry) => entry.page).filter(Boolean))],
+      };
+    }
+    const first = entries[0];
+    return {
+      ...first,
+      trusted: true,
+      cancelled: false,
+      lookupTag: lookup.tag,
+      lookupTagSource: lookup.source,
+      matchedAliases: [first.tag],
+      sourceRows: [...new Set(entries.map((entry) => entry.page).filter(Boolean))],
+      matchMode: strictTagKey(first.tag) === exactKey
+        ? "TAG exata na LI de válvulas"
+        : "TAG equivalente após normalizar zeros e pontuação na LI de válvulas",
+    };
+  }
+
   function parseTagReferenceCatalog(catalog) {
     const meta = catalog && catalog.meta || {};
     const entries = (catalog && catalog.entries || []).map((entry, index) => ({
@@ -2292,13 +2403,13 @@
       const type = prefix || inferredType;
       const tagEvidence = resolveTagEvidence(record, reference);
       const possibleIdentifier = tagEvidence.possibleTag;
+      const valveReference = valveReferenceFor(record, references, tagEvidence);
       const sconReference = sconReferenceFor(record, references);
       const sconEscopoReference = sconEscopoReferenceFor(record, references, tagEvidence, {
-        // A SCON atualizada descreve muito bem o equipamento pela TAG, mas não
-        // substitui a SCON ESCOPO: é esta segunda base que acrescenta área,
-        // unidade e contexto de montagem. O fallback permanece conservador
-        // (hoje restrito a REP + EAP/atividade/objeto compatíveis), portanto
-        // deve continuar habilitado mesmo quando a TAG já foi achada na SCON.
+        // A consulta pode localizar evidência contextual, mas a descrição do
+        // SCON ESCOPO só será usada adiante quando LI, SCON, Apêndice e base
+        // controlada não tiverem trazido uma descrição. Assim ela permanece o
+        // último recurso e não altera um título já resolvido por TAG.
         allowContextFallback: true,
       });
       const tagReference = tagReferenceFor(record, references, tagEvidence);
@@ -2321,7 +2432,11 @@
       const singleExternalTag = matchedExternalTags.length === 1 ? matchedExternalTags[0] : "";
       const tag = tagEvidence.tag || singleExternalTag;
       const resolvedNonTaggedRule = N && N.resolve ? N.resolve(record.document) : null;
-      const externalTagDescriptionFound = Boolean(sconEscopoReference && sconEscopoReference.trusted || tagReference && tagReference.trusted);
+      const externalTagDescriptionFound = Boolean(
+        valveReference && valveReference.trusted
+        || sconEscopoReference && sconEscopoReference.trusted
+        || tagReference && tagReference.trusted
+      );
       const nonTaggedRule = externalTagDescriptionFound ? null : resolvedNonTaggedRule;
       const titleTagConfirmed = Boolean(tagEvidence.confirmed || singleExternalTag);
       const explicitTitle = extractTagFromTitle(record.title);
@@ -2332,6 +2447,7 @@
       const documentNameTag = tagEvidence.group7 && tagEvidence.group7.validTag
         ? tagEvidence.group7.tag
         : "";
+      const manualValve = isManualValveTag(documentNameTag || tag);
       const explicitDescription = usableDescription(recordValue(record, DESCRIPTION_HEADERS));
       const explicitComplementary = usableDescription(recordValue(record, COMPLEMENTARY_HEADERS));
       const explicitScon = referenceDescriptionCandidate(recordValue(record, SCON_HEADERS));
@@ -2343,42 +2459,51 @@
         )
         : "";
       const trustedScon = Boolean(sconTitleComplement && sconReference && sconReference.trusted);
+      const valveTitle = valveReference && valveReference.trusted ? usableDescription(valveReference.description) : "";
+      const trustedValve = Boolean(valveTitle && valveReference && valveReference.trusted);
       const sconEscopoTitle = sconEscopoReference && sconEscopoReference.trusted ? usableDescription(sconEscopoReference.description || sconEscopoReference.title) : "";
       const trustedSconEscopo = Boolean(sconEscopoTitle && sconEscopoReference && sconEscopoReference.trusted);
       const appendixTitle = tagReference && tagReference.trusted ? usableDescription(tagReference.description || tagReference.title) : "";
       const trustedAppendix = Boolean(appendixTitle && tagReference && tagReference.trusted);
-      // Filtro global de fonte (options.titleSourceMode): restringe qual base pode
-      // efetivamente entrar na descrição recomendada. As três bases continuam
-      // sendo pesquisadas e mostradas como evidência — a restrição vale só para
-      // o texto usado no título, nunca para a confirmação da TAG.
+      // No modo automático, uma TAG VM consulta primeiro a LI de válvulas. A
+      // SCON assume apenas quando a LI não contém uma linha ativa. Para as
+      // demais TAGs, SCON e Apêndice continuam podendo se complementar. O SCON
+      // ESCOPO só entra quando nenhuma dessas fontes anteriores trouxe uma
+      // descrição, funcionando como último recurso controlado.
       const titleSourceMode = (options && options.titleSourceMode) || "auto";
       const sconDescriptionAllowed = titleSourceMode !== "appendix_only";
       const appendixDescriptionAllowed = titleSourceMode !== "scon_only";
       const sconEscopoDescriptionAllowed = titleSourceMode === "auto";
-      const sconEscopoInDescription = Boolean(trustedSconEscopo && sconEscopoDescriptionAllowed);
-      const appendixInDescription = Boolean(trustedAppendix && appendixDescriptionAllowed);
-      const externalTagDescription = combineTitleDescriptions(appendixInDescription ? appendixTitle : "", sconEscopoInDescription ? sconEscopoTitle : "");
+      const valveInDescription = Boolean(trustedValve && titleSourceMode === "auto");
+      const sconInDescription = Boolean(trustedScon && sconDescriptionAllowed && !valveInDescription);
+      const sconTitleForDescription = manualValve && sconInDescription
+        ? ensureManualValveDescription(sconTitleComplement)
+        : sconTitleComplement;
+      const appendixInDescription = Boolean(
+        trustedAppendix
+        && appendixDescriptionAllowed
+        && !valveInDescription
+        && !(manualValve && sconInDescription)
+      );
       const trustedDescription = Boolean(referenceDescription && reference && !reference.manualReview && !reference.ambiguousDescription);
       const trustedNonTagged = Boolean(nonTaggedRule && nonTaggedRule.description && (nonTaggedRule.exact || nonTaggedRule.confidence === "alta"));
-      // O SCON TAG SGP descreve o documento específico e sempre entra primeiro na
-      // descrição recomendada. Quando a mesma TAG também é confirmada pelo SCON
-      // ESCOPO e/ou pelo Apêndice 3 Rev.B, o texto de cada base é somado ao do
-      // SCON TAG SGP: combineTitleDescriptions descarta qualquer parte já contida
-      // na anterior, então a mesma informação não se repete no título, apenas o
-      // que cada base acrescenta de fato.
-      const sconCombinesWithSconEscopo = Boolean(trustedScon && sconEscopoInDescription);
-      const sconCombinesWithAppendix = Boolean(trustedScon && appendixInDescription);
-      const sconCombinedDescription = trustedScon && sconDescriptionAllowed
-        ? combineTitleDescriptions(
-          sconTitleComplement,
-          sconCombinesWithSconEscopo ? sconEscopoTitle : "",
-          sconCombinesWithAppendix ? appendixTitle : "",
-        )
-        : "";
+      const sconCombinesWithAppendix = Boolean(!manualValve && sconInDescription && appendixInDescription);
+      const strongTagDescription = valveInDescription
+        ? valveTitle
+        : sconInDescription
+          ? combineTitleDescriptions(sconTitleForDescription, sconCombinesWithAppendix ? appendixTitle : "")
+          : appendixInDescription ? appendixTitle : "";
+      const sconEscopoInDescription = Boolean(
+        trustedSconEscopo
+        && sconEscopoDescriptionAllowed
+        && !strongTagDescription
+        && !trustedDescription
+      );
+      const externalTagDescription = strongTagDescription || (sconEscopoInDescription ? sconEscopoTitle : "");
+      const sconCombinedDescription = strongTagDescription;
       const externalTagDrivesDescription = Boolean(
         externalTagDescription
         && !trustedNonTagged
-        && !(trustedScon && sconDescriptionAllowed)
         && !trustedDescription
       );
       const sconEscopoDrivesDescription = Boolean(externalTagDrivesDescription && sconEscopoInDescription);
@@ -2400,6 +2525,7 @@
         || explicitComplementary
         || explicitDescription
         || explicitScon
+        || manualValve && "VÁLVULA MANUAL"
         || currentDescription;
       const description = pruneRedundantTitleDescription(type, rawDescription);
       const descriptionIdentifiers = technicalIdentifiers(description);
@@ -2424,7 +2550,7 @@
       const needsTag = tagRequired(record, drawing ? "DESENHO" : type, titleTag) && titleTagConfirmed && Boolean(titleTag) && !norm(current).includes(norm(titleTag));
       const controlledDescriptionMismatch = Boolean(
         description
-        && (trustedNonTagged || trustedScon || trustedDescription)
+        && (trustedNonTagged || trustedValve || trustedScon || trustedDescription)
         && !norm(current).includes(norm(description))
       );
       const sconEscopoDescriptionMismatch = Boolean(
@@ -2436,7 +2562,7 @@
       let issue = "ok";
       let classification = "ok";
       let reason = "Título claro e sem divergência identificada";
-      if (empty) { issue = "empty"; classification = titleStandard && titleStandard.normative || trustedScon || trustedSconEscopo || trustedAppendix || trustedDescription || titleTagConfirmed ? "confirmed_error" : "insufficient"; reason = "Título vazio"; }
+      if (empty) { issue = "empty"; classification = titleStandard && titleStandard.normative || trustedValve || trustedScon || trustedSconEscopo || trustedAppendix || trustedDescription || titleTagConfirmed ? "confirmed_error" : "insufficient"; reason = "Título vazio"; }
       else if (wrongTitleTag) {
         issue = "wrong_tag";
         classification = "confirmed_error";
@@ -2454,24 +2580,26 @@
       else if (needsTag) {
         issue = "missing_tag";
         classification = "confirmed_error";
-        const confirmationSource = sconEscopoConfirmsLookupTag ? "cruzamento da TAG com o SCON ESCOPO" : appendixConfirmsLookupTag ? "cruzamento da TAG com o Apêndice 3 Rev.B" : tagEvidence.source.toLowerCase();
+        const confirmationSource = trustedValve
+          ? "cruzamento da TAG com a LI de válvulas"
+          : sconEscopoConfirmsLookupTag
+            ? "cruzamento da TAG com o SCON ESCOPO"
+            : appendixConfirmsLookupTag ? "cruzamento da TAG com o Apêndice 3 Rev.B" : tagEvidence.source.toLowerCase();
         reason = `A TAG comprovada pelo ${confirmationSource} não aparece no título`;
       }
       else if (descriptionMismatch) {
         issue = "description_mismatch";
         classification = trustedNonTagged && nonTaggedRule.exact
           ? "confirmed_error"
-          : trustedScon || reference && reference.verifiedCatalog ? "confirmed_error" : "suggestion";
+          : trustedValve || trustedScon || reference && reference.verifiedCatalog ? "confirmed_error" : "suggestion";
         reason = nonTaggedRule
           ? "O título não representa completamente O QUÊ e ONDE/QUANDO do Campo 7 nt-"
+          : trustedValve && valveInDescription
+            ? "A descrição da válvula manual localizada na LI não aparece completa no título"
           : trustedScon && sconDescriptionAllowed
-            ? sconCombinesWithSconEscopo && sconCombinesWithAppendix
-              ? "A descrição combinada do SCON TAG SGP, do SCON ESCOPO e do Apêndice 3 Rev.B não aparece completa no título"
-              : sconCombinesWithSconEscopo
-                ? "A descrição combinada do SCON TAG SGP e do SCON ESCOPO não aparece completa no título"
-                : sconCombinesWithAppendix
-                  ? "A descrição combinada do SCON TAG SGP e do Apêndice 3 Rev.B não aparece completa no título"
-                  : "O terceiro campo da DESCRIÇÃO do SCON TAG SGP não aparece no título"
+            ? sconCombinesWithAppendix
+              ? "A descrição combinada do SCON TAG SGP e do Apêndice 3 Rev.B não aparece completa no título"
+              : "O terceiro campo da DESCRIÇÃO do SCON TAG SGP não aparece no título"
             : externalTagDrivesDescription
               ? sconEscopoInDescription && appendixInDescription
                 ? "As descrições localizadas no SCON ESCOPO e no Apêndice 3 Rev.B não aparecem no título atual"
@@ -2497,9 +2625,11 @@
           }
         } else if ((description || tag || titleStandard && titleStandard.normative) && (type || description || tag)) {
           proposed = buildTitle(type, description, titleTag, { preserveType: Boolean(titleStandard && titleStandard.normative && titleStandard.title) });
-          const hasExternal = Boolean(sconTitleComplement || externalTagDescription || explicitComplementary || explicitDescription || explicitScon || referenceDescription || nonTaggedRule && nonTaggedRule.description);
+          const hasExternal = Boolean(valveTitle || sconTitleComplement || externalTagDescription || explicitComplementary || explicitDescription || explicitScon || referenceDescription || nonTaggedRule && nonTaggedRule.description);
           confidence = titleStandard && titleStandard.normative && !titleStandard.ambiguous
             ? (hasExternal || titleTagConfirmed ? "alta" : "media")
+            : trustedValve && valveInDescription
+            ? "alta"
             : trustedScon
             ? "alta"
             : nonTaggedRule && nonTaggedRule.exact
@@ -2517,6 +2647,9 @@
       if (issue !== "ok" && !proposed) reason += "; sem informação suficiente para sugerir com segurança";
       const referenceEvidence = reference
         ? `${reference.origin || reference.sourceSheet || "Base de referência"}${reference.referenceDocument ? ` · referência ${reference.referenceDocument}` : ""}${reference.row ? ` · linha ${reference.row}` : ""}${reference.observation ? ` · ${reference.observation}` : ""}`
+        : "";
+      const valveEvidence = valveReference
+        ? `${valveReference.sourceFile || "LI-5290.00-22313-940-CHZ-202_0001_C.PDF"} · página(s) ${(valveReference.sourceRows || [valveReference.page]).filter(Boolean).join(", ") || "não identificada"} · ${valveReference.matchMode || "TAG exata na LI de válvulas"}`
         : "";
       const sconEvidence = sconReference
         ? sconReference.ambiguousDescription
@@ -2537,6 +2670,7 @@
         tagEvidence.source,
         sconEscopoReference && sconEscopoReference.lookupTagSource,
         nonTaggedRule && nonTaggedRule.source,
+        valveEvidence,
         sconEvidence,
         sconEscopoEvidence,
         appendixEvidence,
@@ -2565,13 +2699,13 @@
         description,
         descriptionSource: nonTaggedRule
           ? "Catálogo controlado nt-"
+          : valveInDescription
+            ? "LI de válvulas Rev. C · TAG exata"
           : trustedScon && sconDescriptionAllowed
-            ? sconCombinesWithSconEscopo && sconCombinesWithAppendix
-              ? "SCON TAG SGP + SCON ESCOPO + Apêndice 3 Rev.B · 3º campo da DESCRIÇÃO"
-              : sconCombinesWithAppendix
+            ? sconCombinesWithAppendix
                 ? "SCON TAG SGP + Apêndice 3 Rev.B · 3º campo da DESCRIÇÃO"
-                : sconCombinesWithSconEscopo
-                  ? "SCON TAG SGP + SCON ESCOPO"
+                : manualValve
+                  ? "SCON TAG SGP · fallback da LI de válvulas"
                   : "SCON TAG SGP · 3º campo da DESCRIÇÃO"
             : explicitComplementary
               ? "Complementar da LD"
@@ -2589,7 +2723,15 @@
                             ? "SCON ESCOPO · TAG + EAP"
                             : "SCON ESCOPO · busca progressiva"
                       : "Apêndice 3 Rev.B · TAG do equipamento"
-                  : explicitDescription ? "Descrição da LD" : explicitScon ? "SCON da LD" : "Título atual",
+                  : explicitDescription ? "Descrição da LD" : explicitScon ? "SCON da LD" : manualValve ? "Regra mínima da TAG VM · VÁLVULA MANUAL" : "Título atual",
+        valveMatch: valveReference && valveReference.trusted ? "SIM" : valveReference && valveReference.cancelled ? "CANCELADA" : "NÃO",
+        valveMatchMode: valveReference && valveReference.matchMode || "",
+        valveTitle,
+        valveType: valveReference && valveReference.type || "",
+        valveDiameter: valveReference && valveReference.diameter || "",
+        valveCancelled: Boolean(valveReference && valveReference.cancelled),
+        valveSourceFile: valveReference && valveReference.sourceFile || "",
+        valveSourcePages: valveReference && (valveReference.sourceRows || [valveReference.page]).filter(Boolean) || [],
         sconMatch: sconReference && !sconReference.ambiguousDescription ? "SIM" : sconReference ? "AMBÍGUO" : "NÃO",
         sconMatchMode: sconReference && sconReference.matchMode || "",
         sconMatchedTags: sconReference && sconReference.matchedAliases || [],
@@ -2736,6 +2878,11 @@
     sconEscopoActivityEap,
     combineSconEscopoTitles,
     parseSconEscopoTitleCatalog,
+    isManualValveTag,
+    manualValveDescription,
+    ensureManualValveDescription,
+    parseValveListCatalog,
+    valveReferenceFor,
     parseTagReferenceCatalog,
     tagReferenceFor,
     sconEscopoReferenceFor,

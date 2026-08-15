@@ -1103,7 +1103,7 @@
     const groups = [];
     for (const group of plan.groups) {
       const meta = allocationMeta(group.allocationCode);
-      const allocation = await W.buildAllocation(group.results, window.ExcelJS);
+      const allocation = await W.buildAllocation(group.results, window.ExcelJS, meta);
       const control = await W.buildControlLines(group.results, meta, window.ExcelJS);
       await W.verify({ allocation, control }, group.results, meta.allocationCode, window.ExcelJS);
       groups.push({

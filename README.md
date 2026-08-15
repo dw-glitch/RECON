@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.42**.
+Versão atual: **1.26.44**.
 
 ## Execução
 
@@ -18,7 +18,7 @@ Aplicativo local em HTML, CSS e JavaScript, sem React e sem servidor obrigatóri
 
 Os módulos (Relações, Alocação, Databook, Títulos, TAGs, Renomeador e Bases) são
 carregados sob demanda por `recon_module_loader.js`. Os catálogos de referência
-(`scon_*.js`, `tag_reference_catalog.js`) também são carregados sob demanda. Na
+(`scon_*.js`, `tag_reference_catalog.js`, `valve_list_catalog.js`) também são carregados sob demanda. Na
 revisão de títulos, todos os fragmentos SCON são reunidos para permitir a busca
 da mesma TAG mesmo quando sua descrição está registrada em outra disciplina.
 
@@ -26,6 +26,12 @@ Na correção de títulos, o tipo documental é colocado na frente da descriçã
 localizada nas bases. O RECON usa a ET-5290.00-22000-912-1LV-001 Rev. P como
 norma vigente, consulta a Tabela 13 pelo Grupo 6 dos relatórios e compara o
 padrão com títulos anteriores da própria LD antes de montar a recomendação.
+A TAG usada na busca vem do Grupo 7 do nome do documento. Para válvulas manuais,
+a prioridade é a LI-5290.00-22313-940-CHZ-202 Rev. C; linhas canceladas são
+ignoradas e a SCON TAG SGP assume como fallback, mesmo quando a descrição está
+em outra disciplina. Para as demais TAGs, SCON e Apêndice 3 podem se
+complementar. A SCON ESCOPO só descreve o título quando nenhuma fonte anterior
+resolveu a TAG, evitando recomendações vazias.
 
 Cada módulo pode ser aberto direto pela URL: `index.html#relations`,
 `#allocation`, `#tags`, `#databook`, `#titles`, `#renamer` ou `#bases`.
@@ -39,6 +45,11 @@ consulta rápida de Databook aceita várias linhas no formato Documento + Títul
 Quando nenhuma referência específica de Databook é segura, o gerador usa o
 caminho geral da disciplina, separando a família RIR da família C&M, e identifica
 o preenchimento como fallback na análise.
+
+Nas linhas da Central de Alocação, a coluna ABA usa o número identificado no
+nome de cada LD anexada (`ET_LD_003`, `ET_LD_004` ou `N-1710_LD_001`). A versão
+é preservada conforme a LD enviada e a Data Prevista é sempre a data atual da
+geração, sem reaproveitar datas antigas do histórico.
 
 ## Bases de referência
 
