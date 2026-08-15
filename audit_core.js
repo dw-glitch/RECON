@@ -784,7 +784,7 @@
     result = result.replace(/^TAG\s*[-–—:]?\s*/i, "");
     if (tag) {
       const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      result = result.replace(new RegExp(`\\s*[-–—:]?\\s*${escapedTag}\\s*$`, "i"), "");
+      result = result.replace(new RegExp(`\\s*[-–—:]?\\s*(?:TAG\\s*[:\\-]?\\s*)?${escapedTag}\\s*$`, "i"), "");
     }
     return usableDescription(result.replace(/^[-–—:\s]+|[-–—:\s]+$/g, ""));
   }
@@ -2113,8 +2113,12 @@
     [cleanType, cleanDescription].map(cleanTitlePart).filter(Boolean).forEach((part) => {
       if (!parts.some((current) => norm(current) === norm(part) || norm(current).includes(norm(part)))) parts.push(part);
     });
-    if (cleanTag) parts.push(cleanTag);
-    return upperCaseTitle(parts.join(" - ").replace(/\s+/g, " ").trim());
+    // Tipo e descrição seguem o padrão visual em caixa alta. A TAG, porém,
+    // é um identificador controlado: deve ser copiada literalmente do Grupo 7
+    // do nome do documento, inclusive quanto a maiúsculas, minúsculas e
+    // separadores. Colocá-la antes de upperCaseTitle alterava essa evidência.
+    const titleBody = upperCaseTitle(parts.join(" - ").replace(/\s+/g, " ").trim());
+    return [titleBody, cleanTag].filter(Boolean).join(" - ");
   }
 
   function referenceFor(record, references) {
@@ -2321,6 +2325,13 @@
       const nonTaggedRule = externalTagDescriptionFound ? null : resolvedNonTaggedRule;
       const titleTagConfirmed = Boolean(tagEvidence.confirmed || singleExternalTag);
       const explicitTitle = extractTagFromTitle(record.title);
+      // Quando o Grupo 7 é válido, o nome do documento é a fonte soberana da
+      // TAG usada no título. As bases externas servem para descrever o item,
+      // mas não podem substituir a grafia documental por uma TAG parecida,
+      // antiga ou pertencente a outro equipamento.
+      const documentNameTag = tagEvidence.group7 && tagEvidence.group7.validTag
+        ? tagEvidence.group7.tag
+        : "";
       const explicitDescription = usableDescription(recordValue(record, DESCRIPTION_HEADERS));
       const explicitComplementary = usableDescription(recordValue(record, COMPLEMENTARY_HEADERS));
       const explicitScon = referenceDescriptionCandidate(recordValue(record, SCON_HEADERS));
@@ -2376,7 +2387,12 @@
         && currentDetectedPrefix && !titleStartsWithType(current, type)
         ? currentDetectedPrefix
         : type;
-      const currentDescription = stripKnownParts(current, currentDescriptionType, tag);
+      // Retira primeiro a TAG realmente escrita no título. Se ela estiver
+      // errada e só a TAG correta for retirada, a recomendação acabará com as
+      // duas formas. A segunda passagem cobre títulos em que a TAG correta
+      // aparece com outro separador ou repetida.
+      const descriptionWithoutObservedTag = stripKnownParts(current, currentDescriptionType, explicitTitle);
+      const currentDescription = stripKnownParts(descriptionWithoutObservedTag, "", documentNameTag || tag);
       const rawDescription = nonTaggedRule && nonTaggedRule.description
         || sconCombinedDescription
         || trustedDescription && referenceDescription
@@ -2387,7 +2403,7 @@
         || currentDescription;
       const description = pruneRedundantTitleDescription(type, rawDescription);
       const descriptionIdentifiers = technicalIdentifiers(description);
-      const titleTag = nonTaggedRule ? "" : tag;
+      const titleTag = nonTaggedRule ? "" : documentNameTag || tag;
       const isCv = norm(record.sheet) === "CV" || /-C1O-CV-/.test(norm(record.document));
       const empty = isUnavailableValue(current);
       const literalTag = /\bTAG\b\s*[:\-]?\s*[A-Z0-9]/i.test(current);
@@ -2399,6 +2415,11 @@
         && titleStandard.normative
         && titleStandard.title
         && !titleStartsWithType(current, titleStandard.title)
+      );
+      const wrongTitleTag = Boolean(
+        documentNameTag
+        && explicitTitle
+        && cleanSpaces(explicitTitle) !== cleanSpaces(documentNameTag)
       );
       const needsTag = tagRequired(record, drawing ? "DESENHO" : type, titleTag) && titleTagConfirmed && Boolean(titleTag) && !norm(current).includes(norm(titleTag));
       const controlledDescriptionMismatch = Boolean(
@@ -2416,6 +2437,11 @@
       let classification = "ok";
       let reason = "Título claro e sem divergência identificada";
       if (empty) { issue = "empty"; classification = titleStandard && titleStandard.normative || trustedScon || trustedSconEscopo || trustedAppendix || trustedDescription || titleTagConfirmed ? "confirmed_error" : "insufficient"; reason = "Título vazio"; }
+      else if (wrongTitleTag) {
+        issue = "wrong_tag";
+        classification = "confirmed_error";
+        reason = `O título contém a TAG “${explicitTitle}”, mas o Grupo 7 do nome do documento define exatamente “${documentNameTag}”`;
+      }
       else if (standardPrefixMismatch) {
         issue = "document_type";
         classification = titleStandard.ambiguous ? "suggestion" : "confirmed_error";
@@ -2529,6 +2555,9 @@
         current,
         tag,
         titleTag,
+        documentNameTag,
+        titleTagFound: explicitTitle,
+        wrongTitleTag,
         descriptionIdentifiers,
         possibleIdentifier,
         tagEvidence,

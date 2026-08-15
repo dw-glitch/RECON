@@ -10,6 +10,7 @@
     TITLE_OK: "TITLE_OK",
     TITLE_EMPTY: "TITLE_EMPTY",
     TITLE_MISSING_TAG: "TITLE_MISSING_TAG",
+    TITLE_WRONG_TAG: "TITLE_WRONG_TAG",
     TITLE_DESCRIPTION_MISMATCH: "TITLE_DESCRIPTION_MISMATCH",
     TITLE_GENERIC: "TITLE_GENERIC",
     TITLE_FORMAT: "TITLE_FORMAT",
@@ -67,6 +68,7 @@
     if (item.issue === "ok") return CODES.TITLE_OK;
     if (item.issue === "empty") return CODES.TITLE_EMPTY;
     if (item.issue === "missing_tag") return CODES.TITLE_MISSING_TAG;
+    if (item.issue === "wrong_tag") return CODES.TITLE_WRONG_TAG;
     if (item.issue === "description_mismatch") return CODES.TITLE_DESCRIPTION_MISMATCH;
     if (item.issue === "generic") return CODES.TITLE_GENERIC;
     if (item.issue === "format") return CODES.TITLE_FORMAT;
@@ -106,6 +108,12 @@
         title: "Este título precisa de revisão.",
         explanation: "Existe uma TAG comprovada que não aparece no título.",
         nextAction: hasSuggestion ? "Confira a sugestão e a fonte da TAG." : "Inclua a TAG somente depois de confirmar a fonte.",
+      },
+      [CODES.TITLE_WRONG_TAG]: {
+        severity: "warning",
+        title: "A TAG do título está incorreta.",
+        explanation: "A TAG escrita no título não é exatamente a mesma definida no Grupo 7 do nome do documento.",
+        nextAction: hasSuggestion ? "Confira a substituição pela TAG documental exata e aprove a correção." : "Substitua a TAG do título pela grafia exata do nome do documento.",
       },
       [CODES.TITLE_DESCRIPTION_MISMATCH]: {
         severity: "warning",

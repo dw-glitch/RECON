@@ -730,6 +730,80 @@ check("parênteses que fazem parte do título normativo não são removidos", ()
     "CERTIFICADO DE TESTE DE PRESSÃO EM EQUIPAMENTOS (SELO MECÂNICO) - BOMBA - B-1");
 });
 
+check("a TAG errada do título é substituída exatamente pela TAG do nome do documento", () => {
+  const C = createRequire(import.meta.url)("./core.js");
+  const Q = createRequire(import.meta.url)("./audit_core.js");
+  const document = "C1O_RNEST_U32_3.1.1.1_CVL_RIR_Vm-327721";
+  const record = {
+    document,
+    documentKey: C.key(document),
+    sheet: "ET",
+    row: 10,
+    discipline: "CIVIL",
+    revision: "B",
+    title: "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO - VÁLVULA MANUAL - VM-327722",
+  };
+  const index = {
+    documents: [{ document, documentKey: record.documentKey, group: { records: [record], history: [] } }],
+  };
+  const row = Q.auditTitles(index, null, {})[0];
+
+  assert.equal(row.issue, "wrong_tag");
+  assert.equal(row.reasonCode, "TITLE_WRONG_TAG");
+  assert.equal(row.documentNameTag, "Vm-327721");
+  assert.equal(row.titleTagFound, "VM-327722");
+  assert.equal(row.titleTag, "Vm-327721");
+  assert.equal(row.proposed, "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO - VÁLVULA MANUAL - Vm-327721");
+  assert.ok(!row.proposed.includes("VM-327722"), "a TAG incorreta permaneceu na sugestão");
+  assert.equal((row.proposed.match(/Vm-327721/g) || []).length, 1, "a TAG documental deve aparecer uma única vez");
+});
+
+check("a TAG já idêntica à do nome do documento não é marcada como incorreta", () => {
+  const C = createRequire(import.meta.url)("./core.js");
+  const Q = createRequire(import.meta.url)("./audit_core.js");
+  const document = "C1O_RNEST_U32_3.1.1.1_CVL_RIR_Vm-327721";
+  const record = {
+    document,
+    documentKey: C.key(document),
+    sheet: "ET",
+    row: 11,
+    discipline: "CIVIL",
+    revision: "B",
+    title: "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO - VÁLVULA MANUAL - Vm-327721",
+  };
+  const index = {
+    documents: [{ document, documentKey: record.documentKey, group: { records: [record], history: [] } }],
+  };
+  const row = Q.auditTitles(index, null, {})[0];
+
+  assert.equal(row.wrongTitleTag, false);
+  assert.notEqual(row.issue, "wrong_tag");
+});
+
+check("a correção remove também a forma literal TAG: antes do identificador errado", () => {
+  const C = createRequire(import.meta.url)("./core.js");
+  const Q = createRequire(import.meta.url)("./audit_core.js");
+  const document = "C1O_RNEST_U32_3.1.1.1_CVL_RIR_B-32014A";
+  const record = {
+    document,
+    documentKey: C.key(document),
+    sheet: "ET",
+    row: 12,
+    discipline: "CIVIL",
+    revision: "B",
+    title: "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO - BOMBA DE TESTE - TAG: B-32014B",
+  };
+  const index = {
+    documents: [{ document, documentKey: record.documentKey, group: { records: [record], history: [] } }],
+  };
+  const row = Q.auditTitles(index, null, {})[0];
+
+  assert.equal(row.issue, "wrong_tag");
+  assert.equal(row.proposed, "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO - BOMBA DE TESTE - B-32014A");
+  assert.ok(!/TAG\s*:/i.test(row.proposed));
+  assert.ok(!row.proposed.includes("B-32014B"));
+});
+
 check("a SCON atualizada não bloqueia área e unidade vindas da SCON ESCOPO", () => {
   const require = createRequire(import.meta.url);
   const C = require("./core.js");

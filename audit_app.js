@@ -1020,7 +1020,7 @@
 
   function issueLabel(kind, issue) {
     const labels = kind === "databook" ? { ok: "Adequado", missing: "Caminho vazio ou incompleto", divergent: "Caminho completo com referência divergente", unconfirmed: "Não confirmado", conflict: "Conflito na LD" }
-      : { ok: "Adequado", empty: "Título vazio", generic: "Pouco específico", document_type: "Tipo documental fora do padrão", description_mismatch: "Descrição divergente", missing_tag: "TAG comprovada ausente", possible_identifier: "Possível identificador", format: "Padronização", conflict: "Conflito na LD" };
+      : { ok: "Adequado", empty: "Título vazio", generic: "Pouco específico", document_type: "Tipo documental fora do padrão", description_mismatch: "Descrição divergente", missing_tag: "TAG comprovada ausente", wrong_tag: "TAG incorreta no título", possible_identifier: "Possível identificador", format: "Padronização", conflict: "Conflito na LD" };
     return labels[issue] || issue;
   }
 
@@ -1070,6 +1070,8 @@
       ["Local na LD", (row) => `${row.sheet || "Aba não informada"} · linha ${row.row || "não informada"}`],
       ["Disciplina", "discipline"],
       ["Título atual na LD", "current"],
+      ["TAG no nome do documento", (row) => row.documentNameTag || row.titleTag || "Não se aplica"],
+      ["TAG encontrada no título", (row) => row.titleTagFound || "Não encontrada"],
       ["Chave consultada", (row) => `TAG ${row.sconEscopoLookupTag || row.tag || "não confirmada"} · EAP ${row.sconEscopoDocumentEap || "não informado"}`],
       ["O que as bases informam", titleReferenceSummary],
       ["Fonte principal", titleSourceSummary],
