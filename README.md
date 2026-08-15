@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.40**.
+Versão atual: **1.26.42**.
 
 ## Execução
 
@@ -29,6 +29,16 @@ padrão com títulos anteriores da própria LD antes de montar a recomendação.
 
 Cada módulo pode ser aberto direto pela URL: `index.html#relations`,
 `#allocation`, `#tags`, `#databook`, `#titles`, `#renamer` ou `#bases`.
+
+No Gerador de Alocação, a recomendação automática deixa situações bloqueadas
+desmarcadas, mas o usuário pode selecionar manualmente qualquer linha que tenha
+saída técnica válida. A geração pode separar os selecionados por
+disciplina/workflow ou reunir tudo no mesmo número de alocação. O relatório da
+análise registra o diagnóstico operacional e destaca inclusões manuais. A
+consulta rápida de Databook aceita várias linhas no formato Documento + Título.
+Quando nenhuma referência específica de Databook é segura, o gerador usa o
+caminho geral da disciplina, separando a família RIR da família C&M, e identifica
+o preenchimento como fallback na análise.
 
 ## Bases de referência
 

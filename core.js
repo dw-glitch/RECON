@@ -249,6 +249,17 @@
     return result;
   }
 
+  // Algumas LDs, inclusive a LD_004, usam a coluna ALOCAÇÃO como estado
+  // operacional (ALOCADO / NÃO ALOCADO), enquanto outras colocam nela o
+  // código C1O-ALOC-CM-.... Separa os dois significados pelo conteúdo para
+  // que o status não seja confundido com número de alocação.
+  function allocationStatusFromAllocationCell(value) {
+    const normalized = norm(value);
+    if (/^NAO ALOCAD[OA]\b/.test(normalized)) return "NÃO ALOCADO";
+    if (/^ALOCAD[OA]\b/.test(normalized)) return "ALOCADO";
+    return "";
+  }
+
   function cell(row, index) {
     return index === undefined ? "" : text(row[index]);
   }
@@ -380,6 +391,9 @@
         if (documentKey.length < 7) { coverage.rowsSkipped.shortKey += 1; continue; }
         sheetRows += 1;
         coverage.rowsRead += 1;
+        const rawAllocation = sheetCell(sheet, i, columns.allocation);
+        const explicitAllocationStatus = sheetCell(sheet, i, columns.allocationStatus);
+        const inferredAllocationStatus = allocationStatusFromAllocationCell(rawAllocation);
         const item = {
           document,
           documentKey,
@@ -396,11 +410,11 @@
           purpose: sheetCell(sheet, i, columns.purpose),
           databook: sheetCell(sheet, i, columns.databook),
           fiscalComment: sheetCell(sheet, i, columns.fiscalComment),
-          allocationStatus: sheetCell(sheet, i, columns.allocationStatus),
+          allocationStatus: explicitAllocationStatus || inferredAllocationStatus,
           allocationStage: sheetCell(sheet, i, columns.allocationStage),
           modified: sheetCell(sheet, i, columns.modified),
           included: sheetCell(sheet, i, columns.included),
-          allocation: sheetCell(sheet, i, columns.allocation),
+          allocation: inferredAllocationStatus ? "" : rawAllocation,
           sheet: sheetName.trim(),
           row: i + 1,
           source: sourceName,

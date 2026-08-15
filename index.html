@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html data-app="RECON" data-ops-ui="enabled" data-ui-architecture="scoped-components-v3" data-ui-generation="3" data-ui-version="1.26.40" data-version="1.26.40" data-functional-generation="4" lang="pt-BR">
+<html data-app="RECON" data-ops-ui="enabled" data-ui-architecture="scoped-components-v3" data-ui-generation="3" data-ui-version="1.26.42" data-version="1.26.42" data-functional-generation="4" lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
@@ -29,7 +29,7 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 }
 </script>
 <link href="design-system.css" rel="stylesheet"/><link href="legacy-compat.css" rel="stylesheet"/><link href="recon-ui.css" rel="stylesheet"/><link href="recon-final.css" rel="stylesheet"/>
-<meta content="1.26.40" name="application-version"/></head>
+<meta content="1.26.42" name="application-version"/></head>
 <body>
 <a class="skip-link" href="#app-main">Ir direto para o conteúdo principal</a>
 <header class="topbar">
@@ -201,7 +201,7 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <button class="text-action danger" id="allocation-clear" type="button" title="Encerra a análise atual e prepara o módulo para uma nova relação">Limpar análise</button>
 </div>
 </header>
-<textarea autocomplete="off" id="allocation-text" placeholder="Cole um código ou nome de documento por linha" spellcheck="false"></textarea>
+<textarea autocomplete="off" id="allocation-text" placeholder="Cole um documento por linha; o título pode vir na segunda coluna, após uma tabulação" spellcheck="false"></textarea>
 </div>
 <details class="allocation-evidence-panel">
 <summary>
@@ -230,16 +230,15 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <details class="allocation-databook-finder" id="allocation-databook-finder">
   <summary aria-controls="allocation-databook-finder-body">
     <span class="allocation-databook-finder-icon" aria-hidden="true">DB</span>
-    <span class="allocation-databook-finder-heading"><strong id="allocation-databook-finder-title">Consultar caminho Databook</strong><small>Pesquisa independente por código e título na base Caminho Databook Rev. B.</small></span>
+    <span class="allocation-databook-finder-heading"><strong id="allocation-databook-finder-title">Consultar caminhos Databook</strong><small>Analisa vários documentos com seus títulos na base Caminho Databook Rev. B.</small></span>
     <span class="allocation-databook-finder-toggle" aria-hidden="true">⌄</span>
   </summary>
   <div class="allocation-databook-finder-body" id="allocation-databook-finder-body">
     <div class="allocation-databook-finder-grid">
-      <label><span>Código do documento</span><input id="allocation-db-code" type="text" placeholder="Ex.: C1O_RNEST_U32_3.8.5.1_TUB_REP_VM-320003" spellcheck="false"></label>
-      <label><span>Título do documento</span><input id="allocation-db-title" type="text" placeholder="Ex.: Relatório de inspeção de tubulação" spellcheck="false"></label>
-      <div class="allocation-databook-finder-actions"><button class="primary-button" id="allocation-db-search" type="button">Buscar caminho</button><button class="text-action" id="allocation-db-clear" type="button">Limpar</button></div>
+      <label class="allocation-databook-finder-query"><span>Documentos com títulos — um por linha</span><textarea id="allocation-db-query" rows="6" placeholder="C1O_RNEST_U32_3.8.5.1_TUB_REP_VM-320003[TAB]RELATÓRIO DE REPARO DE VÁLVULA MANUAL&#10;C1O_RNEST_U32_3.8.5.1_MEC_REP_B-32009A[TAB]RELATÓRIO DE PREPARAÇÃO PARA TRANSPORTE" spellcheck="false"></textarea><small>Cole do Excel em duas colunas (Documento e Título) ou separe cada linha por tabulação, ponto e vírgula ou |.</small></label>
+      <div class="allocation-databook-finder-actions"><button class="primary-button" id="allocation-db-search" type="button">Analisar caminhos</button><button class="text-action" id="allocation-db-clear" type="button">Limpar</button></div>
     </div>
-    <p class="allocation-databook-finder-note">A origem da sugestão é mostrada para conferência. O RECON não grava o caminho na LD nem na alocação por esta consulta.</p>
+    <p class="allocation-databook-finder-note">Cada linha recebe seu próprio resultado e sua justificativa, inclusive quando nenhuma referência segura é encontrada. O RECON não grava o caminho na LD nem na alocação por esta consulta.</p>
     <div class="allocation-databook-finder-result" id="allocation-db-result" hidden aria-live="polite"></div>
   </div>
 </details>
@@ -255,8 +254,15 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <div class="skip"><span>Já alocados</span><strong id="allocation-count-skip">0</strong></div>
 <div class="review"><span>Revisar</span><strong id="allocation-count-review">0</strong></div>
 </nav>
+<section class="allocation-grouping-panel" aria-labelledby="allocation-grouping-title">
+<header><div><span>FORMA DE GERAR</span><strong id="allocation-grouping-title">Como os documentos serão distribuídos?</strong></div><small id="allocation-grouping-help">A seleção pode ser alterada antes de gerar.</small></header>
+<div class="allocation-grouping-options" role="radiogroup" aria-label="Forma de agrupar a alocação">
+<label><input checked name="allocation-group-mode" type="radio" value="discipline"/><span><strong>Dividir por disciplina</strong><small>Cria uma numeração sequencial para cada disciplina/workflow.</small></span></label>
+<label><input name="allocation-group-mode" type="radio" value="single"/><span><strong>Tudo na mesma alocação</strong><small>Usa somente o número informado para todos os documentos selecionados.</small></span></label>
+</div>
+</section>
 <section class="allocation-batch-plan" hidden="" id="allocation-batch-plan">
-<header><div><span>SEPARAÇÃO AUTOMÁTICA</span><strong>Alocações por disciplina da aba ET</strong></div><b id="allocation-batch-meta">—</b></header>
+<header><div><span id="allocation-batch-eyebrow">SEPARAÇÃO AUTOMÁTICA</span><strong id="allocation-batch-title">Alocações por disciplina</strong></div><b id="allocation-batch-meta">—</b></header>
 <div id="allocation-batch-list"></div>
 <p hidden="" id="allocation-batch-warning"></p>
 </section>
@@ -275,7 +281,7 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <option value="conflict">Conflitantes</option>
 </select>
 </label>
-<label class="allocation-select-all"><input id="allocation-select-all" type="checkbox"/>Selecionar prontos</label>
+<label class="allocation-select-all"><input id="allocation-select-all" type="checkbox"/>Selecionar tudo</label>
 <span class="selected-count" id="allocation-selected-count">0 selecionados</span>
 <button class="secondary-button compact allocation-batch-button" disabled="" id="allocation-databook-batch" type="button">Databook em lote</button>
 <button aria-pressed="false" class="allocation-density-button" id="allocation-density" title="Alternar densidade da tabela" type="button">Compactar</button>
@@ -499,7 +505,7 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <input accept=".xlsx,.xls,.xlsm" hidden id="bases-file-input" type="file"/>
 </section>
 </main>
-<footer class="app-footer"><span>RECON 1.26.40 · Relações e Conformidade Documental</span><span>Arquivos processados somente neste navegador</span></footer></div>
+<footer class="app-footer"><span>RECON 1.26.42 · Relações e Conformidade Documental</span><span>Arquivos processados somente neste navegador</span></footer></div>
 <div class="drawer-overlay" hidden="" id="databook-assistant-overlay"></div><aside aria-hidden="true" aria-labelledby="databook-assistant-title" class="databook-assistant-drawer" hidden inert id="databook-assistant-drawer">
 <header class="drawer-header">
 <div><h2 id="databook-assistant-title">Assistente de Databook</h2><span id="databook-assistant-subtitle">Revisão nesta análise</span></div>

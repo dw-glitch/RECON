@@ -223,6 +223,104 @@
     return found ? found[0] : "";
   }
 
+  const GENERAL_DATABOOK_BY_DISCIPLINE = Object.freeze({
+    TUBULACAO: Object.freeze({
+      RIR: "UHDT-D|DATA BOOK C&M|TUBULAÇÃO|RIR TUBULAÇÃO",
+      CM: "UHDT-D|DATA BOOK C&M|TUBULAÇÃO|C&M TUBULAÇÃO",
+    }),
+    CIVIL: Object.freeze({
+      RIR: "UHDT-D|DATA BOOK C&M|CIVIL|RIR CIVIL",
+      CM: "UHDT-D|DATA BOOK C&M|CIVIL",
+    }),
+    ESTRUTURA_METALICA: Object.freeze({
+      RIR: "UHDT-D|DATA BOOK C&M|CIVIL|RIR ESTRUTURA METÁLICA",
+      CM: "UHDT-D|DATA BOOK C&M|CIVIL|ESTRUTURA METÁLICA",
+    }),
+    EQP_ESTATICOS: Object.freeze({
+      RIR: "UHDT-D|DATA BOOK C&M|EQP ESTÁTICOS|RIR",
+      CM: "UHDT-D|DATA BOOK C&M|EQP ESTÁTICOS|C&M DEMAIS EQP ESTÁTICOS",
+    }),
+    EQP_DINAMICOS: Object.freeze({
+      RIR: "UHDT-D|DATA BOOK C&M|EQP DINÂMICOS|RIR",
+      CM: "UHDT-D|DATA BOOK C&M|EQP DINÂMICOS|C&M - DEMAIS EQP DINÂMICOS",
+    }),
+    ELETRICA: Object.freeze({
+      RIR: "UHDT-D|DATA BOOK C&M|ELÉTRICA|RIR ELÉTRICA",
+      CM: "UHDT-D|DATA BOOK C&M|ELÉTRICA",
+    }),
+    TELECOM: Object.freeze({
+      RIR: "UHDT-D|DATA BOOK C&M|TELECOM|RIR_TELECOM",
+      CM: "UHDT-D|DATA BOOK C&M|TELECOM",
+    }),
+    INSTRUMENTACAO: Object.freeze({
+      RIR: "UHDT-D|DATA BOOK C&M|INSTRUMENTAÇÃO|RIR_INSTRUMENTAÇÃO",
+      CM: "UHDT-D|DATA BOOK C&M|INSTRUMENTAÇÃO",
+    }),
+    HVAC: Object.freeze({
+      RIR: "UHDT-D|DATA BOOK C&M|HVAC|RIR HVAC",
+      CM: "UHDT-D|DATA BOOK C&M|HVAC|C&M DE HVAC",
+    }),
+    EQP_SEGURANCA: Object.freeze({
+      RIR: "UHDT-D|DATA BOOK C&M|EQP SEGURANÇA|RIR EQP_SEGURANÇA",
+      CM: "UHDT-D|DATA BOOK C&M|EQP SEGURANÇA|C&M_EQP. SEGURANÇA",
+    }),
+    PINTURA: Object.freeze({
+      RIR: "UHDT-D|DATA BOOK C&M|PINTURA|RIR PINTURA",
+      CM: "UHDT-D|DATA BOOK C&M|PINTURA",
+    }),
+  });
+
+  function databookDisciplineKey(record) {
+    const item = record || {};
+    const documentGroups = text(item.document).split("_");
+    const codeDiscipline = documentGroups.length >= 6 ? norm(documentGroups[4]) : "";
+    const direct = norm(item.discipline || recordValue(item, ["DISCIPLINA", "WORKFLOW", "QUEM?"]));
+    const value = direct || codeDiscipline || norm(item.sheet);
+    if (/TUB/.test(value)) return "TUBULACAO";
+    if (/EQP.*DIN|DINAM|^EQD$/.test(value)) return "EQP_DINAMICOS";
+    if (/EQP.*ESTAT|ESTATIC|^MEC$/.test(value)) return "EQP_ESTATICOS";
+    if (/ESTRUT|METAL|^EST$/.test(value)) return "ESTRUTURA_METALICA";
+    if (/CIV|^CVL$/.test(value)) return "CIVIL";
+    if (/ELE|ELT/.test(value)) return "ELETRICA";
+    if (/TELE|^TEL$/.test(value)) return "TELECOM";
+    if (/INSTR|^INS$/.test(value)) return "INSTRUMENTACAO";
+    if (/HVAC|VENTIL|AR CONDICIONADO/.test(value)) return "HVAC";
+    if (/SEGUR|^SEG$/.test(value)) return "EQP_SEGURANCA";
+    if (/PINT/.test(value)) return "PINTURA";
+    return "";
+  }
+
+  function databookFamilyForRecord(record) {
+    const item = record || {};
+    const documentGroups = text(item.document).split("_");
+    const reportCode = documentGroups.length >= 6 ? norm(documentGroups[5]) : "";
+    const documentType = norm(item.documentType || recordValue(item, ["TIPO DE DOCUMENTO", "TIPO DOCUMENTO"]));
+    return reportCode === "RIR" || documentType === "RIR" || titleKind(item.title) === "RIR" ? "RIR" : "CM";
+  }
+
+  function generalDatabookFallback(record) {
+    const discipline = databookDisciplineKey(record);
+    const family = databookFamilyForRecord(record);
+    const paths = GENERAL_DATABOOK_BY_DISCIPLINE[discipline];
+    const databook = paths && paths[family] || (family === "RIR"
+      ? "UHDT-D|DATA BOOK C&M|GERAL - PROCEDIMENTOS DE EDECUÇÃO|RECEBIMENTO-ARMAZ.-PRESERVAÇÃO"
+      : "UHDT-D|DATA BOOK C&M|GERAL - PROCEDIMENTOS DE EDECUÇÃO|C&M COMUNS");
+    const disciplineLabel = discipline ? discipline.replace(/_/g, " ") : "GERAL";
+    return {
+      databook,
+      levels: [],
+      source: `Fallback geral ${family === "RIR" ? "RIR" : "C&M"} da disciplina ${disciplineLabel}`,
+      sourceType: "discipline-fallback",
+      confidence: "fallback",
+      support: 0,
+      allocation: "",
+      relatedDocuments: [],
+      family,
+      discipline,
+      fallback: true,
+    };
+  }
+
   function titleTokens(value) {
     return new Set(norm(value).split(/[^A-Z0-9]+/).filter((token) => token.length >= 3 && !TITLE_STOP_WORDS.has(token)));
   }
@@ -293,7 +391,8 @@
   function hasAllocationStatusColumn(record) {
     return (record && record.ldColumns || []).some((column) => {
       const header = norm(column.header);
-      return header.includes("CONFIRMACAO") && header.includes("DOCUMENTOS PREVISTOS");
+      if (header.includes("CONFIRMACAO") && header.includes("DOCUMENTOS PREVISTOS")) return true;
+      return header === "ALOCACAO" && Boolean(recordAllocationStatus(record));
     });
   }
 
@@ -916,12 +1015,17 @@
     const ldDatabook = completeDatabook(rawLdDatabook) ? rawLdDatabook : "";
     const historyDatabook = completeDatabook(rawHistoryDatabook) ? rawHistoryDatabook : "";
     const inferredDatabook = inference && completeDatabook(inference.databook) ? inference.databook : "";
-    const databook = ldDatabook || historyDatabook || inferredDatabook;
+    const fallbackEvidence = generalDatabookFallback(record);
+    const databook = ldDatabook || historyDatabook || inferredDatabook || fallbackEvidence.databook;
     const evidence = ldDatabook
       ? { source: "LD", sourceType: "ld-exact", confidence: "confirmada", support: 1, allocation: "", relatedDocuments: [] }
       : historyDatabook
         ? { source: "Histórico do documento", sourceType: "history-exact", confidence: "confirmada", support: 1, allocation: history && history.allocation || "", relatedDocuments: [record.document] }
-        : inference || { source: "", sourceType: "", confidence: "", support: 0, allocation: "", relatedDocuments: [] };
+        : inferredDatabook ? inference : {
+          ...fallbackEvidence,
+          priorConflict: Boolean(inference && inference.conflict),
+          alternatives: inference && inference.alternatives || [],
+        };
 
     const family = documentFamily(record.document);
     const eapLevels = family.type === "ET" ? levelsForEap(control, record) : [];
@@ -1032,8 +1136,26 @@
       : { kind: "unknown", label: text(history.status) || "SEM RESULTADO", confidence: "baixa" };
   }
 
+  function recordAllocationStatus(record) {
+    const item = record || {};
+    const explicit = text(item.allocationStatus);
+    if (explicit) return explicit;
+    const allocationCell = text(item.allocation || recordValue(item, ["ALOCAÇÃO"]));
+    const normalized = norm(allocationCell);
+    if (/^NAO ALOCAD[OA]\b/.test(normalized)) return "NÃO ALOCADO";
+    if (/^ALOCAD[OA]\b/.test(normalized)) return "ALOCADO";
+    return "";
+  }
+
+  function recordAllocationCode(record) {
+    const item = record || {};
+    const candidates = [item.allocation, recordValue(item, ["ALOCAÇÃO"]), recordValue(item, ["NÚMERO DA ALOCAÇÃO", "NUMERO DA ALOCACAO"])];
+    const found = candidates.map(text).find((candidate) => parseAllocationCode(candidate));
+    return found || "";
+  }
+
   function outcomeForLd(record) {
-    const value = text(record && record.allocationStatus);
+    const value = recordAllocationStatus(record);
     const kind = C && C.allocationState ? C.allocationState(value).kind : norm(value) === "NAO ALOCADO" ? "not_allocated" : norm(value) === "ALOCADO" ? "allocated" : value ? "unknown" : "empty";
     if (kind === "allocated") return { kind: "accepted", label: "ALOCADO CONFORME LD", confidence: "alta" };
     if (kind === "not_allocated") return { kind: "not_allocated", label: "NÃO ALOCADO CONFORME LD", confidence: "alta" };
@@ -1050,6 +1172,91 @@
     if (confirmationComment) return confirmationComment;
     if (meaningfulFiscalComment(historyComment)) return historyComment;
     return ldComment || historyComment;
+  }
+
+  function allocationDiagnosis(context) {
+    const data = context || {};
+    const record = data.record || {};
+    const resolution = data.resolution || { kind: "unknown", label: "" };
+    const history = data.history || null;
+    const base = data.base || null;
+    const existingAllocation = text(data.existingAllocation);
+    const fiscalComment = text(data.fiscalComment);
+    const inCentral = Boolean(history);
+    const inPlannedBase = Boolean(base);
+    const ldStatus = recordAllocationStatus(record);
+    const sourceSuffix = resolution.source ? ` Fonte: ${resolution.source}.` : "";
+    const fiscalSuffix = fiscalComment ? ` Motivo/retorno da Fiscal: ${fiscalComment}.` : "";
+
+    if (resolution.kind === "accepted") return {
+      kind: "allocated",
+      label: "ALOCADO — JÁ CONFIRMADO",
+      explanation: `${existingAllocation ? `O documento já está alocado em ${existingAllocation}` : "A confirmação mais recente informa que o documento já está alocado"}; por segurança ele começa desmarcado.${sourceSuffix}`,
+      inCentral,
+      inPlannedBase,
+    };
+    if (resolution.kind === "rejected") return {
+      kind: "rejected",
+      label: "RECUSADO — PRECISA DE NOVA ALOCAÇÃO",
+      explanation: `${existingAllocation ? `A alocação ${existingAllocation} foi recusada` : "A confirmação mais recente foi recusada"}; o documento precisa entrar em uma nova alocação.${fiscalSuffix}${sourceSuffix}`,
+      inCentral,
+      inPlannedBase,
+    };
+    if (resolution.kind === "pending") return {
+      kind: inCentral ? "pending_control" : "pending_external",
+      label: inCentral
+        ? "AGUARDANDO RETORNO DA FISCAL — JÁ INCLUÍDO NO CONTROLE"
+        : "AGUARDANDO RETORNO DA FISCAL",
+      explanation: `${inCentral ? "O documento já possui linha na Central de alocação" : "Foi localizado um envio/retorno pendente fora da Central carregada"}${existingAllocation ? `, vinculado à ${existingAllocation}` : ""}, mas ainda não existe aceite nem recusa conclusiva.${fiscalSuffix}${sourceSuffix}`,
+      inCentral,
+      inPlannedBase,
+    };
+    if (resolution.kind === "conflict") return {
+      kind: "conflict",
+      label: "CONFLITO DE STATUS — CONFERIR",
+      explanation: `Há fontes de mesma prioridade com resultados incompatíveis; o documento começa desmarcado, mas continua disponível para decisão manual.${sourceSuffix}`,
+      inCentral,
+      inPlannedBase,
+    };
+
+    const ldNotAllocated = resolution.kind === "not_allocated" || norm(ldStatus) === "NAO ALOCADO";
+    if (ldNotAllocated && inCentral) return {
+      kind: existingAllocation ? "pending_control" : "not_allocated_control",
+      label: existingAllocation
+        ? "AGUARDANDO RETORNO DA FISCAL — JÁ INCLUÍDO NO CONTROLE"
+        : "NÃO ALOCADO — JÁ INCLUÍDO NO CONTROLE",
+      explanation: `A LD está marcada como NÃO ALOCADO e o documento já possui linha na Central${existingAllocation ? ` na ${existingAllocation}` : ""}. Como não há aceite ou recusa conclusiva, o motivo operacional é retorno da Fiscal pendente ou atualização ainda não refletida na LD.${fiscalSuffix}`,
+      inCentral,
+      inPlannedBase,
+    };
+    if (ldNotAllocated && !inCentral) return {
+      kind: "new_control",
+      label: inPlannedBase ? "NOVO NA CENTRAL — JÁ PREVISTO NA BASE" : "NOVO NO CONTROLE",
+      explanation: `A LD está marcada como NÃO ALOCADO e não existe linha anterior para o documento na Central de alocação carregada. ${inPlannedBase ? "Ele já consta na base de documentos previstos e precisa da primeira inclusão na Central." : "Ele deve ser tratado como novo para inclusão no controle."}${fiscalSuffix}`,
+      inCentral,
+      inPlannedBase,
+    };
+    if (resolution.kind === "empty" && !inCentral) return {
+      kind: "new_control",
+      label: inPlannedBase ? "NOVO NA CENTRAL — JÁ PREVISTO NA BASE" : "NOVO NO CONTROLE",
+      explanation: `O documento não possui confirmação de alocação na LD nem linha anterior na Central carregada. ${inPlannedBase ? "Ele já consta na base de previstos." : "Ele precisa da primeira inclusão no controle."}`,
+      inCentral,
+      inPlannedBase,
+    };
+    if (inCentral) return {
+      kind: "pending_control",
+      label: "AGUARDANDO DEFINIÇÃO — JÁ INCLUÍDO NO CONTROLE",
+      explanation: `O documento já possui linha na Central${existingAllocation ? ` na ${existingAllocation}` : ""}, mas o status disponível não confirma aceite nem recusa.${fiscalSuffix}${sourceSuffix}`,
+      inCentral,
+      inPlannedBase,
+    };
+    return {
+      kind: "review",
+      label: "SITUAÇÃO NÃO CONFIRMADA — CONFERIR",
+      explanation: `Não foi possível comprovar se o documento está alocado, aguardando retorno ou se é novo no controle. Ele começa desmarcado e exige decisão manual.${sourceSuffix}`,
+      inCentral,
+      inPlannedBase,
+    };
   }
 
   function confirmationSourceLabel(confirmation) {
@@ -1110,8 +1317,8 @@
 
   function allocationExplanation(record, mode, history) {
     const item = record || {};
-    const status = text(item.allocationStatus);
-    const allocation = text(history && history.allocation || item.allocation || recordValue(item, ["ALOCAÇÃO"]));
+    const status = recordAllocationStatus(item);
+    const allocation = text(history && history.allocation || recordAllocationCode(item));
     const stage = text(item.allocationStage);
     const fiscal = text(item.fiscalComment);
     const version = text(item.ldVersion);
@@ -1142,8 +1349,8 @@
     const postingEvidence = postingEvidenceForRecord(item);
     return {
       allocationReason: reason || allocationExplanation(item, decision === SKIP ? "allocated" : decision === READY ? "not_allocated" : "review", history),
-      allocationStatus: text(item.allocationStatus),
-      existingAllocation: text(history && history.allocation || item.allocation || recordValue(item, ["ALOCAÇÃO"])),
+      allocationStatus: recordAllocationStatus(item),
+      existingAllocation: text(history && history.allocation || recordAllocationCode(item)),
       allocationStage: text(item.allocationStage),
       fiscalComment: text(item.fiscalComment),
       grdt: postingEvidence.grdt,
@@ -1174,6 +1381,9 @@
           decision: REVIEW, selected: false, document: text(entry.raw),
           reason: matches.length ? `Mais de um documento foi identificado na ${ldScopeLabel}.` : `Documento não encontrado na ${ldScopeLabel}.`,
           allocationReason: matches.length ? "Mais de uma linha possível foi encontrada; nenhuma foi escolhida." : `Não há linha em nenhuma das ${ldSourceNames.length || 1} LD(s) carregada(s) para comprovar a situação de alocação.`,
+          allocationDiagnosis: matches.length ? "DOCUMENTO AMBÍGUO NA LD" : "DOCUMENTO NÃO LOCALIZADO NA LD",
+          allocationDiagnosisKind: matches.length ? "ambiguous" : "not_found",
+          allocationDiagnosisDetail: matches.length ? "Mais de uma linha possível foi encontrada; não existe saída segura para gerar manualmente." : "Sem linha técnica da LD não é possível montar a alocação oficial.",
           ldSource: "", ldSources: [],
           postingStatus: "SEM EVIDÊNCIA DE POSTAGEM NA LD", postingEvidence: null, source: entry,
         });
@@ -1194,6 +1404,9 @@
           sheet: [...new Set(ldConflict.candidates.map((candidate) => candidate.sheet).filter(Boolean))].join(" · "),
           reason: `Conflito na LD. Valores diferentes em: ${blockingConflictFields.join(", ")}. Nenhuma linha foi escolhida para gerar a alocação.`,
           allocationReason: `A situação não foi decidida porque existem divergências técnicas: ${blockingConflictFields.join(", ")}.`,
+          allocationDiagnosis: "CONFLITO TÉCNICO NA LD",
+          allocationDiagnosisKind: "technical_conflict",
+          allocationDiagnosisDetail: `As linhas da LD divergem em ${blockingConflictFields.join(", ")}; não existe uma saída única para gerar manualmente.`,
           warnings: [F.evidenceText(ldConflict)], conflictLd: `SIM — ${blockingConflictFields.join(", ")}`, ldConflict,
           ldSource: "",
           ldSources: [...new Set((ldConflict.candidates || []).map((candidate) => text(candidate.source)).filter(Boolean))],
@@ -1213,12 +1426,14 @@
       const confirmationResolution = P && P.resolve ? P.resolve(confirmationIndex, matched.documentKey) : { evidence: null, conflict: false, candidates: [] };
       const confirmation = confirmationResolution.evidence || null;
       const resolution = chooseAllocationResolution(record, history, confirmationResolution);
-      const existingAllocation = text(confirmation && confirmation.allocation || history && history.allocation || record && record.allocation || recordValue(record, ["ALOCAÇÃO"]));
+      const existingAllocation = text(confirmation && confirmation.allocation || history && history.allocation || recordAllocationCode(record));
       const fiscalComment = effectiveFiscalComment(record, confirmation, history);
-      const allocationReason = resolutionExplanation(record, resolution, confirmation, history, fiscalComment, existingAllocation);
+      const resolutionReason = resolutionExplanation(record, resolution, confirmation, history, fiscalComment, existingAllocation);
       const postingEvidence = postingEvidenceForRecord(record);
       const allocationStatusAvailable = candidates.some(hasAllocationStatusColumn);
       const base = control.baseDocuments.get(record.documentKey) || control.baseDocuments.get(looseKey(record.document)) || null;
+      const diagnosis = allocationDiagnosis({ record, resolution, history, confirmation, base, existingAllocation, fiscalComment });
+      const allocationReason = [diagnosis.explanation, resolutionReason].filter(Boolean).join(" ");
       const rawLdDatabook = recordValue(record, ["CAMINHO DATABOOK", "CAMINHO DATA BOOK"]);
       const exactDatabook = completeDatabook(rawLdDatabook) ? rawLdDatabook : history && completeDatabook(history.databook) ? history.databook : "";
       const eapLevels = levelsForEap(control, record);
@@ -1232,6 +1447,7 @@
       if (!output.levels.slice(0, 6).some(Boolean)) warnings.push("Níveis N1 a N6 vazios");
       if (!ldVersion) warnings.push("Versão da LD vazia");
       if (output.databook && output.databookEvidence && /^history$|^ld$|^catalog$/.test(output.databookEvidence.sourceType)) warnings.push(`Databook por ${output.databookEvidence.source}`);
+      if (output.databookEvidence && output.databookEvidence.sourceType === "discipline-fallback") warnings.push(`Databook geral aplicado: ${output.databookEvidence.source}`);
       if (ldConflict && ldConflict.hasConflict && !blockingConflictFields.length) warnings.push("A LD possui divergência apenas nos campos de alocação; a decisão utilizou a confirmação mais recente.");
 
       const common = {
@@ -1259,8 +1475,13 @@
         confirmationAllocation: text(confirmation && confirmation.allocation),
         confirmationDate: text(confirmation && confirmation.returnDate),
         allocationDecisionSource: text(resolution && resolution.sourceType),
-        allocationStatus: text(record && record.allocationStatus),
+        allocationStatus: recordAllocationStatus(record),
         allocationStage: text(record && record.allocationStage),
+        allocationDiagnosis: diagnosis.label,
+        allocationDiagnosisKind: diagnosis.kind,
+        allocationDiagnosisDetail: diagnosis.explanation,
+        inAllocationControl: diagnosis.inCentral,
+        inPlannedDocumentBase: diagnosis.inPlannedBase,
         grdt: postingEvidence.grdt,
         effectiveDate: postingEvidence.effectiveDate,
         postingEvidence,
@@ -1336,9 +1557,20 @@
     ];
   }
 
+  function canSelectForAllocation(result) {
+    return Boolean(result && result.document && result.record && result.output);
+  }
+
+  function defaultSelectedForAllocation(result) {
+    return Boolean(canSelectForAllocation(result) && result.decision === READY);
+  }
+
   function selectedReady(results, selectedDocuments) {
     const selected = selectedDocuments instanceof Set ? selectedDocuments : null;
-    return (results || []).filter((result) => result.decision === READY && (!selected || selected.has(key(result.document))));
+    return (results || []).filter((result) => {
+      if (!canSelectForAllocation(result)) return false;
+      return selected ? selected.has(key(result.document)) : defaultSelectedForAllocation(result);
+    });
   }
 
   return {
@@ -1359,6 +1591,9 @@
     levelsFromEapBase,
     levelsForEap,
     titleKind,
+    databookDisciplineKey,
+    databookFamilyForRecord,
+    generalDatabookFallback,
     titleSimilarity,
     subjectTags,
     suggestCatalogDatabook: chooseCatalogEvidence,
@@ -1379,11 +1614,16 @@
     analyze,
     outcomeForHistory,
     outcomeForLd,
+    recordAllocationStatus,
+    recordAllocationCode,
+    allocationDiagnosis,
     chooseAllocationResolution,
     postingEvidenceForRecord,
     allocationExplanation,
     allocationRow,
     controlRow,
+    canSelectForAllocation,
+    defaultSelectedForAllocation,
     selectedReady,
   };
 });

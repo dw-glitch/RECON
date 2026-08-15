@@ -4,6 +4,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import vm from "node:vm";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const checks = [];
@@ -927,6 +928,162 @@ check("a alocação diz o que falta quando o botão Analisar está desabilitado"
     assert.ok(app.includes(termo), `mensagem de pendência não cita "${termo}"`);
   }
   assert.match(app, /para analisar/, "a mensagem não explica que o botão depende dos itens");
+});
+
+check("a coluna ALOCAÇÃO da LD distingue estado operacional de número da alocação", () => {
+  const require2 = createRequire(import.meta.url);
+  globalThis.window = globalThis; globalThis.self = globalThis;
+  const XLSX = require2("./xlsx.full.min.js") || globalThis.XLSX;
+  globalThis.XLSX = XLSX;
+  const C = require2("./core.js");
+  const wb = XLSX.utils.book_new();
+  const rows = [
+    ["DOCUMENTO", "TÍTULO", "DISCIPLINA", "ALOCAÇÃO"],
+    ["C1O_RNEST_U32_3.1.1.1_TUB_REP_VM-320001", "RELATÓRIO A", "TUB", "ALOCADO"],
+    ["C1O_RNEST_U32_3.1.1.1_TUB_REP_VM-320002", "RELATÓRIO B", "TUB", "NÃO ALOCADO"],
+    ["C1O_RNEST_U32_3.1.1.1_TUB_REP_VM-320003", "RELATÓRIO C", "TUB", "C1O-ALOC-CM-0012-2026"],
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "ET");
+  const parsed = C.parseWorkbook(wb, "LD.xlsx", Date.now(), null);
+  assert.equal(parsed.records[0].allocationStatus, "ALOCADO");
+  assert.equal(parsed.records[0].allocation, "");
+  assert.equal(parsed.records[1].allocationStatus, "NÃO ALOCADO");
+  assert.equal(parsed.records[1].allocation, "");
+  assert.equal(parsed.records[2].allocationStatus, "");
+  assert.equal(parsed.records[2].allocation, "C1O-ALOC-CM-0012-2026");
+});
+
+check("o diagnóstico explica alocado, pendente no controle, novo e recusado", () => {
+  const A = createRequire(import.meta.url)("./allocation_core.js");
+  const record = { allocationStatus: "NÃO ALOCADO" };
+  const pending = A.allocationDiagnosis({ record, resolution: { kind: "pending", source: "Central" }, history: { allocation: "C1O-ALOC-CM-0001-2026" }, existingAllocation: "C1O-ALOC-CM-0001-2026" });
+  assert.equal(pending.kind, "pending_control");
+  assert.match(pending.label, /AGUARDANDO RETORNO DA FISCAL/);
+  assert.match(pending.label, /JÁ INCLUÍDO NO CONTROLE/);
+
+  const fresh = A.allocationDiagnosis({ record, resolution: { kind: "not_allocated" }, history: null, base: null });
+  assert.equal(fresh.kind, "new_control");
+  assert.equal(fresh.label, "NOVO NO CONTROLE");
+
+  const rejected = A.allocationDiagnosis({ record, resolution: { kind: "rejected" }, history: { allocation: "C1O-ALOC-CM-0002-2026" }, existingAllocation: "C1O-ALOC-CM-0002-2026" });
+  assert.equal(rejected.kind, "rejected");
+  assert.match(rejected.label, /PRECISA DE NOVA ALOCAÇÃO/);
+
+  const accepted = A.allocationDiagnosis({ record: { allocationStatus: "ALOCADO" }, resolution: { kind: "accepted" } });
+  assert.equal(accepted.kind, "allocated");
+  assert.match(accepted.label, /JÁ CONFIRMADO/);
+});
+
+check("a seleção manual inclui resultados bloqueados sem selecionar itens impossíveis", () => {
+  const A = createRequire(import.meta.url)("./allocation_core.js");
+  const ready = { document: "DOC_READY_001", decision: A.READY, record: {}, output: {} };
+  const allocated = { document: "DOC_ALLOCATED_002", decision: A.SKIP, record: {}, output: {} };
+  const review = { document: "DOC_REVIEW_003", decision: A.REVIEW, record: {}, output: {} };
+  const unavailable = { document: "DOC_MISSING_004", decision: A.REVIEW, record: null, output: null };
+  assert.equal(A.defaultSelectedForAllocation(ready), true);
+  assert.equal(A.defaultSelectedForAllocation(allocated), false);
+  assert.equal(A.canSelectForAllocation(allocated), true);
+  assert.equal(A.canSelectForAllocation(unavailable), false);
+  const selected = new Set([ready.document, allocated.document, review.document, unavailable.document].map(A.key));
+  assert.deepEqual(A.selectedReady([ready, allocated, review, unavailable], selected).map((item) => item.document), [ready.document, allocated.document, review.document]);
+});
+
+check("o usuário escolhe entre separar por disciplina e usar uma alocação única", () => {
+  const B = createRequire(import.meta.url)("./allocation_batches.js");
+  const results = [
+    { document: "DOC_TUB_001", sheet: "ET", output: { workflow: "TUBULAÇÃO" } },
+    { document: "DOC_ELE_002", sheet: "ET", output: { workflow: "ELÉTRICA" } },
+    { document: "DOC_SEM_003", sheet: "ET", output: { workflow: "" } },
+  ];
+  const split = B.build(results.slice(0, 2), "C1O-ALOC-CM-0010-2026", { mode: "discipline" });
+  assert.equal(split.valid, true);
+  assert.equal(split.groups.length, 2);
+  assert.deepEqual(split.groups.map((group) => group.allocationCode), ["C1O-ALOC-CM-0010-2026", "C1O-ALOC-CM-0011-2026"]);
+  assert.equal(B.build(results, "C1O-ALOC-CM-0010-2026", { mode: "discipline" }).valid, false);
+
+  const single = B.build(results, "C1O-ALOC-CM-0010-2026", { mode: "single" });
+  assert.equal(single.valid, true);
+  assert.equal(single.groups.length, 1);
+  assert.equal(single.groups[0].results.length, 3);
+  assert.equal(single.groups[0].allocationCode, "C1O-ALOC-CM-0010-2026");
+});
+
+check("a tela oferece selecionar tudo, inclusão manual e as duas formas de geração", () => {
+  const app = read("allocation_app.js");
+  assert.match(html, /id="allocation-select-all"[^>]*\/>Selecionar tudo/);
+  assert.match(html, /name="allocation-group-mode"[^>]*value="discipline"/);
+  assert.match(html, /name="allocation-group-mode"[^>]*value="single"/);
+  assert.match(app, /state\.results\.filter\(canSelectForAllocation\)/, "selecionar tudo não percorre todos os itens tecnicamente geráveis");
+  assert.match(app, /result\.manualOverride = Boolean\(selected && result\.decision !== A\.READY\)/, "inclusão contra a recomendação não fica marcada como manual");
+  assert.doesNotMatch(app, /const canSelect = result\.decision === A\.READY/, "checkbox continua bloqueado para todo item fora de Pronto");
+});
+
+check("a consulta Databook aceita várias linhas com documento e título", () => {
+  const documentStub = { getElementById: () => null, addEventListener: () => {} };
+  const windowStub = { document: documentStub };
+  const context = vm.createContext({ window: windowStub, document: documentStub, navigator: {}, setTimeout });
+  vm.runInContext(read("allocation_databook_finder.js"), context);
+  const finder = windowStub.RECONDatabookFinder;
+  const queries = finder.parseQueries([
+    "Documento\tTítulo",
+    "C1O_RNEST_U32_3.8.5.1_TUB_REP_VM-320003\tRELATÓRIO DE REPARO DE VÁLVULA MANUAL",
+    "C1O_RNEST_U32_6.23.4.1_EST_PPT_P-B-32009A | RELATÓRIO DE PREPARAÇÃO PARA TRANSPORTE",
+  ].join("\n"));
+  assert.equal(queries.length, 2);
+  assert.equal(queries[0].code, "C1O_RNEST_U32_3.8.5.1_TUB_REP_VM-320003");
+  assert.equal(queries[0].title, "RELATÓRIO DE REPARO DE VÁLVULA MANUAL");
+  assert.match(queries[1].title, /PREPARAÇÃO PARA TRANSPORTE/);
+  const ranked = finder.rankQuery([
+    { description: "RELATÓRIO DE REPARO DE VÁLVULA MANUAL", notes: "VÁLVULAS", databook: "UHDT-D|C&M|TUBULAÇÃO|VÁLVULAS" },
+    { description: "RELATÓRIO DE PREPARAÇÃO PARA TRANSPORTE", notes: "PERMUTADOR", databook: "UHDT-D|C&M|EQUIPAMENTOS|PERMUTADORES" },
+  ], queries[0], 3);
+  assert.ok(ranked.length > 0, "a primeira linha não devolveu sugestão");
+  assert.match(html, /id="allocation-db-query"/);
+  assert.match(html, /um por linha/i);
+});
+
+check("a alocação nunca deixa Databook vazio e separa fallback RIR de C&M", () => {
+  const require2 = createRequire(import.meta.url);
+  const C = require2("./core.js");
+  const A = require2("./allocation_core.js");
+  const makeRecord = (document, title) => ({
+    document,
+    documentKey: C.key(document),
+    sheet: "ET",
+    title,
+    discipline: "TUBULAÇÃO",
+    allocationStatus: "NÃO ALOCADO",
+    source: "LD.xlsx",
+    row: 2,
+    ldColumns: [
+      { header: "DISCIPLINA", value: "TUBULAÇÃO" },
+      { header: "ALOCAÇÃO", value: "NÃO ALOCADO" },
+    ],
+  });
+  const rir = makeRecord("C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-320001", "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO");
+  const cm = makeRecord("C1O_RNEST_U32_3.1.1.1_TUB_REP_VM-320002", "RELATÓRIO DE REPARO DE VÁLVULA");
+  const control = { baseDocuments: new Map(), levelsByDatabook: new Map(), levelsByEap: new Map(), projectLevelBase: [], rows: [], latestLdVersion: "" };
+  const analyzed = A.analyze(
+    [{ raw: rir.document, hintedSheet: "ET" }, { raw: cm.document, hintedSheet: "ET" }],
+    [rir, cm],
+    control,
+    { allocationDate: "15/08/2026", catalogEntries: [], historyRows: [], confirmationRows: [], ldHistory: [], ldSourceNames: ["LD.xlsx"] },
+  );
+  assert.equal(analyzed.results.length, 2);
+  assert.equal(analyzed.results[0].output.databook, "UHDT-D|DATA BOOK C&M|TUBULAÇÃO|RIR TUBULAÇÃO");
+  assert.equal(analyzed.results[1].output.databook, "UHDT-D|DATA BOOK C&M|TUBULAÇÃO|C&M TUBULAÇÃO");
+  analyzed.results.forEach((result) => {
+    assert.ok(A.completeDatabook(result.output.databook), "fallback não produziu caminho completo");
+    assert.equal(result.output.databookEvidence.sourceType, "discipline-fallback");
+    assert.match(result.warnings.join(" "), /Databook geral aplicado/);
+  });
+
+  const staticEquipment = A.generalDatabookFallback({
+    document: "C1O_RNEST_U32_6.23.4.1_MEC_REP_P-B-32009A",
+    discipline: "EQP ESTÁTICO",
+    title: "RELATÓRIO DE PREPARAÇÃO PARA TRANSPORTE",
+  });
+  assert.equal(staticEquipment.databook, "UHDT-D|DATA BOOK C&M|EQP ESTÁTICOS|C&M DEMAIS EQP ESTÁTICOS");
 });
 
 // ===================== COBERTURA DA LEITURA DA LD =====================

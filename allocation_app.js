@@ -42,6 +42,7 @@
     columnFilters: {},
     databookFilter: "all",
     decisionFilter: "all",
+    groupingMode: "discipline",
     compactMode: false,
     densityManual: false,
     busy: false,
@@ -84,6 +85,10 @@
     batchMeta: $("#allocation-batch-meta"),
     batchList: $("#allocation-batch-list"),
     batchWarning: $("#allocation-batch-warning"),
+    batchEyebrow: $("#allocation-batch-eyebrow"),
+    batchTitle: $("#allocation-batch-title"),
+    groupingHelp: $("#allocation-grouping-help"),
+    groupModeRadios: [...document.querySelectorAll('input[name="allocation-group-mode"]')],
     tbody: $("#allocation-results-body"),
     empty: $("#allocation-empty"),
     countTotal: $("#allocation-count-total"),
@@ -482,6 +487,23 @@
     return "review";
   }
 
+  function canSelectForAllocation(result) {
+    return A.canSelectForAllocation ? A.canSelectForAllocation(result) : Boolean(result && result.document && result.record && result.output);
+  }
+
+  function defaultSelectedForAllocation(result) {
+    return A.defaultSelectedForAllocation ? A.defaultSelectedForAllocation(result) : Boolean(canSelectForAllocation(result) && result.decision === A.READY);
+  }
+
+  function setResultSelection(result, selected) {
+    if (!canSelectForAllocation(result)) return;
+    const documentKey = A.key(result.document);
+    if (selected) state.selected.add(documentKey);
+    else state.selected.delete(documentKey);
+    result.userSelected = Boolean(selected);
+    result.manualOverride = Boolean(selected && result.decision !== A.READY);
+  }
+
   function resultCounts() {
     return state.results.reduce((counts, result) => {
       counts.total += 1;
@@ -499,7 +521,7 @@
     if (!output) return "other";
     const path = A.text(output.databook);
     if (!path) return "missing";
-    if (["history", "ld", "catalog", "manual"].includes(evidence.sourceType)) return "suggested";
+    if (["history", "ld", "catalog", "manual", "discipline-fallback"].includes(evidence.sourceType)) return "suggested";
     return "exact";
   }
 
@@ -531,7 +553,7 @@
   }
 
   const ALLOCATION_COLUMN_FILTERS = Object.freeze([
-    ["situation", "Situação"], ["document", "NomeDocumento"], ["ldSource", "Arquivo LD"], ["sheet", "Aba LD"], ["ldVersion", "Versão da LD"], ["allocationStatus", "Confirmação na LD"], ["confirmationOutcome", "Resultado da confirmação"], ["confirmationComment", "Comentário da confirmação"], ["confirmationSource", "Fonte da confirmação"], ["previousAllocation", "Alocação anterior"], ["allocationReason", "Motivo"], ["grdt", "Número da GRDT"], ["effectiveDate", "Data efetiva"], ["postingStatus", "Situação de postagem"], ["plannedDate", "Data prevista"], ["workflow", "Workflow"], ["action", "Ação"], ["purpose", "Propósito"], ["databook", "Caminho Data Book"], ["n1", "N1"], ["n2", "N2"], ["n3", "N3"], ["n4", "N4"], ["n5", "N5"], ["n6", "N6"], ["conflict", "Conflito na LD"], ["history", "Alocação / Histórico"],
+    ["selection", "Seleção"], ["situation", "Situação"], ["diagnosis", "Diagnóstico"], ["document", "NomeDocumento"], ["ldSource", "Arquivo LD"], ["sheet", "Aba LD"], ["ldVersion", "Versão da LD"], ["allocationStatus", "Confirmação na LD"], ["confirmationOutcome", "Resultado da confirmação"], ["confirmationComment", "Comentário da confirmação"], ["confirmationSource", "Fonte da confirmação"], ["previousAllocation", "Alocação anterior"], ["allocationReason", "Motivo"], ["grdt", "Número da GRDT"], ["effectiveDate", "Data efetiva"], ["postingStatus", "Situação de postagem"], ["plannedDate", "Data prevista"], ["workflow", "Workflow"], ["action", "Ação"], ["purpose", "Propósito"], ["databook", "Caminho Data Book"], ["n1", "N1"], ["n2", "N2"], ["n3", "N3"], ["n4", "N4"], ["n5", "N5"], ["n6", "N6"], ["conflict", "Conflito na LD"], ["history", "Alocação / Histórico"],
   ]);
 
   function allocationHistoryText(result) {
@@ -542,7 +564,9 @@
 
   function allocationColumnValue(result, keyName) {
     const output=result&&result.output||{}, record=result&&result.record||{}, levels=output.levels||[];
-    const values={situation:allocationStatusLabel(result),document:result&&result.document,ldSource:result&&result.ldSource||record.source,sheet:result&&result.sheet,ldVersion:result&&result.ldVersion||record.ldVersion,allocationStatus:result&&result.allocationStatus||record.allocationStatus,confirmationOutcome:result&&result.confirmationOutcome,confirmationComment:result&&result.confirmationComment||result&&result.fiscalComment,confirmationSource:result&&result.confirmationSource,previousAllocation:result&&result.previousAllocation,allocationReason:result&&result.allocationReason||result&&result.reason,grdt:result&&result.grdt||record.grdt,effectiveDate:formatDateBR(result&&result.effectiveDate||record.effectiveDate),postingStatus:result&&result.postingStatus,plannedDate:formatDateBR(output.plannedDate),workflow:output.workflow,action:output.action,purpose:output.purpose,databook:output.databook,n1:levels[0],n2:levels[1],n3:levels[2],n4:levels[3],n5:levels[4],n6:levels[5],conflict:result&&result.conflictLd||"NÃO",history:allocationHistoryText(result)};
+    const selectable=canSelectForAllocation(result), selected=selectable&&state.selected.has(A.key(result.document));
+    const selection=!selectable?"Indisponível":selected?(result.manualOverride?"Selecionado manualmente":"Selecionado automaticamente"):"Desmarcado";
+    const values={selection,situation:allocationStatusLabel(result),diagnosis:result&&result.allocationDiagnosis||result&&result.allocationDiagnosisDetail,document:result&&result.document,ldSource:result&&result.ldSource||record.source,sheet:result&&result.sheet,ldVersion:result&&result.ldVersion||record.ldVersion,allocationStatus:result&&result.allocationStatus||record.allocationStatus,confirmationOutcome:result&&result.confirmationOutcome,confirmationComment:result&&result.confirmationComment||result&&result.fiscalComment,confirmationSource:result&&result.confirmationSource,previousAllocation:result&&result.previousAllocation,allocationReason:result&&result.allocationReason||result&&result.reason,grdt:result&&result.grdt||record.grdt,effectiveDate:formatDateBR(result&&result.effectiveDate||record.effectiveDate),postingStatus:result&&result.postingStatus,plannedDate:formatDateBR(output.plannedDate),workflow:output.workflow,action:output.action,purpose:output.purpose,databook:output.databook,n1:levels[0],n2:levels[1],n3:levels[2],n4:levels[3],n5:levels[4],n6:levels[5],conflict:result&&result.conflictLd||"NÃO",history:allocationHistoryText(result)};
     return values[keyName]||"";
   }
   function activeColumnFilters(){return Object.entries(state.columnFilters||{}).filter(([,value])=>A.norm(value));}
@@ -574,6 +598,8 @@
         result.output && result.output.databookEvidence && result.output.databookEvidence.source,
         result.history && result.history.allocation,
         result.allocationReason,
+        result.allocationDiagnosis,
+        result.allocationDiagnosisDetail,
         result.confirmationOutcome,
         result.confirmationComment,
         result.confirmationSource,
@@ -618,21 +644,23 @@
       const output = result.output || {};
       const record = result.record || {};
       const selected = state.selected.has(A.key(result.document));
-      const canSelect = result.decision === A.READY;
+      const canSelect = canSelectForAllocation(result);
+      const manualOverride = Boolean(selected && result.decision !== A.READY);
       const version = result.ldVersion || A.recordVersion(record, state.control && state.control.latestLdVersion);
       const evidence = output.databookEvidence || {};
-      const inferred = ["history", "ld", "catalog"].includes(evidence.sourceType);
+      const inferred = ["history", "ld", "catalog", "discipline-fallback"].includes(evidence.sourceType);
       const history = allocationHistoryText(result);
       const decisionKind = allocationDecisionKind(result);
       const warnings = (result.warnings || []).join(" · ");
       const workflowDisplay = output.workflow || (A.isAsBuiltPurpose(output.purpose) ? "Não se aplica — Conforme Construído" : "Definir");
-      return `<tr class="allocation-result-row decision-${decisionKind} ${selected ? "selected" : ""}" data-allocation-document="${escapeHtml(A.key(result.document))}">
-        <td><div class="allocation-situation decision-first"><input class="allocation-check" type="checkbox" ${selected ? "checked" : ""} ${canSelect ? "" : "disabled"}><span class="allocation-status ${allocationStatusClass(result)}">${allocationStatusLabel(result)}</span>${result.reallocationRequired ? '<small>Após recusa</small>' : ''}</div></td>
+      const selectionLabel = canSelect ? `Selecionar ${result.document} para a alocação` : `${result.document} não possui dados suficientes para gerar a linha de alocação`;
+      return `<tr class="allocation-result-row decision-${decisionKind} ${selected ? "selected" : ""} ${manualOverride ? "manual-override" : ""}" data-allocation-document="${escapeHtml(A.key(result.document))}">
+        <td><div class="allocation-situation decision-first"><input class="allocation-check" type="checkbox" aria-label="${escapeHtml(selectionLabel)}" title="${escapeHtml(selectionLabel)}" ${selected ? "checked" : ""} ${canSelect ? "" : "disabled"}><span class="allocation-status ${allocationStatusClass(result)}">${allocationStatusLabel(result)}</span>${result.reallocationRequired ? '<small>Após recusa</small>' : ''}${manualOverride ? '<span class="allocation-manual-pill">Inclusão manual</span>' : ''}</div></td>
         <td><div class="allocation-document-card"><strong title="${escapeHtml(result.document)}">${escapeHtml(result.document)}</strong><span>${escapeHtml(result.ldSource || record.source || "LD não identificada")} · ${escapeHtml(result.sheet || "Aba não informada")} · versão ${escapeHtml(version || "não informada")}</span>${result.ldSources && result.ldSources.length > 1 ? `<small class="evidence-warning">Encontrado em ${escapeHtml(result.ldSources.join(" · "))}</small>` : ""}${result.conflictLd && result.conflictLd !== "NÃO" ? `<small class="evidence-warning">Conflito na LD: ${escapeHtml(result.conflictLd)}</small>` : ""}</div></td>
-        <td><div class="allocation-evidence-stack">${evidenceLine("Resultado", result.confirmationOutcome || "Sem confirmação externa", result.reallocationRequired ? "warning" : "")}${evidenceLine("Fonte", result.confirmationSource || "LD / controle")}${evidenceLine("Fiscal", result.confirmationComment || result.fiscalComment || "Sem comentário")}${evidenceLine("Alocação anterior", result.previousAllocation)}</div></td>
+        <td><div class="allocation-evidence-stack">${evidenceLine("Diagnóstico", result.allocationDiagnosis || result.allocationDiagnosisDetail || "Sem diagnóstico")}${evidenceLine("Resultado", result.confirmationOutcome || "Sem confirmação externa", result.reallocationRequired ? "warning" : "")}${evidenceLine("Fonte", result.confirmationSource || "LD / controle")}${evidenceLine("Fiscal", result.confirmationComment || result.fiscalComment || "Sem comentário")}${evidenceLine("Alocação anterior", result.previousAllocation)}</div></td>
         <td><div class="allocation-evidence-stack">${evidenceLine("SIGEM", result.postingStatus || result.sigemStatus || "Sem evidência na LD")}${evidenceLine("GRDT", result.grdt || record.grdt)}${evidenceLine("Data efetiva", formatDateBR(result.effectiveDate || record.effectiveDate))}${evidenceLine("Revisão", record.revision || result.revision)}</div></td>
         <td>${databookCell(result, output, evidence, inferred)}</td>
-        <td><div class="allocation-reason-card"><strong>${escapeHtml(result.allocationReason || result.reason || "Sem motivo registrado")}</strong><details><summary>Ver evidências completas</summary>${evidenceLine("Histórico", history)}${evidenceLine("Workflow", workflowDisplay)}${evidenceLine("Propósito", output.purpose)}${evidenceLine("Ação", output.action)}${evidenceLine("Alertas", warnings, warnings ? "warning" : "")}</details></div></td>
+        <td><div class="allocation-reason-card"><strong>${escapeHtml(result.allocationDiagnosisDetail || result.allocationReason || result.reason || "Sem motivo registrado")}</strong><details><summary>Ver evidências completas</summary>${evidenceLine("Motivo completo", result.allocationReason)}${evidenceLine("Histórico", history)}${evidenceLine("Workflow", workflowDisplay)}${evidenceLine("Propósito", output.purpose)}${evidenceLine("Ação", output.action)}${evidenceLine("Alertas", warnings, warnings ? "warning" : "")}</details></div></td>
         <td><div class="allocation-output-card">${evidenceLine("Workflow", workflowDisplay)}${evidenceLine("Ação", output.action || "—")}${evidenceLine("Propósito", output.purpose || "—")}${evidenceLine("Data prevista", formatDateBR(output.plannedDate) || "—")}</div></td>
       </tr>`;
     }).join("");
@@ -654,17 +682,20 @@
     els.density.textContent = state.compactMode ? "Expandir" : "Compactar";
     renderTable();
 
-    const readyKeys = state.results.filter((result) => result.decision === A.READY).map((result) => A.key(result.document));
-    const selectedReady = readyKeys.filter((documentKey) => state.selected.has(documentKey));
+    const eligibleKeys = state.results.filter(canSelectForAllocation).map((result) => A.key(result.document));
+    const selected = selectedResults();
+    const selectedKeys = new Set(selected.map((result) => A.key(result.document)));
+    const selectedEligible = eligibleKeys.filter((documentKey) => selectedKeys.has(documentKey));
+    const manualCount = selected.filter((result) => result.manualOverride).length;
     const plan = batchPlan();
     renderBatchPlan(plan);
-    els.selectAll.disabled = readyKeys.length === 0;
-    els.selectAll.checked = readyKeys.length > 0 && selectedReady.length === readyKeys.length;
-    els.selectAll.indeterminate = selectedReady.length > 0 && selectedReady.length < readyKeys.length;
-    els.selectedCount.textContent = `${selectedReady.length} selecionado${selectedReady.length === 1 ? "" : "s"}${plan.groups.length ? ` · ${plan.groups.length} alocação${plan.groups.length === 1 ? "" : "ões"}` : ""}${plan.errors.length ? " · workflow ausente" : ""}`;
-    els.batchDatabook.disabled = selectedReady.length < 2 || state.busy;
-    els.batchDatabook.textContent = selectedReady.length >= 2 ? `Databook em lote (${selectedReady.length})` : "Databook em lote";
-    const canExport = selectedReady.length > 0 && codeIsValid() && Boolean(els.date.value) && plan.valid && !state.busy;
+    els.selectAll.disabled = eligibleKeys.length === 0;
+    els.selectAll.checked = eligibleKeys.length > 0 && selectedEligible.length === eligibleKeys.length;
+    els.selectAll.indeterminate = selectedEligible.length > 0 && selectedEligible.length < eligibleKeys.length;
+    els.selectedCount.textContent = `${selected.length} selecionado${selected.length === 1 ? "" : "s"}${manualCount ? ` · ${manualCount} inclusão${manualCount === 1 ? "" : "ões"} manual${manualCount === 1 ? "" : "is"}` : ""}${plan.groups.length ? ` · ${plan.groups.length} alocação${plan.groups.length === 1 ? "" : "ões"}` : ""}${plan.errors.length ? " · agrupamento pendente" : ""}`;
+    els.batchDatabook.disabled = selected.length < 2 || state.busy;
+    els.batchDatabook.textContent = selected.length >= 2 ? `Databook em lote (${selected.length})` : "Databook em lote";
+    const canExport = selected.length > 0 && codeIsValid() && Boolean(els.date.value) && plan.valid && !state.busy;
     els.exportReport.disabled = !state.results.length || state.busy;
     els.exportFile.disabled = !canExport;
     els.exportControl.disabled = !canExport;
@@ -829,9 +860,9 @@
   }
 
   async function openAssistantForBatch(results) {
-    const valid = (results || []).filter((result) => result && result.output && result.decision === A.READY);
+    const valid = (results || []).filter(canSelectForAllocation);
     if (valid.length < 2) {
-      showToast("Selecione pelo menos dois documentos prontos.", "warn");
+      showToast("Selecione pelo menos dois documentos para revisar o Databook em lote.", "warn");
       return;
     }
     state.assistantDocumentKey = "";
@@ -988,13 +1019,14 @@
       if (pager) pager.reset();
       if (!state.densityManual && state.results.length > 500) state.compactMode = true;
       state.duplicateCount = analyzed.duplicateCount;
-      state.selected = new Set(state.results.filter((result) => result.decision === A.READY).map((result) => A.key(result.document)));
+      state.selected = new Set();
+      state.results.forEach((result) => setResultSelection(result, defaultSelectedForAllocation(result)));
       els.results.hidden = false;
       renderResults();
       setProgress(100, "Concluído");
       const counts = resultCounts();
       const inferredCount = state.results.filter((result) => result.output && result.output.databook
-        && ["history", "ld", "catalog"].includes(result.output.databookEvidence && result.output.databookEvidence.sourceType)).length;
+        && ["history", "ld", "catalog", "discipline-fallback"].includes(result.output.databookEvidence && result.output.databookEvidence.sourceType)).length;
       const duplicateSuffix = analyzed.duplicateCount ? ` · ${analyzed.duplicateCount} duplicado(s) removido(s)` : "";
       const inferredSuffix = inferredCount ? ` · ${inferredCount} Databook${inferredCount === 1 ? "" : "s"} recuperado${inferredCount === 1 ? "" : "s"}` : "";
       const plan = batchPlan();
@@ -1027,20 +1059,25 @@
   }
 
   function batchPlan(results) {
-    return B.build(Array.isArray(results) ? results : selectedResults(), els.code.value);
+    return B.build(Array.isArray(results) ? results : selectedResults(), els.code.value, { mode: state.groupingMode });
   }
 
   function renderBatchPlan(plan) {
-    const show = Boolean(plan && plan.groups && plan.groups.length && (plan.etGroups > 0 || plan.groups.length > 1));
+    const show = Boolean(plan && plan.groups && plan.groups.length);
     els.batchPlan.hidden = !show;
     const plural = Boolean(plan && plan.groups && plan.groups.length > 1);
     els.exportFile.textContent = plural ? "Baixar alocações oficiais (ZIP)" : "Baixar alocação oficial";
     els.exportControl.textContent = plural ? "Baixar linhas por alocação (ZIP)" : "Baixar linhas do controle";
     els.exportPackage.textContent = plural ? "Gerar pacote das alocações" : "Gerar pacote";
+    if (els.groupingHelp) els.groupingHelp.textContent = state.groupingMode === "single"
+      ? "Todos os itens marcados usarão o mesmo número de alocação."
+      : "Os itens marcados serão separados por disciplina/workflow.";
+    if (els.batchEyebrow) els.batchEyebrow.textContent = state.groupingMode === "single" ? "ALOCAÇÃO ÚNICA" : "SEPARAÇÃO POR DISCIPLINA";
+    if (els.batchTitle) els.batchTitle.textContent = state.groupingMode === "single" ? "Todos os selecionados no mesmo número" : "Uma alocação para cada disciplina/workflow";
     if (!show) return;
     els.readyName.textContent = `${plan.groups.length} alocação${plan.groups.length === 1 ? "" : "ões"} · ${plan.firstCode}${plan.lastCode !== plan.firstCode ? ` a ${plan.lastCode}` : ""}`;
     els.batchMeta.textContent = `${plan.groups.length} alocação${plan.groups.length === 1 ? "" : "ões"} · ${plan.firstCode}${plan.lastCode !== plan.firstCode ? ` até ${plan.lastCode}` : ""}`;
-    els.batchList.innerHTML = plan.groups.map((group) => `<article class="allocation-batch-item ${group.blocking ? "error" : ""}"><div><strong>${escapeHtml(group.isEt ? group.label : "Demais abas")}</strong><span>${group.results.length} documento${group.results.length === 1 ? "" : "s"} · ${escapeHtml(group.sheets.join(" · ") || "LD")}</span></div><small>${escapeHtml(group.allocationCode)}</small></article>`).join("");
+    els.batchList.innerHTML = plan.groups.map((group) => `<article class="allocation-batch-item ${group.blocking ? "error" : ""}"><div><strong>${escapeHtml(group.label)}</strong><span>${group.results.length} documento${group.results.length === 1 ? "" : "s"} · ${escapeHtml(group.sheets.join(" · ") || "LD")}</span></div><small>${escapeHtml(group.allocationCode)}</small></article>`).join("");
     els.batchWarning.hidden = !plan.errors.length;
     els.batchWarning.textContent = plan.errors.join(" ");
   }
@@ -1060,9 +1097,9 @@
   async function generateFiles() {
     await ensureExportLibraries();
     const results = selectedResults();
-    if (!results.length) throw new Error("Nenhum documento pronto está selecionado.");
+    if (!results.length) throw new Error("Nenhum documento está selecionado para a alocação.");
     const plan = batchPlan(results);
-    if (!plan.valid) throw new Error(plan.errors[0] || "Não foi possível separar as alocações por workflow.");
+    if (!plan.valid) throw new Error(plan.errors[0] || "Não foi possível montar o agrupamento escolhido.");
     const groups = [];
     for (const group of plan.groups) {
       const meta = allocationMeta(group.allocationCode);
@@ -1110,6 +1147,7 @@
       const buffer = await W.buildAnalysisReport(state.results, {
         ldName: ldFiles.map((file) => file.name).join(" · "),
         generatedAt: new Date().toLocaleString("pt-BR"),
+        groupingMode: state.groupingMode,
       }, window.ExcelJS);
       const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "").replace("T", "_");
       downloadBlob(new Blob([buffer], { type: W.MIME }), `Relatorio_RECON_Analise_Alocacao_${stamp}.xlsx`);
@@ -1301,23 +1339,19 @@
     renderResults();
   });
   els.batchDatabook.addEventListener("click", () => {
-    const selected = state.results.filter((result) => result.decision === A.READY && state.selected.has(A.key(result.document)));
+    const selected = selectedResults();
     openAssistantForBatch(selected).catch((error) => showToast(error.message || "O assistente em lote não pôde ser aberto.", "error"));
   });
   els.selectAll.addEventListener("change", () => {
-    state.results.filter((result) => result.decision === A.READY).forEach((result) => {
-      const documentKey = A.key(result.document);
-      if (els.selectAll.checked) state.selected.add(documentKey);
-      else state.selected.delete(documentKey);
-    });
+    state.results.filter(canSelectForAllocation).forEach((result) => setResultSelection(result, els.selectAll.checked));
     renderResults();
   });
   els.tbody.addEventListener("change", (event) => {
     if (!event.target.classList.contains("allocation-check")) return;
     const row = event.target.closest("[data-allocation-document]");
     if (!row) return;
-    if (event.target.checked) state.selected.add(row.dataset.allocationDocument);
-    else state.selected.delete(row.dataset.allocationDocument);
+    const result = state.results.find((item) => A.key(item.document) === row.dataset.allocationDocument);
+    setResultSelection(result, event.target.checked);
     renderResults();
   });
   els.tbody.addEventListener("click", (event) => {
@@ -1348,13 +1382,22 @@
   els.exportFile.addEventListener("click", () => runExport("allocation"));
   els.exportControl.addEventListener("click", () => runExport("control"));
   els.exportPackage.addEventListener("click", () => runExport("package"));
+  els.groupModeRadios.forEach((radio) => radio.addEventListener("change", () => {
+    if (!radio.checked) return;
+    state.groupingMode = radio.value === "single" ? "single" : "discipline";
+    if (Workspace) Workspace.setPreference("allocationGroupingMode", state.groupingMode);
+    renderResults();
+  }));
 
   if (Workspace) {
     els.text.value = String(Workspace.draft("allocationText", "") || "");
     const savedDensity = Workspace.preference("allocationCompact", "");
     state.decisionFilter = Workspace.preference("allocationDecisionFilter", "all");
+    state.groupingMode = Workspace.preference("allocationGroupingMode", "discipline");
     if (!["all", "ready", "reallocation", "skip", "review"].includes(state.decisionFilter)) state.decisionFilter = "all";
+    if (!["discipline", "single"].includes(state.groupingMode)) state.groupingMode = "discipline";
     if (els.decisionFilter) els.decisionFilter.value = state.decisionFilter;
+    els.groupModeRadios.forEach((radio) => { radio.checked = radio.value === state.groupingMode; });
     if (savedDensity === "compact" || savedDensity === "comfortable") {
       state.compactMode = savedDensity === "compact";
       state.densityManual = true;
@@ -1365,7 +1408,7 @@
   renderResults();
   window.RECONOutputPreviewProviders = window.RECONOutputPreviewProviders || {};
   window.RECONOutputPreviewProviders.allocation = () => {
-    const selected = state.results.filter((result) => result.decision === A.READY && state.selected.has(A.key(result.document)));
+    const selected = selectedResults();
     const plan = batchPlan(selected);
     return {
       title: "Documentos que entrarão na alocação",
@@ -1373,7 +1416,7 @@
       expectedInputs: state.results.length,
       accountedInputs: state.results.length,
       requireUniqueTargets: true,
-      items: plan.groups.flatMap((group) => group.results.map((result) => ({ primary: result.document, secondary: `${group.allocationCode} · ${result.document}`, meta: group.isEt ? `Disciplina ${group.label}` : result.sheet || "LD" }))),
+      items: plan.groups.flatMap((group) => group.results.map((result) => ({ primary: result.document, secondary: `${group.allocationCode} · ${result.document}`, meta: state.groupingMode === "single" ? "Alocação única" : `Disciplina ${group.label}` }))),
     };
   };
   window.RECONAllocation = { state, currentLdFiles, analyzeAllocation, resetAnalysis: resetAllocationAnalysis, renderResults, batchPlan, generateFiles, exportAnalysisReport };

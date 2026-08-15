@@ -181,8 +181,8 @@
   function updateCoreProperties(coreXml) {
     const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
     let output = coreXml
-      .replace(/<dc:creator>[\s\S]*?<\/dc:creator>/, "<dc:creator>RECON 1.26.27</dc:creator>")
-      .replace(/<cp:lastModifiedBy>[\s\S]*?<\/cp:lastModifiedBy>/, "<cp:lastModifiedBy>RECON 1.26.27</cp:lastModifiedBy>");
+      .replace(/<dc:creator>[\s\S]*?<\/dc:creator>/, "<dc:creator>RECON 1.26.42</dc:creator>")
+      .replace(/<cp:lastModifiedBy>[\s\S]*?<\/cp:lastModifiedBy>/, "<cp:lastModifiedBy>RECON 1.26.42</cp:lastModifiedBy>");
     output = output.replace(
       /(<dcterms:modified\b[^>]*>)[\s\S]*?(<\/dcterms:modified>)/,
       (_match, opening, closing) => `${opening}${now}${closing}`,
@@ -285,7 +285,8 @@
 
   function reportHeaders() {
     return [
-      "PODE ALOCAR?", "SITUAÇÃO", "DOCUMENTO", "ARQUIVO LD", "ABA LD", "LINHA LD", "VERSÃO DA LD ENVIADA",
+      "SELECIONADO PARA GERAR?", "TIPO DE SELEÇÃO", "RECOMENDAÇÃO AUTOMÁTICA", "DIAGNÓSTICO OPERACIONAL",
+      "SITUAÇÃO", "DOCUMENTO", "ARQUIVO LD", "ABA LD", "LINHA LD", "VERSÃO DA LD ENVIADA",
       "CONFIRMAÇÃO NA LD", "RESULTADO DA CONFIRMAÇÃO", "COMENTÁRIO DA CONFIRMAÇÃO", "FONTE DA CONFIRMAÇÃO",
       "DATA DA CONFIRMAÇÃO", "ALOCAÇÃO ANTERIOR", "MOTIVO DA ALOCAÇÃO / NÃO ALOCAÇÃO", "ETAPA DA ALOCAÇÃO",
       "COMENTÁRIO DA FISCAL UTILIZADO", "NÚMERO DA GRDT NA LD", "DATA EFETIVA DE EMISSÃO DA GRDT",
@@ -297,8 +298,14 @@
     const record = result && result.record || {};
     const output = result && result.output || {};
     const evidence = result && result.postingEvidence || {};
+    const selectable = A.canSelectForAllocation ? A.canSelectForAllocation(result) : Boolean(result && result.output && result.record);
+    const selected = Boolean(result && result.userSelected && selectable);
+    const selectionType = !selectable ? "INDISPONÍVEL — SEM SAÍDA TÉCNICA"
+      : selected && result.manualOverride ? "MANUAL — CONTRA RECOMENDAÇÃO AUTOMÁTICA"
+        : selected ? "AUTOMÁTICA" : "DESMARCADO";
     return [
-      reportDecision(result), reportSituation(result), result && result.document || "", result && result.ldSource || record.source || "", result && result.sheet || record.sheet || "", Number(record.row) || "",
+      selected ? "SIM" : "NÃO", selectionType, reportDecision(result), result && result.allocationDiagnosis || result && result.allocationDiagnosisDetail || "",
+      reportSituation(result), result && result.document || "", result && result.ldSource || record.source || "", result && result.sheet || record.sheet || "", Number(record.row) || "",
       result && result.ldVersion || record.ldVersion || "", result && result.allocationStatus || record.allocationStatus || "",
       result && result.confirmationOutcome || "", result && result.confirmationComment || "", result && result.confirmationSource || "",
       formatDateBR(result && result.confirmationDate), result && result.previousAllocation || result && result.existingAllocation || record.allocation || "",
@@ -311,7 +318,7 @@
 
   async function buildAnalysisReport(results, meta, ExcelJS) {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = "RECON 1.26.27";
+    workbook.creator = "RECON 1.26.42";
     workbook.created = new Date();
     workbook.modified = new Date();
     const settings = meta || {};
@@ -323,8 +330,10 @@
       else acc.review += 1;
       if (result.postingEvidence && result.postingEvidence.complete) acc.posted += 1;
       if (result.reallocationRequired && result.decision === A.READY) acc.reallocation += 1;
+      if (result.userSelected) acc.selected += 1;
+      if (result.manualOverride && result.userSelected) acc.manual += 1;
       return acc;
-    }, { total: 0, ready: 0, skip: 0, review: 0, posted: 0, reallocation: 0 });
+    }, { total: 0, ready: 0, skip: 0, review: 0, posted: 0, reallocation: 0, selected: 0, manual: 0 });
 
     const summary = workbook.addWorksheet("Resumo", { properties: { defaultRowHeight: 18 } });
     summary.views = [{ showGridLines: false, zoomScale: 95 }];
@@ -338,6 +347,8 @@
       ["LDs analisadas", settings.ldName || ""], ["Gerado em", settings.generatedAt || new Date().toLocaleString("pt-BR")],
       ["Total analisado", counts.total], ["Pode alocar", counts.ready], ["Já alocado", counts.skip],
       ["Revisar", counts.review], ["Nova alocação após recusa", counts.reallocation], ["Postado conforme LD", counts.posted],
+      ["Selecionados para gerar", counts.selected], ["Inclusões manuais", counts.manual],
+      ["Forma de geração", settings.groupingMode === "single" ? "Tudo na mesma alocação" : "Dividir por disciplina/workflow"],
     ];
     info.forEach((item, index) => {
       const row = summary.getRow(index + 5); row.values = item;
@@ -346,11 +357,11 @@
       row.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEAF1F6" } };
     });
     summary.getColumn(1).width = 29; summary.getColumn(2).width = 55;
-    summary.getCell("A15").value = "Critério de segurança";
-    summary.getCell("A15").font = { bold: true, color: { argb: "FF123F63" } };
-    summary.mergeCells("B15:F18");
-    summary.getCell("B15").value = "O campo ALOCAÇÃO isoladamente não comprova aceite. A decisão prioriza a pasta de confirmações, depois o STATUS DA ALOCAÇÃO do controle e, por último, a Confirmação de DOCUMENTOS PREVISTOS da LD. Uma confirmação recusada prepara nova alocação e leva o comentário da Fiscal para a observação. Número da GRDT e Data Efetiva preenchidos na LD continuam bloqueando decisão automática até regularização.";
-    summary.getCell("B15").alignment = { wrapText: true, vertical: "top" };
+    summary.getCell("A18").value = "Critério e autonomia";
+    summary.getCell("A18").font = { bold: true, color: { argb: "FF123F63" } };
+    summary.mergeCells("B18:F21");
+    summary.getCell("B18").value = "A recomendação automática prioriza a pasta de confirmações, depois o histórico do controle e, por último, o estado ALOCADO/NÃO ALOCADO da LD. Itens já alocados, pendentes, recusados ou em revisão começam desmarcados quando houver bloqueio; ainda assim, o usuário pode incluí-los manualmente quando existe uma saída técnica válida. Toda inclusão contra a recomendação automática fica identificada neste relatório.";
+    summary.getCell("B18").alignment = { wrapText: true, vertical: "top" };
 
     const sheet = workbook.addWorksheet("Análise", { properties: { defaultRowHeight: 18 } });
     sheet.views = [{ state: "frozen", ySplit: 1, activeCell: "A2", showGridLines: false, zoomScale: 85 }];
@@ -360,14 +371,18 @@
     list.forEach((result, index) => {
       const row = setRowValues(sheet, index + 2, reportRow(result));
       styleDataRow(row, headers.length, new Set(), index);
-      const decisionCell = row.getCell(1);
+      const selectionCell = row.getCell(1);
+      const selectionValue = String(selectionCell.value || "");
+      selectionCell.font = { name: "Aptos", size: 9.5, bold: true, color: { argb: selectionValue === "SIM" ? "FF0B6B50" : "FF687985" } };
+      selectionCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: selectionValue === "SIM" ? "FFE8F5EF" : "FFF2F5F7" } };
+      const decisionCell = row.getCell(3);
       const value = String(decisionCell.value || "");
       decisionCell.font = { name: "Aptos", size: 9.5, bold: true, color: { argb: value.startsWith("SIM") ? "FF0B6B50" : value.includes("JÁ") ? "FF8A3F19" : "FF9A5C0B" } };
       decisionCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: value.startsWith("SIM") ? "FFE8F5EF" : value.includes("JÁ") ? "FFFFEEE8" : "FFFFF4DF" } };
     });
-    [24, 34, 46, 38, 12, 11, 21, 24, 34, 58, 52, 18, 28, 78, 22, 58, 32, 23, 28, 68, 22, 35, 52, 72]
+    [20, 38, 29, 52, 34, 46, 38, 12, 11, 21, 24, 34, 58, 52, 18, 28, 78, 22, 58, 32, 23, 28, 68, 22, 35, 52, 72]
       .forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
-    sheet.autoFilter = { from: "A1", to: `X${Math.max(1, sheet.rowCount)}` };
+    sheet.autoFilter = { from: "A1", to: `AA${Math.max(1, sheet.rowCount)}` };
     sheet.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: "1:1", margins: { left: .2, right: .2, top: .45, bottom: .45, header: .2, footer: .2 } };
     sheet.headerFooter.oddFooter = "&LRECON · ANÁLISE DE ALOCAÇÃO&C&P de &N&R&D";
     return workbook.xlsx.writeBuffer();

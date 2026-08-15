@@ -30,30 +30,58 @@
       || text(result && result.workflow);
   }
 
-  function build(results, baseCode) {
+  function build(results, baseCode, options) {
     const parsed = parseCode(baseCode);
     if (!parsed) return { valid: false, groups: [], errors: ["Número inicial da alocação inválido."], baseCode: text(baseCode) };
+    const mode = typeof options === "string" ? options : text(options && options.mode) || "discipline";
+    const list = (results || []).filter(Boolean);
+    if (mode === "single") {
+      const sheets = [...new Set(list.map(sheetOf).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+      const workflows = [...new Set(list.map(workflowOf).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+      const groups = list.length ? [{
+        key: "SINGLE",
+        isEt: false,
+        workflow: workflows.join(" · "),
+        workflows,
+        label: "Todos na mesma alocação",
+        results: list,
+        sheets,
+        blocking: false,
+        allocationCode: parsed.code,
+        index: 0,
+      }] : [];
+      return {
+        valid: groups.length > 0,
+        mode: "single",
+        baseCode: parsed.code,
+        firstCode: parsed.code,
+        lastCode: parsed.code,
+        groups,
+        errors: [],
+        etGroups: 0,
+        totalDocuments: list.length,
+      };
+    }
     const grouped = new Map();
-    (results || []).forEach((result) => {
+    list.forEach((result) => {
       const sheet = sheetOf(result);
-      const et = norm(sheet) === "ET";
       const workflow = workflowOf(result);
-      const key = et ? `ET|${norm(workflow) || "SEM WORKFLOW"}` : "OUTRAS_ABAS";
+      const key = `DISCIPLINA|${norm(workflow) || "SEM DISCIPLINA"}`;
       if (!grouped.has(key)) grouped.set(key, {
         key,
-        isEt: et,
-        workflow: et ? workflow : "",
-        label: et ? workflow || "Workflow não informado" : "Demais abas",
+        isEt: norm(sheet) === "ET",
+        workflow,
+        label: workflow || "Disciplina não informada",
         results: [],
         sheets: new Set(),
-        blocking: Boolean(et && !workflow),
+        blocking: !workflow,
       });
       const group = grouped.get(key);
       group.results.push(result);
+      if (norm(sheet) === "ET") group.isEt = true;
       if (sheet) group.sheets.add(sheet);
     });
     const groups = [...grouped.values()].sort((left, right) => {
-      if (left.isEt !== right.isEt) return left.isEt ? -1 : 1;
       return left.label.localeCompare(right.label, "pt-BR", { sensitivity: "base" });
     }).map((group, index) => ({
       ...group,
@@ -61,9 +89,10 @@
       allocationCode: codeAt(parsed, index),
       index,
     }));
-    const errors = groups.filter((group) => group.blocking).map(() => "Há documento da aba ET sem disciplina/workflow. Corrija a LD antes de gerar as alocações.");
+    const errors = groups.filter((group) => group.blocking).map(() => "Há documento sem disciplina/workflow. Informe a disciplina ou escolha ‘Tudo na mesma alocação’.");
     return {
       valid: groups.length > 0 && errors.length === 0,
+      mode: "discipline",
       baseCode: parsed.code,
       firstCode: groups[0] && groups[0].allocationCode || parsed.code,
       lastCode: groups.at(-1) && groups.at(-1).allocationCode || parsed.code,

@@ -22,6 +22,7 @@
     PR:['PROCEDIMENTO','PROCEDIMENTOS'], REP:['RELATORIO','RELATORIOS'], RIR:['INSPECAO','RECEBIMENTO'],
     DES:['DESENHO','DESENHOS'], DWG:['DESENHO','DESENHOS'], CERT:['CERTIFICADO','CERTIFICADOS'],
     PIT:['PLANO DE INSPECAO','TESTE'], ITP:['PLANO DE INSPECAO','TESTE'],
+    PPT:['PREPARACAO PARA TRANSPORTE','TRANSPORTE'],
   };
 
   function unique(items){return [...new Set(items.filter(Boolean))];}
@@ -98,7 +99,8 @@
   function escapeAttr(value){return escapeHtml(value);}
 
   function catalog(){
-    const entries=[...(root.RECON_DATABOOK_CATALOG||[]),...(root.RECON_DATABOOK_B||[])];
+    const activeEntries=root.RECONAllocation&&root.RECONAllocation.state&&root.RECONAllocation.state.catalogEntries||[];
+    const entries=[...activeEntries,...(root.RECON_DATABOOK_CATALOG||[]),...(root.RECON_DATABOOK_B||[])];
     const seen=new Set();
     return entries.filter(entry=>{
       const key=`${norm(entry.databook)}|${norm(entry.description)}|${entry.rowNumber||''}`;
@@ -108,39 +110,59 @@
     });
   }
 
-  function render(){
-    const code=byId('allocation-db-code')?.value||'';
-    const title=byId('allocation-db-title')?.value||'';
-    const out=byId('allocation-db-result');
-    if(!out) return;
-    out.hidden=false;
-    if(!code.trim()&&!title.trim()){
-      out.innerHTML='<p class="finder-empty"><strong>Informe o documento.</strong><span>Preencha o código, o título ou os dois campos para pesquisar.</span></p>';
-      return;
-    }
-    const entries=catalog();
-    if(!entries.length){
-      out.innerHTML='<p class="finder-empty"><strong>Base ainda não carregada.</strong><span>Abra novamente o módulo Gerador de Alocação e repita a busca.</span></p>';
-      return;
-    }
-    const ranked=entries.map(entry=>scoreEntry(entry,code,title)).filter(item=>item.score>=12).sort((a,b)=>b.score-a.score||b.coverage-a.coverage).slice(0,5);
-    if(!ranked.length){
-      out.innerHTML='<p class="finder-empty"><strong>Nenhuma referência compatível foi localizada.</strong><span>Revise o título ou faça a conferência pelo módulo Caminho Databook.</span></p>';
-      return;
-    }
-    out.innerHTML=`<div class="finder-result-heading"><strong>${ranked.length} referência${ranked.length===1?'':'s'} encontrada${ranked.length===1?'':'s'}</strong><span>Ordenadas pela proximidade entre código, disciplina e título.</span></div>`+ranked.map((match,index)=>{
-      const level=confidence(match);
-      const entry=match.entry;
-      const evidence=[entry.sourceSheet?`aba ${entry.sourceSheet}`:'',entry.rowNumber?`linha ${entry.rowNumber}`:''].filter(Boolean).join(' · ');
-      const reason=match.reasons.length?match.reasons.slice(0,3).join(' · '):level.help;
-      return `<article class="finder-match ${index===0?'best':''} confidence-${level.key}">
-        <div class="finder-match-main"><span class="finder-rank">${index===0?'Melhor resultado':`Alternativa ${index+1}`}</span><strong>${escapeHtml(entry.description||'Referência Databook')}</strong><small>Base Rev. B${evidence?` · ${escapeHtml(evidence)}`:''}</small></div>
-        <span class="finder-confidence ${level.key}" title="${escapeAttr(level.help)}">${escapeHtml(level.label)}</span>
-        <p class="finder-path">${escapeHtml(entry.databook)}</p>
-        <p class="finder-reason">Evidência: ${escapeHtml(reason)}</p>
-        <button type="button" class="secondary-button compact finder-copy" data-value="${escapeAttr(entry.databook)}">Copiar caminho</button>
-      </article>`;
-    }).join('');
+  function looksLikeDocumentCode(value){
+    const raw=text(value).trim().replace(/^['"]|['"]$/g,'');
+    if(raw.length<7||/\s/.test(raw)) return false;
+    return /^C1O[_-]/i.test(raw)||/^\d{4}\.\d{2}-/.test(raw)||(raw.match(/_/g)||[]).length>=2;
+  }
+
+  function parseQueryLine(line,index){
+    const raw=text(line).trim().replace(/^\s*[•*-]\s+/,'');
+    if(!raw) return null;
+    const cells=raw.split(/\t+|\s*[;|]\s*/).map(item=>item.trim()).filter(Boolean);
+    if(cells.length>=2&&looksLikeDocumentCode(cells[0])) return {code:cells[0],title:cells.slice(1).join(' '),raw,lineNumber:index+1};
+    const spaced=raw.match(/^([^\s]+)\s+(.*)$/);
+    if(spaced&&looksLikeDocumentCode(spaced[1])) return {code:spaced[1],title:spaced[2].replace(/^[-–—:]\s*/,''),raw,lineNumber:index+1};
+    if(looksLikeDocumentCode(raw)) return {code:raw,title:'',raw,lineNumber:index+1};
+    return {code:'',title:raw,raw,lineNumber:index+1};
+  }
+
+  function parseQueries(value){
+    const seen=new Set();
+    return text(value).split(/\r?\n/).map(parseQueryLine).filter(query=>{
+      if(!query) return false;
+      const normalized=norm(query.raw);
+      if(/^(DOCUMENTO|CODIGO)( TITULO)?$/.test(normalized)||normalized==='TITULO') return false;
+      const queryKey=`${norm(query.code)}|${norm(query.title)}`;
+      if(seen.has(queryKey)) return false;
+      seen.add(queryKey);
+      return true;
+    });
+  }
+
+  function rankQuery(entries,query,limit){
+    const titleTokenCount=titlePhrases(query&&query.title).tokens.length;
+    return (entries||[]).map(entry=>scoreEntry(entry,query.code,query.title))
+      .filter(item=>item.score>=12&&(!titleTokenCount||item.titleHits>0))
+      .sort((a,b)=>b.score-a.score||b.coverage-a.coverage)
+      .slice(0,limit||3);
+  }
+
+  function matchMarkup(match,index){
+    const level=confidence(match);
+    const entry=match.entry;
+    const evidence=[entry.sourceSheet?`aba ${entry.sourceSheet}`:'',entry.rowNumber?`linha ${entry.rowNumber}`:''].filter(Boolean).join(' · ');
+    const reason=match.reasons.length?match.reasons.slice(0,3).join(' · '):level.help;
+    return `<article class="finder-match ${index===0?'best':''} confidence-${level.key}">
+      <div class="finder-match-main"><span class="finder-rank">${index===0?'Melhor resultado':`Alternativa ${index+1}`}</span><strong>${escapeHtml(entry.description||'Referência Databook')}</strong><small>Base Rev. B${evidence?` · ${escapeHtml(evidence)}`:''}</small></div>
+      <span class="finder-confidence ${level.key}" title="${escapeAttr(level.help)}">${escapeHtml(level.label)}</span>
+      <p class="finder-path">${escapeHtml(entry.databook)}</p>
+      <p class="finder-reason">Evidência: ${escapeHtml(reason)}</p>
+      <button type="button" class="secondary-button compact finder-copy" data-value="${escapeAttr(entry.databook)}">Copiar caminho</button>
+    </article>`;
+  }
+
+  function bindCopyButtons(out){
     out.querySelectorAll('.finder-copy').forEach(button=>button.addEventListener('click',async()=>{
       const original=button.textContent;
       try{
@@ -153,15 +175,44 @@
     }));
   }
 
+  async function render(){
+    const queries=parseQueries(byId('allocation-db-query')?.value||'');
+    const out=byId('allocation-db-result');
+    if(!out) return;
+    out.hidden=false;
+    if(!queries.length){
+      out.innerHTML='<p class="finder-empty"><strong>Informe pelo menos um documento.</strong><span>Cole uma linha por documento, preferencialmente com o título na segunda coluna.</span></p>';
+      return;
+    }
+    let entries=catalog();
+    if(!entries.length&&root.RECONModuleLoader&&root.RECONModuleLoader.ensureModule){
+      try{await root.RECONModuleLoader.ensureModule('allocation');entries=catalog();}catch(_){}
+    }
+    if(!entries.length){
+      out.innerHTML='<p class="finder-empty"><strong>Base Databook indisponível.</strong><span>Não foi possível carregar a base incorporada. Reabra o módulo Gerador de Alocação e tente novamente.</span></p>';
+      return;
+    }
+    const analyzed=queries.map(query=>({query,ranked:rankQuery(entries,query,3)}));
+    const found=analyzed.filter(item=>item.ranked.length).length;
+    out.innerHTML=`<div class="finder-result-heading"><strong>${queries.length} documento${queries.length===1?'':'s'} analisado${queries.length===1?'':'s'}</strong><span>${found} com sugestão · ${queries.length-found} sem referência segura</span></div>`+analyzed.map(({query,ranked})=>{
+      const title=query.title||'Título não informado';
+      const code=query.code||`Linha ${query.lineNumber} — consulta somente por título`;
+      const matches=ranked.length?ranked.map(matchMarkup).join(''):'<p class="finder-empty"><strong>Nenhuma referência segura foi localizada para esta linha.</strong><span>Confira o código e o título ou valide manualmente no módulo Caminho Databook.</span></p>';
+      return `<section class="finder-query-group"><header class="finder-query-heading"><strong>${escapeHtml(code)}</strong><span>${escapeHtml(title)}</span></header><div class="finder-query-matches">${matches}</div></section>`;
+    }).join('');
+    bindCopyButtons(out);
+  }
+
   function clear(){
-    ['allocation-db-code','allocation-db-title'].forEach(id=>{const input=byId(id);if(input) input.value='';});
+    const input=byId('allocation-db-query');if(input) input.value='';
     const out=byId('allocation-db-result');if(out){out.hidden=true;out.innerHTML='';}
-    byId('allocation-db-code')?.focus();
+    byId('allocation-db-query')?.focus();
   }
 
   document.addEventListener('DOMContentLoaded',()=>{
-    byId('allocation-db-search')?.addEventListener('click',render);
+    byId('allocation-db-search')?.addEventListener('click',()=>{render();});
     byId('allocation-db-clear')?.addEventListener('click',clear);
-    ['allocation-db-code','allocation-db-title'].forEach(id=>byId(id)?.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();render();}}));
+    byId('allocation-db-query')?.addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();render();}});
   });
+  root.RECONDatabookFinder=Object.freeze({parseQueries,rankQuery,scoreEntry,confidence,catalog});
 })(window);
