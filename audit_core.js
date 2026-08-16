@@ -2518,6 +2518,9 @@
       // aparece com outro separador ou repetida.
       const descriptionWithoutObservedTag = stripKnownParts(current, currentDescriptionType, explicitTitle);
       const currentDescription = stripKnownParts(descriptionWithoutObservedTag, "", documentNameTag || tag);
+      const sconEscopoLastResort = sconEscopoReference
+        ? usableDescription(sconEscopoReference.description || sconEscopoReference.title)
+        : "";
       const rawDescription = nonTaggedRule && nonTaggedRule.description
         || sconCombinedDescription
         || trustedDescription && referenceDescription
@@ -2526,6 +2529,10 @@
         || explicitDescription
         || explicitScon
         || manualValve && "VÁLVULA MANUAL"
+        // Último recurso: o SCON ESCOPO mesmo sem a confirmação que ele exige
+        // para entrar antes. Vale só quando nada descreveu a TAG — é preferível
+        // uma descrição do escopo a deixar a recomendação vazia.
+        || sconEscopoLastResort
         || currentDescription;
       const description = pruneRedundantTitleDescription(type, rawDescription);
       const descriptionIdentifiers = technicalIdentifiers(description);
