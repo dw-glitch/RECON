@@ -1310,4 +1310,22 @@ check("a cobertura da leitura é reportada e chega à tela", () => {
   assert.match(app, /ficaram fora da leitura/, "a tela não avisa quando uma aba fica fora");
 });
 
+check("o SCON ESCOPO é o último recurso da descrição, antes do texto atual da LD", () => {
+  const core = read("audit_core.js");
+  const inicio = core.indexOf("const rawDescription =");
+  const cadeia = core.slice(inicio, inicio + 700);
+  const posValvula = cadeia.indexOf('manualValve && "VÁLVULA MANUAL"');
+  const posEscopo = cadeia.indexOf("sconEscopoLastResort");
+  const posAtual = cadeia.indexOf("currentDescription");
+  assert.ok(posEscopo > 0, "a cadeia não tem o recurso final do SCON ESCOPO");
+  assert.ok(posValvula > 0 && posValvula < posEscopo, "a LI de válvulas precisa ser consultada antes do SCON ESCOPO");
+  // É o último caso justamente para não deixar a recomendação vazia.
+  assert.ok(posEscopo < posAtual, "o SCON ESCOPO precisa vir antes de aceitar o texto atual da LD");
+
+  // O recurso final não pode exigir a confirmação que o SCON ESCOPO precisa
+  // para entrar antes na cadeia — senão ele nunca preencheria o que faltou.
+  const decl = core.slice(core.indexOf("const sconEscopoLastResort"), core.indexOf("const sconEscopoLastResort") + 200);
+  assert.doesNotMatch(decl, /trustedSconEscopo/, "o último recurso voltou a depender da confirmação");
+});
+
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));
