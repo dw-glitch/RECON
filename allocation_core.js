@@ -188,12 +188,32 @@
     return best.length === 1 ? best[0].levels.slice() : commonLevels(best);
   }
 
+  // Nas alocações oficiais, N2 e N3 dependem só dos dois primeiros campos da
+  // EAP: 3.4.21.1 e 3.4.18.1 caem os dois em 03.REPARO / 03.04.CIVIL. Quando a
+  // EAP exata ainda não apareceu no controle, as EAPs irmãs — mesmo grupo e
+  // mesmo subgrupo — resolvem os níveis que elas têm em comum, em vez de
+  // deixar a linha vazia.
+  function levelsFromSiblingEaps(levelsByEap, eapValue) {
+    const eap = normalizeEap(eapValue);
+    if (!eap || !levelsByEap) return [];
+    const parts = eap.split(".");
+    if (parts.length < 2) return [];
+    const prefix = `${parts[0]}.${parts[1]}.`;
+    const siblings = [];
+    levelsByEap.forEach((levels, code) => {
+      if (String(code).startsWith(prefix) && (levels || []).some(Boolean)) siblings.push({ levels });
+    });
+    return siblings.length ? commonLevels(siblings) : [];
+  }
+
   function levelsForEap(control, record) {
     const eap = recordEap(record);
     if (!eap || !control) return [];
     const exact = control.levelsByEap && control.levelsByEap.get(eap);
     if (exact && exact.some(Boolean)) return exact.slice();
-    return levelsFromEapBase(control.projectLevelBase || [], eap);
+    const fromBase = levelsFromEapBase(control.projectLevelBase || [], eap);
+    if (fromBase.some(Boolean)) return fromBase;
+    return levelsFromSiblingEaps(control.levelsByEap, eap);
   }
 
   function documentSequence(value) {
@@ -292,6 +312,12 @@
     const codeDiscipline = documentGroups.length >= 6 ? norm(documentGroups[4]) : "";
     const direct = norm(item.discipline || recordValue(item, ["DISCIPLINA", "WORKFLOW", "QUEM?"]));
     const value = direct || codeDiscipline || norm(item.sheet);
+    // Nas alocações oficiais, um documento de CIVIL cujo Grupo 7 começa por EMT
+    // vai para a pasta de estrutura metálica, não para a de civil
+    // (C1O_RNEST_U32_3.5.1.5_CVL_RIR_EMT-NF-3857 → CIVIL|RIR ESTRUTURA METÁLICA).
+    if (/CIV|^CVL$/.test(value) && documentGroups.length >= 7 && /^EMT\b|^EMT[-_]/.test(norm(documentGroups.slice(6).join("_")))) {
+      return "ESTRUTURA_METALICA";
+    }
     if (/TUB/.test(value)) return "TUBULACAO";
     if (/EQP.*DIN|DINAM|^EQD$/.test(value)) return "EQP_DINAMICOS";
     if (/EQP.*ESTAT|ESTATIC|^MEC$/.test(value)) return "EQP_ESTATICOS";
@@ -312,6 +338,20 @@
     const reportCode = documentGroups.length >= 6 ? norm(documentGroups[5]) : "";
     const documentType = norm(item.documentType || recordValue(item, ["TIPO DE DOCUMENTO", "TIPO DOCUMENTO"]));
     return reportCode === "RIR" || documentType === "RIR" || titleKind(item.title) === "RIR" ? "RIR" : "CM";
+  }
+
+  // Pastas quase homônimas — CONCRETO - SUPERESTRUTURA e CONCRETO -
+  // INFRAESTRUTURA — empatam na pontuação porque quase todas as palavras são as
+  // mesmas. Quem decide é a palavra que só uma delas tem: se o título traz tudo
+  // o que a primeira tem e nada do que a segunda tem de exclusivo, não há
+  // empate de verdade.
+  function decidesByDistinctToken(winner, other) {
+    const winnerTokens = winner && winner.matchedTokens;
+    const otherTokens = other && other.matchedTokens;
+    if (!winnerTokens || !otherTokens) return false;
+    const exclusivos = [...winnerTokens].filter((token) => !otherTokens.has(token));
+    const contrarios = [...otherTokens].filter((token) => !winnerTokens.has(token));
+    return exclusivos.length > 0 && contrarios.length === 0;
   }
 
   function entryLevels(entry) {
@@ -361,19 +401,23 @@
       (catalogEntries || []).forEach((entry) => {
         const levels = entryLevels(entry);
         if (levels.length < 4 || norm(levels[2]).replace(/S$/, "") !== folder.replace(/S$/, "")) return;
-        const similarity = Math.round(titleSimilarityFromTokens(documentTokens, titleTokens(`${entry.description || ""} ${levels[3]}`)) * 30);
+        const entryTokens = titleTokens(`${entry.description || ""} ${levels[3]}`);
+        const similarity = Math.round(titleSimilarityFromTokens(documentTokens, entryTokens) * 30);
         if (similarity <= 0) return;
-        ranked.push({ entry, levels, score: similarity + (levels.length === 4 ? 6 : 0) });
+        const matchedTokens = new Set([...documentTokens].filter((token) => entryTokens.has(token)));
+        ranked.push({ entry, levels, matchedTokens, score: similarity + (levels.length === 4 ? 6 : 0) });
       });
     }
     if (!ranked.length) return null;
     ranked.sort((left, right) => right.score - left.score || left.entry.databook.length - right.entry.databook.length);
     const top = ranked[0];
     const runner = ranked.find((candidate) => pathKey(candidate.entry.databook) !== pathKey(top.entry.databook));
-    if (runner && top.score - runner.score < margin) return null;
+    // Mesmo critério do Mapa Databook: entre pastas quase homônimas, decide a
+    // palavra do título que só uma delas tem, não a diferença de pontos.
+    if (runner && top.score - runner.score < margin && !decidesByDistinctToken(top, runner)) return null;
     return {
       databook: top.entry.databook,
-      levels: top.levels.slice(),
+      levels: [],
       source: byFamily
         ? `Mapa Databook · pasta ${family === "RIR" ? "RIR" : "C&M"} da disciplina ${folder}`
         : `Mapa Databook · pasta da disciplina ${folder} mais próxima do título`,
@@ -392,12 +436,12 @@
     const family = databookFamilyForRecord(record);
     const paths = GENERAL_DATABOOK_BY_DISCIPLINE[discipline];
     const databook = paths && paths[family] || (family === "RIR"
-      ? "UHDT-D|DATA BOOK C&M|GERAL - PROCEDIMENTOS DE EDECUÇÃO|RECEBIMENTO-ARMAZ.-PRESERVAÇÃO"
-      : "UHDT-D|DATA BOOK C&M|GERAL - PROCEDIMENTOS DE EDECUÇÃO|C&M COMUNS");
+      ? "UHDT-D|DATA BOOK C&M|GERAL - PROCEDIMENTOS DE EXECUÇÃO|RECEBIMENTO-ARMAZ.-PRESERVAÇÃO"
+      : "UHDT-D|DATA BOOK C&M|GERAL - PROCEDIMENTOS DE EXECUÇÃO|C&M COMUNS");
     const disciplineLabel = discipline ? discipline.replace(/_/g, " ") : "GERAL";
     return {
       databook,
-      levels: levelsFromDatabookPath(databook),
+      levels: [],
       source: `Fallback geral ${family === "RIR" ? "RIR" : "C&M"} da disciplina ${disciplineLabel}`,
       sourceType: "discipline-fallback",
       confidence: "fallback",
@@ -1097,7 +1141,8 @@
       const prepared = prepareCatalogEntry(entry);
       const searchableNorm = prepared.searchableNorm;
       let overlap = 0;
-      targetTokens.forEach((token) => { if (searchableNorm.includes(token)) overlap += 1; });
+      const matchedTokens = new Set();
+      targetTokens.forEach((token) => { if (searchableNorm.includes(token)) { overlap += 1; matchedTokens.add(token); } });
       const kindMatch = Boolean(targetKind && searchableNorm.includes(targetKind));
       const disciplineMatch = Boolean(targetDiscipline && prepared.databookDescriptionNorm.includes(targetDiscipline));
       const entrySubjects = prepared.entrySubjects;
@@ -1108,16 +1153,18 @@
         + Math.round(titleSimilarityFromTokens(targetTokens, prepared.searchableTokens) * 28)
         + (subjectMatch ? 58 : 0) - (subjectConflict ? 32 : 0)
         + (subjectMatch && depth >= 5 ? 8 : 0);
-      return { entry, score, kindMatch, disciplineMatch, subjectMatch };
+      return { entry, score, kindMatch, disciplineMatch, subjectMatch, matchedTokens };
     }).filter((candidate) => candidate.score >= 62).sort((left, right) => right.score - left.score);
     if (!ranked.length) return null;
     const top = ranked[0];
     const runner = ranked.find((candidate) => pathKey(candidate.entry.databook) !== pathKey(top.entry.databook));
-    if (runner && top.score - runner.score < 10) return conflictEvidence("catalog", "Conflito no Mapa Databook", [top, runner].map((candidate) => ({
-      databook: candidate.entry.databook,
-      support: 1,
-      score: candidate.score,
-    })), []);
+    if (runner && top.score - runner.score < 10 && !decidesByDistinctToken(top, runner)) {
+      return conflictEvidence("catalog", "Conflito no Mapa Databook", [top, runner].map((candidate) => ({
+        databook: candidate.entry.databook,
+        support: 1,
+        score: candidate.score,
+      })), []);
+    }
     // Antes, tudo abaixo de 76 era descartado e caía no caminho geral da
     // disciplina — justamente o que não pode acontecer. Com a folga de 10
     // pontos sobre o segundo colocado já garantida acima, o melhor encaixe do
@@ -1126,7 +1173,7 @@
     const strong = top.score >= 76;
     return {
       databook: top.entry.databook,
-      levels: (top.entry.levels || []).slice(),
+      levels: [],
       source: strong ? "Mapa Databook" : "Mapa Databook · melhor encaixe",
       sourceType: "catalog",
       confidence: strong ? "alta" : "média",
@@ -1220,22 +1267,6 @@
     return disciplineEvidence;
   }
 
-  function trimLevels(levels) {
-    const list = (levels || []).map(text);
-    while (list.length && !list[list.length - 1]) list.pop();
-    return list;
-  }
-
-  // Os níveis só são válidos se forem exatamente o caminho escolhido. Uma
-  // fonte alternativa (EAP, base do documento, histórico) só prevalece quando
-  // repete o caminho e ainda desce um nível a mais — aí ela acrescenta pasta,
-  // não contradiz o caminho.
-  function levelsFollowPath(levels, pathLevels) {
-    const trimmed = trimLevels(levels);
-    if (!pathLevels.length || trimmed.length < pathLevels.length) return false;
-    return pathLevels.every((part, index) => pathKey(part) === pathKey(trimmed[index]));
-  }
-
   function levelsForDatabook(levelsByDatabook, databook) {
     if (!databook || !levelsByDatabook) return [];
     const exact = levelsByDatabook.get(norm(databook));
@@ -1287,16 +1318,6 @@
       levels = levelsForDatabook(control && control.levelsByDatabook, databook);
       if (levels.some(Boolean)) levelsSource = "Histórico do caminho";
     }
-    // O caminho Databook manda nos níveis: N1..N6 são os trechos do caminho.
-    // Qualquer conjunto herdado que contradiga o caminho escolhido é descartado
-    // — era daí que vinham as linhas com nível de outra disciplina.
-    const pathLevels = levelsFromDatabookPath(databook);
-    let levelsDiverged = false;
-    if (pathLevels.length && !levelsFollowPath(levels, pathLevels)) {
-      levelsDiverged = trimLevels(levels).length > 0;
-      levels = pathLevels.slice();
-      levelsSource = levelsDiverged ? "Caminho Databook (níveis herdados divergiam)" : "Caminho Databook";
-    }
     while (levels.length < 10) levels.push("");
     const sourceAction = recordValue(record, ["ESCOPO", "AÇÃO", "ACAO"]) || text(history && history["Ação"]) || "INCLUSÃO";
     const action = norm(sourceAction) === "EMISSAO" ? "INCLUSÃO" : sourceAction;
@@ -1320,7 +1341,6 @@
       levels,
       databookEvidence: evidence,
       levelsSource,
-      levelsDiverged,
     };
   }
 
@@ -1701,7 +1721,6 @@
       if (output.databook && output.databookEvidence && /^history$|^ld$|^catalog$/.test(output.databookEvidence.sourceType)) warnings.push(`Databook por ${output.databookEvidence.source}`);
       if (output.databookEvidence && output.databookEvidence.sourceType === "discipline-catalog") warnings.push(`Databook pela pasta da disciplina: ${output.databookEvidence.source}`);
       if (output.databookEvidence && output.databookEvidence.sourceType === "discipline-fallback") warnings.push(`Databook geral aplicado: ${output.databookEvidence.source}`);
-      if (output.levelsDiverged) warnings.push("Níveis herdados divergiam do caminho e foram refeitos a partir do caminho Databook");
       if (ldConflict && ldConflict.hasConflict && !blockingConflictFields.length) warnings.push("A LD possui divergência apenas nos campos de alocação; a decisão utilizou a confirmação mais recente.");
 
       const common = {
@@ -1786,12 +1805,14 @@
     return `${sheet}_LD_${ldNumber}`;
   }
 
-  // A coluna ABA da Central recebe o prazo descrito na LD. Quando a LD não traz
-  // prazo para aquele documento, o rótulo da aba continua sendo escrito para a
-  // linha não sair em branco no controle.
-  function centralTabValue(result) {
-    const deadline = text(result && result.ldDeadline) || recordDeadline(result && result.record);
-    return deadline || centralSheetLabel(result);
+  // A coluna VERSÃO DA LD da Central recebe o prazo descrito na LD, copiado
+  // como está na planilha. Sem prazo para aquele documento, a versão da LD
+  // enviada continua sendo escrita, para a linha não sair em branco.
+  function centralLdVersionValue(result) {
+    const record = result && result.record || {};
+    const source = result && result.ldSource || record.source || "";
+    const deadline = text(result && result.ldDeadline) || recordDeadline(record);
+    return deadline || text(result && result.ldVersion) || recordVersion(record) || ldVersionFromSource(source);
   }
 
   function allocationRow(result, allocationDate) {
@@ -1817,8 +1838,8 @@
     const output = result.output || {};
     const source = result.ldSource || record.source || "";
     return [
-      centralTabValue(result),
-      result.ldVersion || recordVersion(record) || ldVersionFromSource(source),
+      centralSheetLabel(result),
+      centralLdVersionValue(result),
       text(meta.allocationDate),
       "",
       "",
@@ -1902,7 +1923,7 @@
     allocationExplanation,
     allocationRow,
     centralSheetLabel,
-    centralTabValue,
+    centralLdVersionValue,
     controlRow,
     canSelectForAllocation,
     defaultSelectedForAllocation,

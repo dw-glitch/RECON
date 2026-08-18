@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.47**.
+Versão atual: **1.26.48**.
 
 ## Execução
 
@@ -55,21 +55,25 @@ família do documento, ou a pasta mais próxima do título quando a disciplina n
 separa RIR de C&M, como PINTURA. O caminho geral da disciplina só entra quando
 nenhuma dessas pastas resolve, e continua identificado como fallback na análise.
 
-Os níveis N1 a N10 são os trechos do caminho escolhido, separados por `|`.
-Conjuntos herdados do histórico ou da base do documento só prevalecem quando
-repetem o caminho e ainda descem uma pasta a mais; qualquer conjunto que
-contradiga o caminho é refeito e a divergência é registrada na análise.
+Os níveis N1 a N10 são a EAP do projeto, não as pastas do Databook: N1 é a
+unidade, N2 é o grupo da EAP e N3 o subgrupo (`UHDTD U-32`, `03.REPARO`,
+`03.04.CIVIL`). Eles vêm da EAP do Grupo 4 do nome do documento, resolvida pelo
+controle e pelas alocações anteriores. Quando a EAP exata ainda não apareceu, as
+EAPs irmãs — mesmo grupo e mesmo subgrupo — resolvem os níveis que têm em comum.
 
-Nas linhas da Central de Alocação, a coluna ABA recebe o prazo descrito na LD,
-copiado exatamente como está na planilha (data, texto ou prazo contratual). O
-RECON procura o prazo em qualquer coluna da LD cujo cabeçalho fale de prazo e dá
-preferência à coluna `PRAZO`. Quando a LD não informa prazo para o documento, a
-coluna volta a usar o número identificado no nome da LD anexada (`ET_LD_003`,
-`ET_LD_004` ou `N-1710_LD_001`), para a linha não sair em branco no controle. O
-relatório da análise mostra, na coluna `PRAZO NA LD (COLUNA ABA)`, o valor
-aproveitado de cada documento. A versão é preservada conforme a LD enviada e a
-Data Prevista é sempre a data atual da geração, sem reaproveitar datas antigas do
-histórico.
+Carregar as alocações já emitidas como histórico é o que deixa o gerador exato:
+com elas, o caminho e os níveis de um documento repetem a decisão anterior em vez
+de serem reinferidos.
+
+Nas linhas da Central de Alocação, a coluna ABA é o número da LD identificado no
+nome do arquivo anexado (`ET_LD_003`, `ET_LD_004` ou `N-1710_LD_001`). A coluna
+VERSÃO DA LD recebe o prazo descrito na LD, copiado exatamente como está na
+planilha (data, texto ou prazo contratual): o RECON procura o prazo em qualquer
+coluna cujo cabeçalho fale de prazo e dá preferência à coluna `PRAZO`. Sem prazo
+para aquele documento, a coluna volta a trazer a versão da LD enviada, para não
+sair em branco. O relatório da análise mostra o valor aproveitado na coluna
+`PRAZO NA LD (COLUNA VERSÃO DA LD)`. A Data Prevista é sempre a data atual da
+geração, sem reaproveitar datas antigas do histórico.
 
 ## Bases de referência
 
