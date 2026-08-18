@@ -1,6 +1,6 @@
 (function(root){"use strict";
   const entries=new Map(), urls=new Map(), loads=new Map();
-  const manifest=Object.freeze({"Analise_descricoes_Planilha1.xlsx":"offline_recon_audit_bases.js","Caminho data book_Rev.A VINI.xlsx":"offline_recon_audit_bases.js","Caminho data book_Rev.B_VINI.xlsx":"offline_recon_databook_b.js","pdf.worker.min.js":"offline_recon_pdf_worker.js"});
+  const manifest=Object.freeze({"Analise_descricoes_Planilha1.xlsx":"offline_recon_audit_bases.js","Caminho data book_Rev.A VINI.xlsx":"offline_recon_audit_bases.js","Caminho data book_Rev.C.xlsx":"offline_recon_databook_c.js","pdf.worker.min.js":"offline_recon_pdf_worker.js"});
   function register(source){Object.entries(source||{}).forEach(([name,item])=>entries.set(name,Object.freeze(item))); return api;}
   function loadScript(src){
     if(loads.has(src)) return loads.get(src);
