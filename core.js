@@ -242,6 +242,7 @@
       else if (h.includes("COMENTARIO DA FISCAL")) result.fiscalComment = index;
       else if (h.includes("CONFIRMACAO") && h.includes("DOCUMENTOS PREVISTOS")) result.allocationStatus = index;
       else if (h.includes("ETAPA") && h.includes("ALOCACAO")) result.allocationStage = index;
+      else if (h === "PRAZO" || h.startsWith("PRAZO ") || h.includes("PRAZO")) result.deadline = index;
       else if (h.includes("MODIFICADO EM")) result.modified = index;
       else if (h.includes("INCLUIDO EM")) result.included = index;
       else if (h.includes("ALOCACAO")) result.allocation = index;
@@ -410,6 +411,7 @@
           purpose: sheetCell(sheet, i, columns.purpose),
           databook: sheetCell(sheet, i, columns.databook),
           fiscalComment: sheetCell(sheet, i, columns.fiscalComment),
+          deadline: sheetCell(sheet, i, columns.deadline),
           allocationStatus: explicitAllocationStatus || inferredAllocationStatus,
           allocationStage: sheetCell(sheet, i, columns.allocationStage),
           modified: sheetCell(sheet, i, columns.modified),

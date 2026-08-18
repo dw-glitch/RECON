@@ -571,7 +571,7 @@ check("a aba Bases está registrada na interface, no carregador e no precache", 
 check("o registro de bases descreve as sete bases que o RECON reconhece", () => {
   const ids = Bases.descriptors().map((item) => item.id);
   assert.deepEqual(ids.slice().sort(), [
-    "allocation-template", "databook-rev-a", "databook-rev-b",
+    "allocation-template", "databook-rev-a", "databook-rev-c",
     "scon-escopo", "scon-tag-sgp", "tag-appendix", "titles-control",
   ]);
   // Os volumes precisam bater com o que audit_app.js confere ao carregar as
@@ -1148,6 +1148,51 @@ check("a Central usa o número da LD do arquivo, preserva a versão e força a d
   assert.equal(A.allocationRow(makeResult("ET", ld003, "0"), meta.allocationDate)[1], "2026-08-15");
 });
 
+check("a coluna ABA da Central recebe o prazo escrito na LD, sem reformatar", () => {
+  const A = createRequire(import.meta.url)("./allocation_core.js");
+  const source = "LD-5290.00-22313-91A-C1O-003_0001_0.xlsx";
+  const abaIndex = A.CONTROL_HEADERS.indexOf("ABA");
+  const meta = { allocationDate: "2026-08-15", allocationCode: "C1O-ALOC-CM-0001-2026", status: "PENDENTE ENVIO DE LD" };
+  const build = (ldColumns) => ({
+    document: "C1O_RNEST_U32_3.1.1.1_TUB_REP_VM-320001",
+    sheet: "ET",
+    ldSource: source,
+    ldVersion: "0",
+    record: { sheet: "ET", source, ldVersion: "0", ldColumns },
+    ldDeadline: A.recordDeadline({ ldColumns }),
+    base: null,
+    output: { document: "C1O_RNEST_U32_3.1.1.1_TUB_REP_VM-320001", plannedDate: "2020-01-01", workflow: "TUBULAÇÃO", levels: [] },
+  });
+
+  const comPrazo = build([{ header: "DOCUMENTO", value: "X" }, { header: "PRAZO", value: "30/09/2026" }]);
+  assert.equal(A.controlRow(comPrazo, meta)[abaIndex], "30/09/2026");
+
+  const prazoTextual = build([{ header: "Prazo de emissão", value: "60 dias após a AS" }]);
+  assert.equal(A.controlRow(prazoTextual, meta)[abaIndex], "60 dias após a AS");
+
+  const prazoPreferido = build([
+    { header: "PRAZO CONTRATUAL", value: "90 DIAS" },
+    { header: "PRAZO", value: "15/10/2026" },
+  ]);
+  assert.equal(A.recordDeadline(prazoPreferido.record), "15/10/2026");
+
+  const semPrazo = build([{ header: "DOCUMENTO", value: "X" }]);
+  assert.equal(A.controlRow(semPrazo, meta)[abaIndex], "ET_LD_003", "sem prazo na LD a aba continua identificando a LD");
+
+  const prazoVazio = build([{ header: "PRAZO", value: "" }]);
+  assert.equal(A.controlRow(prazoVazio, meta)[abaIndex], "ET_LD_003", "prazo em branco não pode apagar a identificação da aba");
+});
+
+check("o relatório de análise da alocação publica o prazo lido da LD", () => {
+  const source = read("allocation_workbook.js");
+  assert.ok(source.includes("PRAZO NA LD (COLUNA ABA)"), "o relatório precisa mostrar o prazo aproveitado na coluna ABA");
+  const widths = source.match(/\[20, 38, 29, 52[^\]]*\]/);
+  assert.ok(widths, "a lista de larguras da aba Análise precisa continuar existindo");
+  const total = widths[0].slice(1, -1).split(",").length;
+  const headers = source.match(/function reportHeaders\(\) \{[\s\S]*?\n  \}/)[0].match(/"/g).length / 2;
+  assert.equal(total, headers, "cada coluna do relatório precisa de uma largura correspondente");
+});
+
 check("a seleção manual inclui resultados bloqueados sem selecionar itens impossíveis", () => {
   const A = createRequire(import.meta.url)("./allocation_core.js");
   const ready = { document: "DOC_READY_001", decision: A.READY, record: {}, output: {} };
@@ -1326,6 +1371,115 @@ check("o SCON ESCOPO é o último recurso da descrição, antes do texto atual d
   // para entrar antes na cadeia — senão ele nunca preencheria o que faltou.
   const decl = core.slice(core.indexOf("const sconEscopoLastResort"), core.indexOf("const sconEscopoLastResort") + 200);
   assert.doesNotMatch(decl, /trustedSconEscopo/, "o último recurso voltou a depender da confirmação");
+});
+
+// ===================== PRECISÃO DO CAMINHO DATABOOK =====================
+
+function databookCatalogFromBase() {
+  const require2 = createRequire(import.meta.url);
+  const XLSX = require2("./xlsx.full.min.js");
+  globalThis.XLSX = XLSX;
+  const A = require2("./allocation_core.js");
+  const registry = new Map();
+  const previous = globalThis.RECONOfflineResources;
+  globalThis.RECONOfflineResources = { register: (map) => { Object.entries(map).forEach(([name, item]) => registry.set(name, item)); } };
+  try {
+    new vm.Script(read("offline_recon_databook_c.js")).runInThisContext();
+  } finally {
+    globalThis.RECONOfflineResources = previous;
+  }
+  const item = registry.get("Caminho data book_Rev.C.xlsx");
+  assert.ok(item, "a base Rev.C embutida precisa se registrar com o nome que o carregador procura");
+  const workbook = XLSX.read(Buffer.from(item.base64, "base64"), { type: "buffer", cellDates: true });
+  return { A, XLSX, entries: A.parseDatabookWorkbook(workbook, XLSX).entries };
+}
+
+check("a base Rev.C embutida troca o marcador de unidade pelo N1 real e traz os níveis", () => {
+  const { A, entries } = databookCatalogFromBase();
+  assert.ok(entries.length >= 150, `a base Rev.C precisa carregar as referências (veio ${entries.length})`);
+  const marcador = entries.filter((entry) => /UHDT-X|\bXXX\b|NOME UNIDADE/i.test(entry.databook));
+  assert.equal(marcador.length, 0, "nenhum caminho pode sair com o marcador de unidade da planilha");
+  const unidades = [...new Set(entries.map((entry) => entry.databook.split("|")[0]))];
+  assert.deepEqual(unidades, ["UHDT-D"], "todo caminho da base precisa começar pelo N1 declarado nas abas de estrutura");
+  entries.forEach((entry) => {
+    assert.deepEqual(entry.levels, entry.databook.split("|"), `os níveis de ${entry.databook} precisam ser os trechos do próprio caminho`);
+  });
+});
+
+check("todo caminho geral por disciplina existe na base Rev.C embutida", () => {
+  const { A, entries } = databookCatalogFromBase();
+  const prefixos = new Set();
+  entries.forEach((entry) => {
+    const partes = entry.databook.split("|");
+    for (let corte = 3; corte <= partes.length; corte += 1) prefixos.add(A.pathKey(partes.slice(0, corte).join("|")));
+  });
+  const bloco = read("allocation_core.js").match(/const GENERAL_DATABOOK_BY_DISCIPLINE = Object\.freeze\(\{[\s\S]*?\n  \}\);/)[0];
+  const caminhos = [...bloco.matchAll(/"(UHDT-[^"]+)"/g)].map((match) => match[1]);
+  assert.ok(caminhos.length >= 20, "a tabela de caminhos gerais precisa continuar existindo");
+  const fora = caminhos.filter((caminho) => !prefixos.has(A.pathKey(caminho)));
+  assert.deepEqual(fora, [], `estes caminhos gerais não existem na base: ${fora.join(" · ")}`);
+});
+
+check("os níveis da alocação são sempre os trechos do caminho Databook escolhido", () => {
+  const require2 = createRequire(import.meta.url);
+  const A = require2("./allocation_core.js");
+  const control = { rows: [], baseDocuments: new Map(), levelsByEap: new Map(), levelsByDatabook: new Map(), projectLevelBase: [], latestLdVersion: "" };
+
+  // Níveis herdados de outra disciplina não podem sobreviver ao caminho.
+  const caminho = "UHDT-D|DATA BOOK C&M|TUBULAÇÃO|C&M TUBULAÇÃO";
+  const historico = { databook: caminho, levels: ["UHDT-D", "DATA BOOK C&M", "ELÉTRICA", "C&M CABO_ELÉTRICA"], allocation: "" };
+  const record = {
+    document: "C1O_RNEST_U32_3.1.1.1_TUB_REP_VM-320001", documentKey: A.key("C1O_RNEST_U32_3.1.1.1_TUB_REP_VM-320001"),
+    title: "RELATÓRIO DE CONSTRUÇÃO E MONTAGEM", discipline: "TUBULAÇÃO", sheet: "ET_LD_003", row: 2,
+    ldColumns: [{ header: "CAMINHO DATABOOK", value: caminho }],
+  };
+  const saida = A.outputFromRecord(record, historico, null, control, "2026-08-18", null);
+  assert.deepEqual(saida.levels.slice(0, 4), caminho.split("|"), "os níveis precisam refazer o caminho escolhido");
+  assert.equal(saida.levels[4], "", "o caminho tem 4 trechos, então N5 fica vazio");
+  assert.ok(saida.levelsDiverged, "a divergência precisa ser sinalizada para o usuário");
+
+  // Uma fonte que respeita o caminho e desce mais fundo continua valendo.
+  const maisFundo = { databook: caminho, levels: [...caminho.split("|"), "SUBPASTA"], allocation: "" };
+  const profunda = A.outputFromRecord(record, maisFundo, null, control, "2026-08-18", null);
+  assert.equal(profunda.levels[4], "SUBPASTA", "um nível a mais, compatível com o caminho, precisa ser preservado");
+  assert.ok(!profunda.levelsDiverged);
+
+  // Sem histórico nenhum, o caminho ainda preenche os níveis.
+  const semHistorico = A.outputFromRecord(record, null, null, control, "2026-08-18", null);
+  assert.deepEqual(semHistorico.levels.slice(0, 4), caminho.split("|"), "caminho novo não pode gerar linha com N1 a N6 vazios");
+});
+
+check("a alocação prefere a pasta da disciplina ao caminho geral", () => {
+  const { A, entries } = databookCatalogFromBase();
+  const casos = [
+    ["C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-320001", "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO DE VÁLVULA", "TUBULAÇÃO"],
+    ["C1O_RNEST_U32_3.4.1.1_EQD_REP_BA-320001", "RELATÓRIO DE CONSTRUÇÃO E MONTAGEM DE BOMBA", "EQP DINÂMICOS"],
+    ["C1O_RNEST_U32_3.8.1.1_PIN_REP_PJ-320001", "RELATÓRIO DE PINTURA E JATEAMENTO", "PINTURA"],
+  ];
+  const control = { rows: [], baseDocuments: new Map(), levelsByEap: new Map(), levelsByDatabook: new Map(), projectLevelBase: [], latestLdVersion: "" };
+  const records = casos.map(([document, title, discipline], indice) => ({
+    document, documentKey: A.key(document), title, discipline, sheet: "ET_LD_003", row: indice + 2,
+    source: "LD-5290.00-22313-91A-C1O-003_0001_0.xlsx",
+    ldColumns: [{ header: "DOCUMENTO", value: document }, { header: "TÍTULO", value: title }, { header: "DISCIPLINA", value: discipline }],
+  }));
+  const analise = A.analyze(records.map((record) => ({ raw: record.document })), records, control, { catalogEntries: entries, allocationDate: "2026-08-18" });
+  const conhecidos = new Set(entries.map((entry) => A.pathKey(entry.databook)));
+  assert.equal(analise.results.length, casos.length);
+  analise.results.forEach((resultado) => {
+    const saida = resultado.output || {};
+    const evidencia = saida.databookEvidence || {};
+    assert.notEqual(evidencia.sourceType, "discipline-fallback", `${resultado.document} caiu no caminho geral: ${saida.databook}`);
+    assert.ok(conhecidos.has(A.pathKey(saida.databook)), `${saida.databook} não existe na base Rev.C`);
+    assert.ok(saida.levels.filter(Boolean).length >= 4, `${resultado.document} saiu sem níveis`);
+  });
+});
+
+check("o melhor encaixe do mapa não é descartado por pouco", () => {
+  const fonte = read("allocation_core.js");
+  const trecho = fonte.slice(fonte.indexOf("function chooseCatalogEvidence"), fonte.indexOf("function evidenceRowsByFamily"));
+  assert.doesNotMatch(trecho, /if \(top\.score < 76\) return null;/, "a queda seca de pontuação mandava o documento para o caminho geral");
+  assert.match(trecho, /top\.score - runner\.score < 10/, "a proteção contra empate entre pastas precisa continuar");
+  assert.match(trecho, /levels: \(top\.entry\.levels \|\| \[\]\)/, "a evidência do mapa precisa carregar os níveis da entrada");
 });
 
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));

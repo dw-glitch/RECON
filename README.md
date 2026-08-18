@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.45**.
+Versão atual: **1.26.47**.
 
 ## Execução
 
@@ -42,14 +42,34 @@ saída técnica válida. A geração pode separar os selecionados por
 disciplina/workflow ou reunir tudo no mesmo número de alocação. O relatório da
 análise registra o diagnóstico operacional e destaca inclusões manuais. A
 consulta rápida de Databook aceita várias linhas no formato Documento + Título.
-Quando nenhuma referência específica de Databook é segura, o gerador usa o
-caminho geral da disciplina, separando a família RIR da família C&M, e identifica
-o preenchimento como fallback na análise.
 
-Nas linhas da Central de Alocação, a coluna ABA usa o número identificado no
-nome de cada LD anexada (`ET_LD_003`, `ET_LD_004` ou `N-1710_LD_001`). A versão
-é preservada conforme a LD enviada e a Data Prevista é sempre a data atual da
-geração, sem reaproveitar datas antigas do histórico.
+O caminho de Databook vem da base `Caminho data book_Rev.C.xlsx`, lida da aba
+`CAMINHO DB_SIGEM`. A Rev.C escreve a unidade como marcador (`UHDT-X`) porque o
+mapa vale para mais de uma unidade; o RECON troca esse marcador pelo N1 real
+declarado nas abas `NÍVEL_CAMINHO` e `ESTUTURA` antes de usar o caminho.
+
+A escolha do caminho segue esta ordem: caminho já preenchido na LD, histórico do
+próprio documento, documentos da mesma família, melhor encaixe no Mapa Databook
+e, por último, a pasta da disciplina no próprio mapa — RIR ou C&M conforme a
+família do documento, ou a pasta mais próxima do título quando a disciplina não
+separa RIR de C&M, como PINTURA. O caminho geral da disciplina só entra quando
+nenhuma dessas pastas resolve, e continua identificado como fallback na análise.
+
+Os níveis N1 a N10 são os trechos do caminho escolhido, separados por `|`.
+Conjuntos herdados do histórico ou da base do documento só prevalecem quando
+repetem o caminho e ainda descem uma pasta a mais; qualquer conjunto que
+contradiga o caminho é refeito e a divergência é registrada na análise.
+
+Nas linhas da Central de Alocação, a coluna ABA recebe o prazo descrito na LD,
+copiado exatamente como está na planilha (data, texto ou prazo contratual). O
+RECON procura o prazo em qualquer coluna da LD cujo cabeçalho fale de prazo e dá
+preferência à coluna `PRAZO`. Quando a LD não informa prazo para o documento, a
+coluna volta a usar o número identificado no nome da LD anexada (`ET_LD_003`,
+`ET_LD_004` ou `N-1710_LD_001`), para a linha não sair em branco no controle. O
+relatório da análise mostra, na coluna `PRAZO NA LD (COLUNA ABA)`, o valor
+aproveitado de cada documento. A versão é preservada conforme a LD enviada e a
+Data Prevista é sempre a data atual da geração, sem reaproveitar datas antigas do
+histórico.
 
 ## Bases de referência
 

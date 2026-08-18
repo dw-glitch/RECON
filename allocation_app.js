@@ -388,17 +388,17 @@
     try {
       let buffer;
       const offline = window.RECONOfflineResources;
-      if (!offline || !(offline.has("Caminho data book_Rev.B_VINI.xlsx") || await offline.ensure("Caminho data book_Rev.B_VINI.xlsx"))) throw new Error("Base Databook indisponível");
-      buffer = offline.arrayBuffer("Caminho data book_Rev.B_VINI.xlsx");
-      const workbook = window.RECONWorkbookWorker ? await window.RECONWorkbookWorker.readBuffer(buffer, "databook-rev-b", { cellDates: true }) : XLSX.read(buffer, { type: "array", cellDates: true });
+      if (!offline || !(offline.has("Caminho data book_Rev.C.xlsx") || await offline.ensure("Caminho data book_Rev.C.xlsx"))) throw new Error("Base Databook indisponível");
+      buffer = offline.arrayBuffer("Caminho data book_Rev.C.xlsx");
+      const workbook = window.RECONWorkbookWorker ? await window.RECONWorkbookWorker.readBuffer(buffer, "databook-rev-c", { cellDates: true }) : XLSX.read(buffer, { type: "array", cellDates: true });
       state.catalogEntries = A.parseDatabookWorkbook(workbook, XLSX).entries;
       offlineCatalogCache = state.catalogEntries; // Guarda para próximas análises.
       return state.catalogEntries;
     } catch (_) {
       try {
-        const buffer = window.RECONOfflineResources?.arrayBuffer("Caminho data book_Rev.B_VINI.xlsx");
+        const buffer = window.RECONOfflineResources?.arrayBuffer("Caminho data book_Rev.C.xlsx");
         if (buffer) {
-          const workbook = window.RECONWorkbookWorker ? await window.RECONWorkbookWorker.readBuffer(buffer, "databook-rev-b-offline", { cellDates: true }) : XLSX.read(buffer, { type: "array", cellDates: true });
+          const workbook = window.RECONWorkbookWorker ? await window.RECONWorkbookWorker.readBuffer(buffer, "databook-rev-c-offline", { cellDates: true }) : XLSX.read(buffer, { type: "array", cellDates: true });
           state.catalogEntries = A.parseDatabookWorkbook(workbook, XLSX).entries;
           offlineCatalogCache = state.catalogEntries;
           return state.catalogEntries;

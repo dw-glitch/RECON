@@ -257,7 +257,7 @@
       CM: "UHDT-D|DATA BOOK C&M|INSTRUMENTAÇÃO",
     }),
     HVAC: Object.freeze({
-      RIR: "UHDT-D|DATA BOOK C&M|HVAC|RIR HVAC",
+      RIR: "UHDT-D|DATA BOOK C&M|HVAC",
       CM: "UHDT-D|DATA BOOK C&M|HVAC|C&M DE HVAC",
     }),
     EQP_SEGURANCA: Object.freeze({
@@ -265,9 +265,25 @@
       CM: "UHDT-D|DATA BOOK C&M|EQP SEGURANÇA|C&M_EQP. SEGURANÇA",
     }),
     PINTURA: Object.freeze({
-      RIR: "UHDT-D|DATA BOOK C&M|PINTURA|RIR PINTURA",
+      RIR: "UHDT-D|DATA BOOK C&M|PINTURA",
       CM: "UHDT-D|DATA BOOK C&M|PINTURA",
     }),
+  });
+
+  // Pasta N3 do mapa que corresponde a cada disciplina. Estrutura metálica não
+  // tem pasta própria: ela vive dentro de CIVIL.
+  const DISCIPLINE_DATABOOK_FOLDER = Object.freeze({
+    TUBULACAO: "TUBULACAO",
+    CIVIL: "CIVIL",
+    ESTRUTURA_METALICA: "CIVIL",
+    EQP_ESTATICOS: "EQP ESTATICOS",
+    EQP_DINAMICOS: "EQP DINAMICOS",
+    ELETRICA: "ELETRICA",
+    TELECOM: "TELECOM",
+    INSTRUMENTACAO: "INSTRUMENTACAO",
+    HVAC: "HVAC",
+    EQP_SEGURANCA: "EQP SEGURANCA",
+    PINTURA: "PINTURA",
   });
 
   function databookDisciplineKey(record) {
@@ -298,6 +314,79 @@
     return reportCode === "RIR" || documentType === "RIR" || titleKind(item.title) === "RIR" ? "RIR" : "CM";
   }
 
+  function entryLevels(entry) {
+    const levels = entry && entry.levels;
+    return levels && levels.length ? levels : levelsFromDatabookPath(entry && entry.databook);
+  }
+
+  // Antes de aceitar o caminho geral da disciplina, procura no próprio mapa a
+  // pasta da disciplina que combina com a família do documento (RIR ou C&M).
+  // Só devolve quando existe um vencedor claro: em pastas onde várias opções
+  // empatam — TELECOM, por exemplo, que só tem C&M por equipamento — continuar
+  // no caminho geral é mais honesto do que escolher uma pasta ao acaso.
+  function disciplineCatalogFallback(record, catalogEntries) {
+    const discipline = databookDisciplineKey(record);
+    const folder = DISCIPLINE_DATABOOK_FOLDER[discipline];
+    if (!folder || !(catalogEntries || []).length) return null;
+    const family = databookFamilyForRecord(record);
+    const wantsMetal = discipline === "ESTRUTURA_METALICA";
+    const ranked = [];
+    (catalogEntries || []).forEach((entry) => {
+      const levels = entryLevels(entry);
+      // O mapa escreve EQP ESTÁTICOS e, em algumas linhas, EQP ESTÁTICO.
+      // Comparar sem o plural evita perder essas pastas.
+      if (levels.length < 4 || norm(levels[2]).replace(/S$/, "") !== folder.replace(/S$/, "")) return;
+      const leaf = norm(levels[3]);
+      const isRir = /^RIR\b|^RIR[_ -]/.test(leaf);
+      const isCm = /^C&M\b|^C&M[_ -]/.test(leaf);
+      if (family === "RIR" ? !isRir : !isCm) return;
+      const metalLeaf = /ESTRUTURA METALICA/.test(leaf);
+      let score = 0;
+      if (levels.length === 4) score += 10;
+      if (leaf.includes(folder)) score += 8;
+      if (/DEMAIS|COMUNS/.test(leaf)) score += 4;
+      if (wantsMetal) score += metalLeaf ? 12 : -12;
+      else if (discipline === "CIVIL" && metalLeaf) score -= 12;
+      ranked.push({ entry, levels, score });
+    });
+    // Disciplinas como PINTURA não têm pasta RIR nem C&M: as pastas são por
+    // atividade. Nesses casos a família não filtra nada e quem decide é a
+    // semelhança com o título do documento — ainda melhor que o caminho geral.
+    let margin = 4;
+    let byFamily = true;
+    if (!ranked.length) {
+      margin = 6;
+      byFamily = false;
+      const documentTokens = titleTokens(`${record && record.title || ""} ${text(record && record.document).split("_").pop() || ""}`);
+      (catalogEntries || []).forEach((entry) => {
+        const levels = entryLevels(entry);
+        if (levels.length < 4 || norm(levels[2]).replace(/S$/, "") !== folder.replace(/S$/, "")) return;
+        const similarity = Math.round(titleSimilarityFromTokens(documentTokens, titleTokens(`${entry.description || ""} ${levels[3]}`)) * 30);
+        if (similarity <= 0) return;
+        ranked.push({ entry, levels, score: similarity + (levels.length === 4 ? 6 : 0) });
+      });
+    }
+    if (!ranked.length) return null;
+    ranked.sort((left, right) => right.score - left.score || left.entry.databook.length - right.entry.databook.length);
+    const top = ranked[0];
+    const runner = ranked.find((candidate) => pathKey(candidate.entry.databook) !== pathKey(top.entry.databook));
+    if (runner && top.score - runner.score < margin) return null;
+    return {
+      databook: top.entry.databook,
+      levels: top.levels.slice(),
+      source: byFamily
+        ? `Mapa Databook · pasta ${family === "RIR" ? "RIR" : "C&M"} da disciplina ${folder}`
+        : `Mapa Databook · pasta da disciplina ${folder} mais próxima do título`,
+      sourceType: "discipline-catalog",
+      confidence: "média",
+      support: 1,
+      allocation: "",
+      relatedDocuments: [],
+      family,
+      discipline,
+    };
+  }
+
   function generalDatabookFallback(record) {
     const discipline = databookDisciplineKey(record);
     const family = databookFamilyForRecord(record);
@@ -308,7 +397,7 @@
     const disciplineLabel = discipline ? discipline.replace(/_/g, " ") : "GERAL";
     return {
       databook,
-      levels: [],
+      levels: levelsFromDatabookPath(databook),
       source: `Fallback geral ${family === "RIR" ? "RIR" : "C&M"} da disciplina ${disciplineLabel}`,
       sourceType: "discipline-fallback",
       confidence: "fallback",
@@ -386,6 +475,24 @@
       if (entry && text(entry.value)) return text(entry.value);
     }
     return "";
+  }
+
+  // O prazo é lido direto da LD, sem reformatar: a coluna ABA da Central passa
+  // a mostrar o texto exatamente como o usuário digitou na planilha de origem.
+  // A busca aceita qualquer cabeçalho que fale de prazo (PRAZO, PRAZO DE
+  // EMISSÃO, PRAZO CONTRATUAL...), mas dá preferência à coluna PRAZO pura.
+  function recordDeadline(record) {
+    const columns = record && record.ldColumns || [];
+    let fallback = "";
+    for (const column of columns) {
+      const header = norm(column.header);
+      if (!header.includes("PRAZO")) continue;
+      const value = text(column.value);
+      if (!value) continue;
+      if (header === "PRAZO") return value;
+      if (!fallback) fallback = value;
+    }
+    return fallback || text(record && record.deadline);
   }
 
   function hasAllocationStatusColumn(record) {
@@ -564,9 +671,64 @@
     };
   }
 
+  // O caminho Databook É a sequência de níveis: cada trecho separado por "|"
+  // ocupa uma coluna N1..N10 da alocação. Ler os níveis do próprio caminho
+  // evita que a linha saia com N1 a N6 vazios quando o caminho é novo e ainda
+  // não apareceu no histórico do controle.
+  function levelsFromDatabookPath(value) {
+    const raw = text(value);
+    if (!raw) return [];
+    return raw.split("|").map((part) => part.trim()).filter(Boolean);
+  }
+
+  // A partir da Rev.C o mapa escreve a unidade como marcador (UHDT-X, XXX,
+  // NOME UNIDADE) porque vale para mais de uma unidade. A aba NÍVEL_CAMINHO e a
+  // aba ESTUTURA declaram o N1 real; sem essa troca o caminho gerado sairia
+  // literalmente com "UHDT-X", que não existe no SIGEM.
+  const UNIT_PLACEHOLDER = /^(?:UHDT-?X|X{2,}|NOME UNIDADE|UNIDADE)$/;
+
+  function canonicalDatabookUnit(workbook, XLSX) {
+    const sheets = ["NÍVEL_CAMINHO", "NIVEL_CAMINHO", "ESTUTURA", "ESTRUTURA"];
+    for (const sheetName of sheets) {
+      const sheet = findSheet(workbook, sheetName);
+      if (!sheet) continue;
+      const rows = rowsFromSheet(sheet, XLSX);
+      for (const row of rows) {
+        const found = (row || []).map(text).find((cell) => /^UHDT-[A-Z]$/i.test(cell.trim()) && !UNIT_PLACEHOLDER.test(norm(cell)));
+        if (found) return found.trim();
+      }
+    }
+    return "UHDT-D";
+  }
+
+  // Algumas células do mapa trazem o caminho dentro de uma nota de revisão,
+  // por exemplo: "Rev.B: Alterado o CAM DB ... (UHDT-X|DATA BOOK C&M|...)".
+  // Sem isolar o caminho, a nota inteira virava entrada do catálogo e a
+  // descrição correspondente ficava vazia.
+  function extractDatabookPath(value) {
+    const raw = text(value);
+    if (!raw) return "";
+    if (!/[()\n]/.test(raw)) return raw;
+    const matches = raw.match(/[^()\n|]+(?:\|[^()\n|]+){2,}/g) || [];
+    let best = "";
+    matches.forEach((candidate) => {
+      const trimmed = candidate.trim();
+      if (completeDatabook(trimmed) && trimmed.length > best.length) best = trimmed;
+    });
+    return best || raw;
+  }
+
+  function applyDatabookUnit(databook, unit) {
+    const parts = levelsFromDatabookPath(databook);
+    if (!parts.length) return text(databook);
+    if (UNIT_PLACEHOLDER.test(norm(parts[0]))) parts[0] = unit;
+    return parts.join("|");
+  }
+
   function parseDatabookWorkbook(workbook, XLSX) {
     const sheet = findSheet(workbook, "CAMINHO DB_SIGEM");
     if (!sheet) return { entries: [], sourceSheet: "" };
+    const unit = canonicalDatabookUnit(workbook, XLSX);
     const rows = rowsFromSheet(sheet, XLSX);
     const entries = [];
     let current = null;
@@ -585,7 +747,19 @@
         description = (row || []).map(text).find((cell) => /DOCUMENTOS?:/i.test(cell) || /^\*/.test(cell)) || "";
       }
       if (completeDatabook(databook) && !norm(databook).startsWith("NOME UNIDADE|")) {
-        current = { description, databook, notes: "", rowNumber: rowIndex + 1, sourceSheet: "CAMINHO DB_SIGEM" };
+        const resolved = applyDatabookUnit(extractDatabookPath(databook), unit);
+        const levels = levelsFromDatabookPath(resolved);
+        current = {
+          // Quando a linha do mapa é só uma nota de revisão, a descrição sai
+          // vazia e a entrada ficaria inalcançável na busca. O último nível do
+          // caminho é a pasta real, então serve de descrição.
+          description: description || levels[levels.length - 1] || "",
+          databook: resolved,
+          levels,
+          notes: "",
+          rowNumber: rowIndex + 1,
+          sourceSheet: "CAMINHO DB_SIGEM",
+        };
         entries.push(current);
       } else if (current && description && (/DOCUMENTOS?:/i.test(description) || /^\*/.test(description.trim()))) {
         current.notes = [current.notes, description].filter(Boolean).join("\n");
@@ -944,13 +1118,18 @@
       support: 1,
       score: candidate.score,
     })), []);
-    if (top.score < 76) return null;
+    // Antes, tudo abaixo de 76 era descartado e caía no caminho geral da
+    // disciplina — justamente o que não pode acontecer. Com a folga de 10
+    // pontos sobre o segundo colocado já garantida acima, o melhor encaixe do
+    // mapa é sempre mais específico que o caminho geral; o que muda é a
+    // confiança declarada na análise.
+    const strong = top.score >= 76;
     return {
       databook: top.entry.databook,
-      levels: [],
-      source: "Mapa Databook",
+      levels: (top.entry.levels || []).slice(),
+      source: strong ? "Mapa Databook" : "Mapa Databook · melhor encaixe",
       sourceType: "catalog",
-      confidence: "alta",
+      confidence: strong ? "alta" : "média",
       support: 1,
       allocation: "",
       relatedDocuments: [],
@@ -1023,7 +1202,38 @@
     const catalogEvidence = chooseCatalogEvidence(record, context.catalogEntries);
     const acceptedCatalog = accept(catalogEvidence);
     if (acceptedCatalog) return acceptedCatalog;
-    return strongestConflict;
+    // Último passo antes do caminho geral: a pasta da disciplina no próprio
+    // mapa, que é sempre mais específica do que o caminho geral e traz níveis.
+    // Um conflito não resolve o caminho — ele só diz que duas pastas
+    // disputaram. Antes, esse conflito voltava com o caminho vazio e a linha
+    // caía no caminho geral; agora ele viaja junto com a pasta da disciplina.
+    const disciplineEvidence = disciplineCatalogFallback(record, context.catalogEntries);
+    if (strongestConflict) {
+      if (!disciplineEvidence) return strongestConflict;
+      return {
+        ...disciplineEvidence,
+        source: `${disciplineEvidence.source} · ${strongestConflict.source}`,
+        priorConflict: true,
+        alternatives: strongestConflict.alternatives || [],
+      };
+    }
+    return disciplineEvidence;
+  }
+
+  function trimLevels(levels) {
+    const list = (levels || []).map(text);
+    while (list.length && !list[list.length - 1]) list.pop();
+    return list;
+  }
+
+  // Os níveis só são válidos se forem exatamente o caminho escolhido. Uma
+  // fonte alternativa (EAP, base do documento, histórico) só prevalece quando
+  // repete o caminho e ainda desce um nível a mais — aí ela acrescenta pasta,
+  // não contradiz o caminho.
+  function levelsFollowPath(levels, pathLevels) {
+    const trimmed = trimLevels(levels);
+    if (!pathLevels.length || trimmed.length < pathLevels.length) return false;
+    return pathLevels.every((part, index) => pathKey(part) === pathKey(trimmed[index]));
   }
 
   function levelsForDatabook(levelsByDatabook, databook) {
@@ -1077,6 +1287,16 @@
       levels = levelsForDatabook(control && control.levelsByDatabook, databook);
       if (levels.some(Boolean)) levelsSource = "Histórico do caminho";
     }
+    // O caminho Databook manda nos níveis: N1..N6 são os trechos do caminho.
+    // Qualquer conjunto herdado que contradiga o caminho escolhido é descartado
+    // — era daí que vinham as linhas com nível de outra disciplina.
+    const pathLevels = levelsFromDatabookPath(databook);
+    let levelsDiverged = false;
+    if (pathLevels.length && !levelsFollowPath(levels, pathLevels)) {
+      levelsDiverged = trimLevels(levels).length > 0;
+      levels = pathLevels.slice();
+      levelsSource = levelsDiverged ? "Caminho Databook (níveis herdados divergiam)" : "Caminho Databook";
+    }
     while (levels.length < 10) levels.push("");
     const sourceAction = recordValue(record, ["ESCOPO", "AÇÃO", "ACAO"]) || text(history && history["Ação"]) || "INCLUSÃO";
     const action = norm(sourceAction) === "EMISSAO" ? "INCLUSÃO" : sourceAction;
@@ -1100,6 +1320,7 @@
       levels,
       databookEvidence: evidence,
       levelsSource,
+      levelsDiverged,
     };
   }
 
@@ -1478,7 +1699,9 @@
       if (!output.levels.slice(0, 6).some(Boolean)) warnings.push("Níveis N1 a N6 vazios");
       if (!ldVersion) warnings.push("Versão da LD vazia");
       if (output.databook && output.databookEvidence && /^history$|^ld$|^catalog$/.test(output.databookEvidence.sourceType)) warnings.push(`Databook por ${output.databookEvidence.source}`);
+      if (output.databookEvidence && output.databookEvidence.sourceType === "discipline-catalog") warnings.push(`Databook pela pasta da disciplina: ${output.databookEvidence.source}`);
       if (output.databookEvidence && output.databookEvidence.sourceType === "discipline-fallback") warnings.push(`Databook geral aplicado: ${output.databookEvidence.source}`);
+      if (output.levelsDiverged) warnings.push("Níveis herdados divergiam do caminho e foram refeitos a partir do caminho Databook");
       if (ldConflict && ldConflict.hasConflict && !blockingConflictFields.length) warnings.push("A LD possui divergência apenas nos campos de alocação; a decisão utilizou a confirmação mais recente.");
 
       const common = {
@@ -1490,6 +1713,7 @@
         history,
         base,
         ldVersion,
+        ldDeadline: recordDeadline(record),
         allocationStatusAvailable,
         existingAllocation,
         previousAllocation: existingAllocation,
@@ -1562,6 +1786,14 @@
     return `${sheet}_LD_${ldNumber}`;
   }
 
+  // A coluna ABA da Central recebe o prazo descrito na LD. Quando a LD não traz
+  // prazo para aquele documento, o rótulo da aba continua sendo escrito para a
+  // linha não sair em branco no controle.
+  function centralTabValue(result) {
+    const deadline = text(result && result.ldDeadline) || recordDeadline(result && result.record);
+    return deadline || centralSheetLabel(result);
+  }
+
   function allocationRow(result, allocationDate) {
     const output = result.output || {};
     return [
@@ -1585,7 +1817,7 @@
     const output = result.output || {};
     const source = result.ldSource || record.source || "";
     return [
-      centralSheetLabel(result),
+      centralTabValue(result),
       result.ldVersion || recordVersion(record) || ldVersionFromSource(source),
       text(meta.allocationDate),
       "",
@@ -1636,12 +1868,16 @@
     databookDisciplineKey,
     databookFamilyForRecord,
     generalDatabookFallback,
+    disciplineCatalogFallback,
+    levelsFromDatabookPath,
+    outputFromRecord,
     titleSimilarity,
     subjectTags,
     suggestCatalogDatabook: chooseCatalogEvidence,
     isAsBuiltPurpose,
     workflowForPurpose,
     recordValue,
+    recordDeadline,
     hasAllocationStatusColumn,
     newestLdVersion,
     ldNumberFromSource,
@@ -1666,6 +1902,7 @@
     allocationExplanation,
     allocationRow,
     centralSheetLabel,
+    centralTabValue,
     controlRow,
     canSelectForAllocation,
     defaultSelectedForAllocation,

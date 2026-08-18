@@ -1,6 +1,6 @@
-// RECON Service Worker v1.26.45
+// RECON Service Worker v1.26.47
 // Provides offline support, caching, and PWA installation capabilities
-const VERSION = "1.26.45";
+const VERSION = "1.26.47";
 const CACHE_NAME = `recon-cache-v${VERSION}`;
 const STATIC_CACHE = `recon-static-v${VERSION}`;
 const DATA_CACHE = `recon-data-v${VERSION}`;
