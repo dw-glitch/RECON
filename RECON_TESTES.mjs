@@ -1148,6 +1148,51 @@ check("a Central usa o número da LD do arquivo, preserva a versão e força a d
   assert.equal(A.allocationRow(makeResult("ET", ld003, "0"), meta.allocationDate)[1], "2026-08-15");
 });
 
+check("a coluna ABA da Central recebe o prazo escrito na LD, sem reformatar", () => {
+  const A = createRequire(import.meta.url)("./allocation_core.js");
+  const source = "LD-5290.00-22313-91A-C1O-003_0001_0.xlsx";
+  const abaIndex = A.CONTROL_HEADERS.indexOf("ABA");
+  const meta = { allocationDate: "2026-08-15", allocationCode: "C1O-ALOC-CM-0001-2026", status: "PENDENTE ENVIO DE LD" };
+  const build = (ldColumns) => ({
+    document: "C1O_RNEST_U32_3.1.1.1_TUB_REP_VM-320001",
+    sheet: "ET",
+    ldSource: source,
+    ldVersion: "0",
+    record: { sheet: "ET", source, ldVersion: "0", ldColumns },
+    ldDeadline: A.recordDeadline({ ldColumns }),
+    base: null,
+    output: { document: "C1O_RNEST_U32_3.1.1.1_TUB_REP_VM-320001", plannedDate: "2020-01-01", workflow: "TUBULAÇÃO", levels: [] },
+  });
+
+  const comPrazo = build([{ header: "DOCUMENTO", value: "X" }, { header: "PRAZO", value: "30/09/2026" }]);
+  assert.equal(A.controlRow(comPrazo, meta)[abaIndex], "30/09/2026");
+
+  const prazoTextual = build([{ header: "Prazo de emissão", value: "60 dias após a AS" }]);
+  assert.equal(A.controlRow(prazoTextual, meta)[abaIndex], "60 dias após a AS");
+
+  const prazoPreferido = build([
+    { header: "PRAZO CONTRATUAL", value: "90 DIAS" },
+    { header: "PRAZO", value: "15/10/2026" },
+  ]);
+  assert.equal(A.recordDeadline(prazoPreferido.record), "15/10/2026");
+
+  const semPrazo = build([{ header: "DOCUMENTO", value: "X" }]);
+  assert.equal(A.controlRow(semPrazo, meta)[abaIndex], "ET_LD_003", "sem prazo na LD a aba continua identificando a LD");
+
+  const prazoVazio = build([{ header: "PRAZO", value: "" }]);
+  assert.equal(A.controlRow(prazoVazio, meta)[abaIndex], "ET_LD_003", "prazo em branco não pode apagar a identificação da aba");
+});
+
+check("o relatório de análise da alocação publica o prazo lido da LD", () => {
+  const source = read("allocation_workbook.js");
+  assert.ok(source.includes("PRAZO NA LD (COLUNA ABA)"), "o relatório precisa mostrar o prazo aproveitado na coluna ABA");
+  const widths = source.match(/\[20, 38, 29, 52[^\]]*\]/);
+  assert.ok(widths, "a lista de larguras da aba Análise precisa continuar existindo");
+  const total = widths[0].slice(1, -1).split(",").length;
+  const headers = source.match(/function reportHeaders\(\) \{[\s\S]*?\n  \}/)[0].match(/"/g).length / 2;
+  assert.equal(total, headers, "cada coluna do relatório precisa de uma largura correspondente");
+});
+
 check("a seleção manual inclui resultados bloqueados sem selecionar itens impossíveis", () => {
   const A = createRequire(import.meta.url)("./allocation_core.js");
   const ready = { document: "DOC_READY_001", decision: A.READY, record: {}, output: {} };

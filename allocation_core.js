@@ -388,6 +388,24 @@
     return "";
   }
 
+  // O prazo é lido direto da LD, sem reformatar: a coluna ABA da Central passa
+  // a mostrar o texto exatamente como o usuário digitou na planilha de origem.
+  // A busca aceita qualquer cabeçalho que fale de prazo (PRAZO, PRAZO DE
+  // EMISSÃO, PRAZO CONTRATUAL...), mas dá preferência à coluna PRAZO pura.
+  function recordDeadline(record) {
+    const columns = record && record.ldColumns || [];
+    let fallback = "";
+    for (const column of columns) {
+      const header = norm(column.header);
+      if (!header.includes("PRAZO")) continue;
+      const value = text(column.value);
+      if (!value) continue;
+      if (header === "PRAZO") return value;
+      if (!fallback) fallback = value;
+    }
+    return fallback || text(record && record.deadline);
+  }
+
   function hasAllocationStatusColumn(record) {
     return (record && record.ldColumns || []).some((column) => {
       const header = norm(column.header);
@@ -1490,6 +1508,7 @@
         history,
         base,
         ldVersion,
+        ldDeadline: recordDeadline(record),
         allocationStatusAvailable,
         existingAllocation,
         previousAllocation: existingAllocation,
@@ -1562,6 +1581,14 @@
     return `${sheet}_LD_${ldNumber}`;
   }
 
+  // A coluna ABA da Central recebe o prazo descrito na LD. Quando a LD não traz
+  // prazo para aquele documento, o rótulo da aba continua sendo escrito para a
+  // linha não sair em branco no controle.
+  function centralTabValue(result) {
+    const deadline = text(result && result.ldDeadline) || recordDeadline(result && result.record);
+    return deadline || centralSheetLabel(result);
+  }
+
   function allocationRow(result, allocationDate) {
     const output = result.output || {};
     return [
@@ -1585,7 +1612,7 @@
     const output = result.output || {};
     const source = result.ldSource || record.source || "";
     return [
-      centralSheetLabel(result),
+      centralTabValue(result),
       result.ldVersion || recordVersion(record) || ldVersionFromSource(source),
       text(meta.allocationDate),
       "",
@@ -1642,6 +1669,7 @@
     isAsBuiltPurpose,
     workflowForPurpose,
     recordValue,
+    recordDeadline,
     hasAllocationStatusColumn,
     newestLdVersion,
     ldNumberFromSource,
@@ -1666,6 +1694,7 @@
     allocationExplanation,
     allocationRow,
     centralSheetLabel,
+    centralTabValue,
     controlRow,
     canSelectForAllocation,
     defaultSelectedForAllocation,

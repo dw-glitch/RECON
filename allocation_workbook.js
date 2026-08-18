@@ -181,8 +181,8 @@
   function updateCoreProperties(coreXml) {
     const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
     let output = coreXml
-      .replace(/<dc:creator>[\s\S]*?<\/dc:creator>/, "<dc:creator>RECON 1.26.44</dc:creator>")
-      .replace(/<cp:lastModifiedBy>[\s\S]*?<\/cp:lastModifiedBy>/, "<cp:lastModifiedBy>RECON 1.26.44</cp:lastModifiedBy>");
+      .replace(/<dc:creator>[\s\S]*?<\/dc:creator>/, "<dc:creator>RECON 1.26.46</dc:creator>")
+      .replace(/<cp:lastModifiedBy>[\s\S]*?<\/cp:lastModifiedBy>/, "<cp:lastModifiedBy>RECON 1.26.46</cp:lastModifiedBy>");
     output = output.replace(
       /(<dcterms:modified\b[^>]*>)[\s\S]*?(<\/dcterms:modified>)/,
       (_match, opening, closing) => `${opening}${now}${closing}`,
@@ -283,10 +283,21 @@
     } catch (_) { /* relatório continua íntegro sem imagem */ }
   }
 
+  function columnLetter(index) {
+    let remaining = Number(index) || 0;
+    let letter = "";
+    while (remaining > 0) {
+      const rest = (remaining - 1) % 26;
+      letter = String.fromCharCode(65 + rest) + letter;
+      remaining = Math.floor((remaining - 1) / 26);
+    }
+    return letter || "A";
+  }
+
   function reportHeaders() {
     return [
       "SELECIONADO PARA GERAR?", "TIPO DE SELEÇÃO", "RECOMENDAÇÃO AUTOMÁTICA", "DIAGNÓSTICO OPERACIONAL",
-      "SITUAÇÃO", "DOCUMENTO", "ARQUIVO LD", "ABA LD", "LINHA LD", "VERSÃO DA LD ENVIADA",
+      "SITUAÇÃO", "DOCUMENTO", "ARQUIVO LD", "ABA LD", "LINHA LD", "VERSÃO DA LD ENVIADA", "PRAZO NA LD (COLUNA ABA)",
       "CONFIRMAÇÃO NA LD", "RESULTADO DA CONFIRMAÇÃO", "COMENTÁRIO DA CONFIRMAÇÃO", "FONTE DA CONFIRMAÇÃO",
       "DATA DA CONFIRMAÇÃO", "ALOCAÇÃO ANTERIOR", "MOTIVO DA ALOCAÇÃO / NÃO ALOCAÇÃO", "ETAPA DA ALOCAÇÃO",
       "COMENTÁRIO DA FISCAL UTILIZADO", "NÚMERO DA GRDT NA LD", "DATA EFETIVA DE EMISSÃO DA GRDT",
@@ -306,7 +317,9 @@
     return [
       selected ? "SIM" : "NÃO", selectionType, reportDecision(result), result && result.allocationDiagnosis || result && result.allocationDiagnosisDetail || "",
       reportSituation(result), result && result.document || "", result && result.ldSource || record.source || "", result && result.sheet || record.sheet || "", Number(record.row) || "",
-      result && result.ldVersion || record.ldVersion || "", result && result.allocationStatus || record.allocationStatus || "",
+      result && result.ldVersion || record.ldVersion || "",
+      A.recordDeadline ? (result && result.ldDeadline || A.recordDeadline(record)) : (result && result.ldDeadline || ""),
+      result && result.allocationStatus || record.allocationStatus || "",
       result && result.confirmationOutcome || "", result && result.confirmationComment || "", result && result.confirmationSource || "",
       formatDateBR(result && result.confirmationDate), result && result.previousAllocation || result && result.existingAllocation || record.allocation || "",
       result && result.allocationReason || result && result.reason || "", result && result.allocationStage || record.allocationStage || "",
@@ -318,7 +331,7 @@
 
   async function buildAnalysisReport(results, meta, ExcelJS) {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = "RECON 1.26.44";
+    workbook.creator = "RECON 1.26.46";
     workbook.created = new Date();
     workbook.modified = new Date();
     const settings = meta || {};
@@ -380,9 +393,9 @@
       decisionCell.font = { name: "Aptos", size: 9.5, bold: true, color: { argb: value.startsWith("SIM") ? "FF0B6B50" : value.includes("JÁ") ? "FF8A3F19" : "FF9A5C0B" } };
       decisionCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: value.startsWith("SIM") ? "FFE8F5EF" : value.includes("JÁ") ? "FFFFEEE8" : "FFFFF4DF" } };
     });
-    [20, 38, 29, 52, 34, 46, 38, 12, 11, 21, 24, 34, 58, 52, 18, 28, 78, 22, 58, 32, 23, 28, 68, 22, 35, 52, 72]
+    [20, 38, 29, 52, 34, 46, 38, 12, 11, 21, 26, 24, 34, 58, 52, 18, 28, 78, 22, 58, 32, 23, 28, 68, 22, 35, 52, 72]
       .forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
-    sheet.autoFilter = { from: "A1", to: `AA${Math.max(1, sheet.rowCount)}` };
+    sheet.autoFilter = { from: "A1", to: `${columnLetter(headers.length)}${Math.max(1, sheet.rowCount)}` };
     sheet.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: "1:1", margins: { left: .2, right: .2, top: .45, bottom: .45, header: .2, footer: .2 } };
     sheet.headerFooter.oddFooter = "&LRECON · ANÁLISE DE ALOCAÇÃO&C&P de &N&R&D";
     return workbook.xlsx.writeBuffer();
