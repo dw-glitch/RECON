@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.53**.
+Versão atual: **1.26.54**.
 
 ## Execução
 
@@ -34,8 +34,12 @@ Para itens não tagueados (Grupo 7 começando com `nt-`), o RECON decodifica os
 prefixos padronizados da tabela do PPTX de titulação da fiscal (`LBN`/`LBE`
 leito, `ETN`/`ETE` eletroduto, `LMN`/`LME` luminária, `SPN`/`SPE` suporte,
 `EMT` estrutura metálica, `CI` caixa de passagem, `CX`/`CXINSP` caixa de
-inspeção, `CAN` canaleta, entre outros — `non_tagged_title_rules.js`). Quando
-o trecho final do código é o fim do número de um desenho de referência (ex.:
+inspeção, `CAN` canaleta, entre outros — `non_tagged_title_rules.js`). Cabos
+novos usam `BOB` + código da bobina no PPTX, mas a LD grava a sigla por
+extenso e sem hífen antes do número (`BOBINA50`, não `BOB-50`); o RECON
+reconhece as duas grafias e, quando a bitola (`1X185MM`) e o comprimento
+(`469M`) do código também batem com o padrão, decodifica ambos no título.
+Quando o trecho final do código é o fim do número de um desenho de referência (ex.:
 `130-CHZ-102`), o título passa a dizer "contida/contido no
 DE-5290.00-22313-...", em vez de tentar decodificar esse trecho como um lugar
 em palavras — essa é a regra do desenho descrita no PPTX da fiscal. Uma

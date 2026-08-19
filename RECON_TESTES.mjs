@@ -1892,6 +1892,22 @@ check("as 348 conclusões já confirmadas continuam vencendo a regra de prefixo 
   assert.ok(comRegraDePrefixo > 200, "o teste precisa cobrir uma quantidade real de documentos com regra de prefixo");
 });
 
+check("o código de bobina de cabo (nt-BOBINA) decodifica bitola e comprimento", () => {
+  const N = createRequire(import.meta.url)("./non_tagged_title_rules.js");
+  // A LD grava a sigla do PPTX ("BOB + código da bobina", slide 6) por
+  // extenso e sem hífen antes do número: "BOBINA50", não "BOB-50".
+  const doc = "C1O_RNEST_U32_3.1.1.1_ELE_RIR_nt-BOBINA50-1X185MM-469M";
+  const resolved = N.resolve(doc);
+  assert.equal(resolved.description, "CABO NOVO - BOBINA Nº 50 (1 X 185 MM²) - 469 M");
+  assert.equal(resolved.confidence, "alta");
+
+  // Sem a bitola/comprimento reconhecíveis, ainda decodifica o número da
+  // bobina, só que com confiança média em vez de inventar dado.
+  const semDetalhe = N.resolve("C1O_RNEST_U32_3.1.1.1_ELE_RIR_nt-BOBINA99");
+  assert.equal(semDetalhe.description, "CABO NOVO - BOBINA Nº 99");
+  assert.equal(semDetalhe.confidence, "media");
+});
+
 check("o título completo aplica a regra do desenho no fluxo real de análise", () => {
   const require2 = createRequire(import.meta.url);
   const XLSX = require2("./xlsx.full.min.js");

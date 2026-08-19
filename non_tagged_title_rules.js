@@ -355,6 +355,14 @@
     const match = clean(value).match(/^(\d+)x(\d+)$/i);
     return match ? `${match[1]} X ${match[2]} MM` : "";
   }
+  function cableSection(value) {
+    const match = clean(value).match(/^(\d+)x(\d+)mm$/i);
+    return match ? `${match[1]} X ${match[2]} MM²` : "";
+  }
+  function cableLength(value) {
+    const match = clean(value).match(/^(\d+)m$/i);
+    return match ? `${match[1]} M` : "";
+  }
   function normalizeControlledDescription(description) {
     return clean(description)
       .replace(/\bASSOCIADO\s+AO\s+TAG\s+/gi, "ASSOCIADO AO ")
@@ -369,6 +377,30 @@
   }
   function familyDescription(identifier) {
     const tokens = clean(identifier).split("-").filter(Boolean);
+
+    // O PPTX da fiscal documenta "BOB + código da bobina" (slide 6), mas a
+    // LD grava a sigla por extenso, sem hífen entre ela e o número
+    // ("BOBINA50", não "BOB-50"): o prefixo fixo não bate por igualdade
+    // exata como os demais, por isso tem checagem própria antes da busca
+    // pela tabela de prefixos.
+    const bobinaMatch = /^BOBINA?(\d+)$/i.exec(tokens[0] || "");
+    if (bobinaMatch) {
+      const reelNumber = bobinaMatch[1];
+      const section = cableSection(tokens[1]);
+      const length = cableLength(tokens[2]);
+      const label = `CABO NOVO - BOBINA Nº ${reelNumber}${section ? ` (${section})` : ""}`;
+      const description = [label, length].filter(Boolean).join(" - ");
+      return {
+        description,
+        what: "CABO NOVO",
+        whereWhen: [`BOBINA Nº ${reelNumber}`, section, length].filter(Boolean).join(" · "),
+        source: PREFIX_RULES.BOB.source,
+        confidence: section || length ? "alta" : "media",
+        exact: false,
+        prefix: "BOB",
+      };
+    }
+
     const prefix = String(tokens[0] || "").toUpperCase();
     const rule = PREFIX_RULES[prefix];
     if (!rule) return null;
