@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.51**.
+Versão atual: **1.26.52**.
 
 ## Execução
 
@@ -88,6 +88,16 @@ para aquele documento, a coluna volta a trazer a versão da LD enviada, para nã
 sair em branco. O relatório da análise mostra o valor aproveitado na coluna
 `PRAZO NA LD (COLUNA VERSÃO DA LD)`. A Data Prevista é sempre a data atual da
 geração, sem reaproveitar datas antigas do histórico.
+
+## Relatório Excel da correção de títulos
+
+As colunas "O que as bases informam" e "Fonte principal", no Excel entregue
+pela correção de títulos, usam linguagem comum: dizem qual base confirmou o
+título (SCON, Apêndice 3, SCON ESCOPO, Lista de Válvulas, a norma) em frase
+corrida, sem termos internos de busca como matchMode, normalização ou
+fallback — esses só aparecem na tela, para quem opera o RECON. A tela e o
+Excel usam funções separadas; o teste de suíte falha se algum termo técnico
+voltar a aparecer no texto entregue ao usuário.
 
 ## Gravação da LD corrigida
 

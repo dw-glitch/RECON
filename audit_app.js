@@ -447,7 +447,11 @@
           : /NORMAL|PONTUAC/.test(mode) ? "scon_normalized" : "scon_exact";
     }
     if (row.sconEscopoMatch === "AMBÍGUO" && (!row.descriptionSource || row.descriptionSource === "Título atual")) return "scon_escopo_ambiguous";
-    if (row.descriptionSource && !/SEM|NAO LOCALIZ|NÃO LOCALIZ/i.test(row.descriptionSource)) return "controlled";
+    // "Título atual" é o valor de reserva de audit_core.js quando NENHUMA base
+    // trouxe descrição — sem essa exclusão, um documento sem correspondência
+    // nenhuma era rotulado "controlled" (Outra base controlada) só porque o
+    // campo não estava em branco.
+    if (row.descriptionSource && !/^Titulo atual$/i.test(Q.norm(row.descriptionSource)) && !/SEM|NAO LOCALIZ|NÃO LOCALIZ/i.test(row.descriptionSource)) return "controlled";
     return "without_evidence";
   }
 
@@ -1025,25 +1029,32 @@
     return labels[issue] || issue;
   }
 
+  // As duas funções abaixo alimentam só o Excel entregue na correção de
+  // títulos ("O que as bases informam" e "Fonte principal"). A tela usa
+  // titleEvidenceHtml, que pode continuar técnica para quem opera o RECON;
+  // o relatório que sai do sistema é lido por qualquer pessoa da Qualidade,
+  // então aqui não entra jargão de busca/algoritmo (busca progressiva,
+  // normalização, matchMode, fallback etc.) — só o nome da base consultada
+  // e o texto que ela registra.
   function titleReferenceSummary(row) {
     if (row.nonTaggedRule) {
-      return cleanTitleReportValue(`Item não tagueado — O QUÊ: ${row.nonTaggedWhat || "não identificado"} · ONDE/QUANDO: ${row.nonTaggedWhereWhen || "não identificado"}`);
+      return cleanTitleReportValue(`Documento sem TAG — o que é: ${row.nonTaggedWhat || "não identificado"}; onde/quando: ${row.nonTaggedWhereWhen || "não identificado"}`);
     }
     const references = [
-      row.titleStandard ? `Padrão documental ${row.titleStandardCode || ""} (ET-5290.00-22000-912-1LV-001 Rev. P): ${row.titleStandard}` : "",
-      row.previousTitlePattern ? `Títulos anteriores (${row.previousTitleSupport || 1}): ${row.previousTitlePattern}` : "",
-      row.valveTitle ? `LI de válvulas Rev. C (${row.valveType || row.tag || "TAG"}): ${row.valveTitle}` : row.valveCancelled ? "LI de válvulas Rev. C: TAG cancelada; aplicado fallback" : "",
-      row.sconTitleComplement ? `SCON TAG SGP: ${row.sconTitleComplement}` : "",
-      row.sconEscopoTitle ? `SCON ESCOPO (${row.sconEscopoLookupTag || row.tag || "TAG"} · EAP ${row.sconEscopoDocumentEap || "não informado"}): ${row.sconEscopoTitle}` : "",
-      row.appendixTitle ? `Apêndice 3 Rev.B (${(row.appendixMatchedTags || []).join(", ") || row.tag || "TAG"}): ${row.appendixTitle}` : "",
+      row.titleStandard ? `Tipo de documento definido pela norma ET-5290.00-22000-912-1LV-001 Rev. P: ${row.titleStandard}` : "",
+      row.previousTitlePattern ? `Já foi escrito assim antes nesta mesma LD: ${row.previousTitlePattern}` : "",
+      row.valveTitle ? `Descrição oficial na Lista de Válvulas: ${row.valveTitle}` : row.valveCancelled ? "A TAG está marcada como cancelada na Lista de Válvulas; a descrição foi buscada em outra base." : "",
+      row.sconTitleComplement ? `Descrição cadastrada no SCON: ${row.sconTitleComplement}` : "",
+      row.sconEscopoTitle ? `Descrição no escopo do projeto: ${row.sconEscopoTitle}` : "",
+      row.appendixTitle ? `Descrição cadastrada no Apêndice 3: ${row.appendixTitle}` : "",
     ].filter(Boolean);
     if (!row.sconTitleComplement && row.sconCandidateTitles && row.sconCandidateTitles.length) {
-      references.push(`SCON TAG SGP para conferência: ${row.sconCandidateTitles.join(" · ")}`);
+      references.push(`Outras descrições encontradas no SCON, para conferência: ${row.sconCandidateTitles.join(" · ")}`);
     }
     if (!row.sconEscopoTitle && row.sconEscopoCandidateTitles && row.sconEscopoCandidateTitles.length) {
-      references.push(`SCON ESCOPO para conferência: ${row.sconEscopoCandidateTitles.join(" · ")}`);
+      references.push(`Outras descrições encontradas no escopo do projeto, para conferência: ${row.sconEscopoCandidateTitles.join(" · ")}`);
     }
-    return cleanTitleReportValue(references.join(" | ") || row.description || row.evidence || "");
+    return cleanTitleReportValue(references.join(" | ") || row.description || "Nenhuma base confirmou este título.");
   }
 
   function simpleAuditMessage(row) {
@@ -1051,17 +1062,43 @@
     return cleanTitleReportValue(message || row.reason || "");
   }
 
+  // Frase única e em português corrente sobre de onde veio a sugestão.
+  // Não usa row.descriptionSource nem os *MatchMode: esses campos guardam a
+  // explicação de como a busca funcionou por dentro (ex.: "TAG equivalente
+  // após normalizar zeros e pontuação", "busca progressiva em partes do
+  // Grupo 7"), útil para depurar o RECON, não para quem só quer saber de
+  // onde saiu o título.
   function titleSourceSummary(row) {
-    const details = [
-      row.titleStandardSource || "",
-      row.previousTitlePattern ? `${row.previousTitleSupport || 1} título(s) anterior(es)` : "",
-      row.descriptionSource || "",
-      row.valveMatchMode && row.valveMatch !== "NÃO" ? `LI de válvulas: ${row.valveMatchMode}` : "",
-      row.sconMatchMode && row.sconMatch !== "NÃO" ? `SCON TAG SGP: ${row.sconMatchMode}` : "",
-      row.sconEscopoMatchMode && row.sconEscopoMatch !== "NÃO" ? `SCON ESCOPO: ${row.sconEscopoMatchMode}` : "",
-      row.appendixMatchMode && row.appendixMatch !== "NÃO" ? `Apêndice 3 Rev.B: ${row.appendixMatchMode}` : "",
-    ].filter(Boolean);
-    return cleanTitleReportValue([...new Set(details)].join(" · "));
+    const category = titleSourceCategory(row);
+    const frase = {
+      already_correct: "O título já está de acordo com as bases consultadas.",
+      learned_memory: "Baseado em uma correção que você mesmo já aprovou antes, para o mesmo padrão de título.",
+      valve_list: "Encontrado na Lista de Válvulas (LI de válvulas Rev. C), pela TAG do documento.",
+      scon_appendix: "Encontrado no SCON e no Apêndice 3, que se completam.",
+      appendix: "Encontrado no Apêndice 3, pela TAG do documento.",
+      scon_exact: "Encontrado no SCON, pela TAG do documento.",
+      scon_normalized: "Encontrado no SCON, pela TAG do documento.",
+      scon_component: "Encontrado no SCON, pela TAG do documento.",
+      scon_sgp_tag: "Encontrado no SCON, pela TAG do documento.",
+      scon_ambiguous: "O SCON tem mais de uma descrição possível para essa TAG; nenhuma foi escolhida sozinha. Confira manualmente.",
+      scon_escopo_exact: "Encontrado no escopo do projeto, pela TAG e pela área (EAP) do documento.",
+      scon_escopo_component: "Encontrado no escopo do projeto, pela TAG e pela área (EAP) do documento.",
+      scon_escopo_activity: "Encontrado no escopo do projeto, pela área (EAP) e pela atividade do documento.",
+      scon_escopo_fallback: "Encontrado no escopo do projeto com a mesma TAG, mas em outra área (EAP) do projeto. Confira se está correto antes de aprovar.",
+      scon_escopo_ambiguous: "O escopo do projeto tem mais de uma opção para essa TAG; nenhuma foi escolhida sozinha. Confira manualmente.",
+      controlled: "Encontrado em uma base de referência controlada.",
+      // Quando nada foi encontrado mas a norma confirmou o tipo do documento
+      // (pelo código do relatório no nome, não pelo texto do título), isso é
+      // dito na própria frase principal — não como um adendo solto, que soaria
+      // como se duas coisas diferentes tivessem acontecido.
+      without_evidence: row.titleStandard
+        ? "Nenhuma base trouxe uma descrição para completar o título; apenas o tipo do documento foi confirmado pela norma ET-5290.00-22000-912-1LV-001 Rev. P."
+        : "Nenhuma base confirmou este título. É preciso revisar manualmente.",
+    }[category] || "Nenhuma base confirmou este título. É preciso revisar manualmente.";
+    const extras = [];
+    if (row.titleStandard && category !== "already_correct" && category !== "without_evidence") extras.push("O tipo do documento segue a norma ET-5290.00-22000-912-1LV-001 Rev. P.");
+    if (row.previousTitlePattern) extras.push("Confirmado também por título(s) parecido(s) já usados nesta mesma LD.");
+    return cleanTitleReportValue([frase, ...extras].join(" "));
   }
 
   function excelColumns(kind) {
