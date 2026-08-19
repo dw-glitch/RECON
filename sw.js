@@ -14,6 +14,8 @@ const SHELL_URLS = [
   "legacy-compat.css",
   "recon-ui.css",
   "recon-final.css",
+  "recon-ux-improvements.css",
+  "recon-ux-enhancements.js",
   "output_audit.js",
   "pending_core.js",
   "recon_contracts.js",

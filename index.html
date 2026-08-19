@@ -28,7 +28,7 @@ if (location.protocol === "http:" || location.protocol === "https:") {
   document.head.appendChild(manifestLink);
 }
 </script>
-<link href="design-system.css" rel="stylesheet"/><link href="legacy-compat.css" rel="stylesheet"/><link href="recon-ui.css" rel="stylesheet"/><link href="recon-final.css" rel="stylesheet"/>
+<link href="design-system.css" rel="stylesheet"/><link href="legacy-compat.css" rel="stylesheet"/><link href="recon-ui.css" rel="stylesheet"/><link href="recon-final.css" rel="stylesheet"/><link href="recon-ux-improvements.css" rel="stylesheet"/>
 <meta content="1.26.53" name="application-version"/></head>
 <body>
 <a class="skip-link" href="#app-main">Ir direto para o conteúdo principal</a>
@@ -45,42 +45,42 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <div class="recon-shell">
 <aside aria-label="Módulos do RECON" class="module-sidebar">
 <div class="sidebar-label">O que você precisa fazer?</div>
-<button class="module-link p1-home-link" id="p1-home-button" type="button">
+<button class="module-link p1-home-link" id="p1-home-button" title="Início — Escolher uma tarefa" type="button">
 <svg viewbox="0 0 24 24"><path d="M4 11l8-7 8 7v9h-6v-6h-4v6H4z"></path></svg>
 <span><strong>Início</strong><small>Escolher uma tarefa</small></span>
 </button>
-<button aria-current="page" class="module-link active" data-module="relations" type="button">
+<button aria-current="page" class="module-link active" data-module="relations" title="Gerar relação — Filtrar documentos e criar Excel" type="button">
 <svg viewbox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"></path></svg>
 <span><strong>Gerar relação</strong><small>Filtrar documentos e criar Excel</small></span>
-</button><button class="module-link" data-module="allocation" type="button">
+</button><button class="module-link" data-module="allocation" title="Gerar alocação — Criar arquivo e linhas do controle" type="button">
 <svg viewbox="0 0 24 24"><path d="M4 5h16v14H4zM4 9h16M8 13h3M8 16h7"></path></svg>
 <span><strong>Gerar alocação</strong><small>Criar arquivo e linhas do controle</small></span>
 </button>
-<button class="module-link" data-module="tags" type="button">
+<button class="module-link" data-module="tags" title="Conferir TAGs — Validar antes da inclusão na LD" type="button">
 <svg viewbox="0 0 24 24"><path d="M4 5h10l6 6-9 9-7-7zM8 9h.01M13 8l3 3"></path></svg>
 <span><strong>Conferir TAGs</strong><small>Validar antes da inclusão na LD</small></span>
 </button>
-<button class="module-link" data-module="databook" type="button">
+<button class="module-link" data-module="databook" title="Revisar Databook — Conferir caminhos sugeridos" type="button">
 <svg viewbox="0 0 24 24"><path d="M4 6h6l2 2h8v11H4zM9 13h6M12 10v6"></path></svg>
 <span><strong>Revisar Databook</strong><small>Conferir caminhos sugeridos</small></span>
 </button>
-<button class="module-link" data-module="titles" type="button">
+<button class="module-link" data-module="titles" title="Corrigir títulos — Alterar somente os aprovados" type="button">
 <svg viewbox="0 0 24 24"><path d="M5 5h14M12 5v14M8 19h8"></path></svg>
 <span><strong>Corrigir títulos</strong><small>Alterar somente os aprovados</small></span>
 </button>
-<button class="module-link" data-module="renamer" type="button">
+<button class="module-link" data-module="renamer" title="Renomear PDFs — Conferir antes e depois" type="button">
 <svg viewbox="0 0 24 24"><path d="M4 6h9l2 2h5v10H4zM9 12h7M12.5 9.5v5M6 21h12"></path></svg>
 <span><strong>Renomear PDFs</strong><small>Conferir antes e depois</small></span>
 </button>
-<button class="module-link" data-module="bases" type="button">
+<button class="module-link" data-module="bases" title="Bases de referência — Ver, substituir e fixar" type="button">
 <svg viewbox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"></ellipse><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"></path></svg>
 <span><strong>Bases de referência</strong><small>Ver, substituir e fixar</small></span>
 </button>
-<button class="module-link" id="recon-preferences-open" type="button">
+<button class="module-link" id="recon-preferences-open" title="Preferências — Backup, filtros e manutenção" type="button">
 <svg viewbox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19 13.5v-3l-2-.7-.7-1.7.9-1.9-2.1-2.1-1.9.9-1.7-.7L10.5 2h-3l-.7 2.3-1.7.7-1.9-.9-2.1 2.1.9 1.9-.7 1.7-2 .7v3l2 .7.7 1.7-.9 1.9 2.1 2.1 1.9-.9 1.7.7.7 2.3h3l.7-2.3 1.7-.7 1.9.9 2.1-2.1-.9-1.9.7-1.7z"></path></svg>
 <span><strong>Preferências</strong><small>Backup, filtros e manutenção</small></span>
 </button>
-<div class="sidebar-foot"><span>Os arquivos permanecem neste dispositivo.</span></div>
+<div class="sidebar-foot"><span>Arquivos processados localmente.</span></div>
 </aside>
 <main aria-label="Área de trabalho do RECON" class="recon-main" id="app-main" tabindex="-1">
 <section aria-labelledby="p1-home-title" class="p1-task-home" id="p1-task-home">
@@ -99,10 +99,13 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <div class="section-title"><span>LD</span><div><strong>Base documental</strong><small>Usada em Relações, Databook e Títulos</small></div></div>
 <label class="file-source primary-source">
 <input accept=".xlsx,.xls,.xlsm" id="relations-ld" type="file"/>
-<span class="file-icon">X</span>
+<span aria-label="Excel" class="file-icon" title="Arquivo Excel">XLS</span>
 <span><strong>Selecionar LD</strong><small id="relations-ld-meta">Nenhum arquivo</small></span>
 </label>
-<button class="secondary-button compact" hidden id="relations-ld-open-editable" title="Abre a LD pedindo permissão para salvar as alterações direto no arquivo original, sem baixar uma cópia nova (Edge ou Chrome)" type="button">Abrir com edição direta</button>
+<button class="secondary-button compact" hidden id="relations-ld-open-editable" title="Abre a LD pedindo permissão para salvar as alterações direto no arquivo original, sem baixar uma cópia nova (Edge ou Chrome)" type="button">
+<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+Abrir com edição direta
+</button>
 <div class="source-state"><quality-status class="state-pill neutral" id="relations-source-state">Aguardando LD</quality-status><small id="relations-source-count">—</small></div>
 </section>
 <section aria-live="polite" class="p1-context-bar" hidden="" id="p1-recon-context">
@@ -139,10 +142,10 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <label class="wide-field"><span>Documento ou título contém</span><input id="filter-query" placeholder="Opcional" type="search"/></label>
 </div>
 <div class="mode-panel documents-panel" hidden="" id="documents-mode-panel">
-<div class="documents-text"><div><label for="relations-text">Documentos</label><button class="text-button danger" id="relations-clear-text" type="button">Limpar</button></div><textarea id="relations-text" placeholder="Cole um código documental ou nome de arquivo por linha" spellcheck="false"></textarea><span id="relations-text-count">0 itens</span></div>
+<div class="documents-text"><div><label for="relations-text">Documentos</label><button class="text-button danger" id="relations-clear-text" type="button">Limpar</button></div><textarea id="relations-text" placeholder="Cole um código documental ou nome de arquivo por linha" spellcheck="false"></textarea><span id="relations-text-count"></span></div>
 <div class="document-files">
 <label class="file-source"><input accept=".pdf,.doc,.docx,.xls,.xlsx,.xlsm,.dwg,.dgn,.ppt,.pptx" directory="" id="relations-folder" multiple="" type="file" webkitdirectory=""/><span class="file-icon folder"><svg viewbox="0 0 24 24"><path d="M3 6h7l2 2h9v10H3z"></path></svg></span><span><strong>Pasta documental</strong><small id="relations-folder-meta">Opcional</small></span></label>
-<label class="file-source"><input accept=".xlsx,.xls,.xlsm,.csv" id="relations-list" type="file"/><span class="file-icon">X</span><span><strong>Lista Excel</strong><small id="relations-list-meta">Opcional</small></span></label>
+<label class="file-source"><input accept=".xlsx,.xls,.xlsm,.csv" id="relations-list" type="file"/><span aria-label="Excel ou CSV" class="file-icon" title="Lista em Excel ou CSV">XLS</span><span><strong>Lista Excel</strong><small id="relations-list-meta">Opcional</small></span></label>
 <div class="file-actions"><button class="text-button danger" id="relations-clear-folder" type="button">Remover pasta</button><button class="text-button danger" id="relations-clear-list" type="button">Remover Excel</button></div>
 </div>
 </div>
@@ -153,9 +156,9 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 </section>
 <section class="results-card card" hidden="" id="relations-results">
 <header class="section-title results-title"><span>RESULTADO</span><div><strong>Resultado</strong><small id="relations-result-subtitle">Prévia da relação</small></div></header>
-<nav aria-label="Resumo da relação" class="summary"><div><span>Universo da LD</span><strong id="count-universe">0</strong></div><div class="selected"><span>Selecionados</span><strong id="count-selected">0</strong></div><div class="found"><span>Localizados</span><strong id="count-found">0</strong></div><div class="missing"><span>Não encontrados</span><strong id="count-missing">0</strong></div></nav>
+<div aria-label="Resumo da relação" class="summary" role="region"><div><span>Universo da LD</span><strong id="count-universe">0</strong></div><div class="selected"><span>Selecionados</span><strong id="count-selected">0</strong></div><div class="found"><span>Localizados</span><strong id="count-found">0</strong></div><div class="missing"><span>Não encontrados</span><strong id="count-missing">0</strong></div></div>
 <div class="results-toolbar"><label class="search-box"><svg viewbox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="M16 16l5 5"></path></svg><input id="relations-search" placeholder="Buscar na prévia" type="search"/></label><span id="relations-result-meta">0 linhas</span><div class="spacer"></div><button class="primary-button" disabled="" id="relations-export" type="button">Baixar relação em Excel</button></div>
-<div class="table-wrap"><table class="recon-data-table relations-table" id="relations-table"><thead id="relations-head"></thead><tbody id="relations-body"></tbody></table><div class="empty" hidden="" id="relations-empty">Nenhum resultado para os critérios selecionados.</div></div>
+<div class="table-wrap"><table class="recon-data-table relations-table" id="relations-table"><caption class="sr-only">Prévia da relação de documentos</caption><thead id="relations-head"></thead><tbody id="relations-body"></tbody></table><div class="empty" hidden="" id="relations-empty">Nenhum resultado para os critérios selecionados.</div></div>
 </section>
 </div>
 </section><section aria-labelledby="recon-module-title-2" class="module-view allocation-module" data-module-view="allocation" hidden="" id="module-allocation">
@@ -167,17 +170,17 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <div class="allocation-source-grid">
 <label class="compact-source allocation-source">
 <input accept=".xlsx,.xls,.xlsm" id="allocation-ld-input" multiple type="file"/>
-<span class="source-icon excel">X</span>
+<span aria-label="Excel" class="source-icon excel" title="Arquivo Excel — LDs">XLS</span>
 <span><strong>LDs controladas</strong><small id="allocation-ld-meta">Selecionar uma ou mais LDs</small></span>
 </label>
 <label class="compact-source allocation-source">
 <input accept=".xlsx,.xls,.xlsm" id="allocation-control-input" type="file"/>
-<span class="source-icon excel control-icon">C</span>
+<span aria-label="Controle" class="source-icon excel control-icon" title="Planilha de controle">CTR</span>
 <span><strong>Controle de solicitações</strong><small id="allocation-control-meta">Selecionar arquivo</small></span>
 </label>
 <label class="compact-source allocation-source">
 <input accept=".xlsx,.xls,.xlsm,.csv" id="allocation-list-input" type="file"/>
-<span class="source-icon excel">X</span>
+<span aria-label="Excel ou CSV" class="source-icon excel" title="Relação em Excel ou CSV">XLS</span>
 <span><strong>Relação de documentos</strong><small id="allocation-list-meta">Excel ou texto</small></span>
 </label>
 <label class="allocation-field allocation-code-field">
@@ -186,7 +189,7 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 </label>
 <label class="allocation-field allocation-date-field">
 <span>Data da alocação</span>
-<input aria-readonly="true" id="allocation-date" readonly="" type="date"/>
+<input id="allocation-date" readonly="" type="date"/>
 </label>
 <button class="analyze-button allocation-analyze" disabled="" id="allocation-analyze" type="button">
 <svg viewbox="0 0 24 24"><circle cx="10" cy="10" r="6"></circle><path d="M14.5 14.5L21 21M7 10h6M10 7v6"></path></svg>
@@ -197,7 +200,7 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <header class="allocation-relation-heading">
 <label for="allocation-text">Entrada por texto</label>
 <div>
-<span id="allocation-text-count">0 itens</span>
+<span id="allocation-text-count"></span>
 <button class="text-action danger" id="allocation-clear" type="button" title="Encerra a análise atual e prepara o módulo para uma nova relação">Limpar análise</button>
 </div>
 </header>
@@ -211,17 +214,17 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <div class="allocation-evidence-grid">
 <label class="compact-source allocation-evidence-source confirmation-source">
 <input accept=".xlsx,.xls,.xlsm" directory="" id="allocation-confirmation-input" multiple="" type="file" webkitdirectory=""/>
-<span class="source-icon evidence-icon confirmation-icon">CF</span>
+<span aria-label="Confirmação" class="source-icon evidence-icon confirmation-icon" title="Confirmações de alocação">CF</span>
 <span><strong>Confirmações de alocação</strong><small id="allocation-confirmation-meta">Prioridade máxima · selecionar pasta</small></span>
 </label>
 <label class="compact-source allocation-evidence-source">
 <input accept=".xlsx,.xls,.xlsm" id="allocation-databook-input" type="file"/>
-<span class="source-icon evidence-icon">DB</span>
+<span aria-label="Databook" class="source-icon evidence-icon" title="Mapa Databook">DB</span>
 <span><strong>Mapa Databook</strong><small id="allocation-databook-meta">Base incluída</small></span>
 </label>
 <label class="compact-source allocation-evidence-source">
 <input accept=".xlsx,.xls,.xlsm" directory="" id="allocation-history-input" multiple="" type="file" webkitdirectory=""/>
-<span class="source-icon evidence-icon history-icon">H</span>
+<span aria-label="Histórico" class="source-icon evidence-icon history-icon" title="Histórico de alocações">HST</span>
 <span><strong>Histórico de alocações</strong><small id="allocation-history-meta">Selecionar pasta</small></span>
 </label>
 </div>
@@ -248,12 +251,12 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 </div>
 </section>
 <section class="allocation-results" hidden="" id="allocation-results">
-<nav aria-label="Resumo da alocação" class="allocation-summary">
+<div aria-label="Resumo da alocação" class="allocation-summary" role="region">
 <div><span>Total</span><strong id="allocation-count-total">0</strong></div>
 <div class="ready"><span>Prontos</span><strong id="allocation-count-ready">0</strong></div>
 <div class="skip"><span>Já alocados</span><strong id="allocation-count-skip">0</strong></div>
 <div class="review"><span>Revisar</span><strong id="allocation-count-review">0</strong></div>
-</nav>
+</div>
 <section class="allocation-grouping-panel" aria-labelledby="allocation-grouping-title">
 <header><div><span>FORMA DE GERAR</span><strong id="allocation-grouping-title">Como os documentos serão distribuídos?</strong></div><small id="allocation-grouping-help">A seleção pode ser alterada antes de gerar.</small></header>
 <div class="allocation-grouping-options" role="radiogroup" aria-label="Forma de agrupar a alocação">
@@ -295,6 +298,7 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <div class="table-card allocation-table-card">
 <div class="table-scroll allocation-table-scroll">
 <table class="allocation-table allocation-decision-table recon-data-table" id="allocation-decision-table">
+<caption class="sr-only">Tabela de decisões de alocação documental</caption>
 <thead><tr>
 <th scope="col">Decisão</th>
 <th scope="col">Documento e LD</th>
@@ -317,20 +321,20 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <header class="module-heading"><div><span>CONFERÊNCIA PRÉ-LD</span><h2 id="recon-module-title-tags">Conferir TAGs dos códigos documentais</h2></div><p>Valide o Campo 7 pela base oficial do Anexo I antes de incluir os documentos na LD.</p></header>
 <section class="tag-control-panel">
 <div class="tag-source-grid">
-<label class="compact-source tag-reference-source"><input accept=".xlsx,.xls,.xlsm" id="tag-reference-input" type="file"/><span class="source-icon evidence-icon">TG</span><span><strong>Base oficial de TAGs</strong><small id="tag-reference-meta">Base incorporada</small></span></label>
-<label class="compact-source"><input accept=".xlsx,.xls,.xlsm,.csv" id="tag-list-input" type="file"/><span class="source-icon excel">X</span><span><strong>Lista de documentos</strong><small id="tag-list-meta">Excel ou CSV opcional</small></span></label>
+<label class="compact-source tag-reference-source"><input accept=".xlsx,.xls,.xlsm" id="tag-reference-input" type="file"/><span aria-label="Base de TAGs" class="source-icon evidence-icon" title="Base oficial de TAGs">TAG</span><span><strong>Base oficial de TAGs</strong><small id="tag-reference-meta">Base incorporada</small></span></label>
+<label class="compact-source"><input accept=".xlsx,.xls,.xlsm,.csv" id="tag-list-input" type="file"/><span aria-label="Excel ou CSV" class="source-icon excel" title="Lista de documentos em Excel ou CSV">XLS</span><span><strong>Lista de documentos</strong><small id="tag-list-meta">Excel ou CSV opcional</small></span></label>
 <button class="analyze-button tag-analyze" disabled id="tag-analyze" type="button"><svg viewbox="0 0 24 24"><circle cx="10" cy="10" r="6"></circle><path d="M14.5 14.5L21 21M7 10h6M10 7v6"></path></svg><span>Conferir TAGs</span></button>
 </div>
-<div class="tag-input-card"><header><label for="tag-text">Códigos para conferência</label><div><span id="tag-text-count">0 itens</span><button class="text-action danger" id="tag-clear" type="button">Limpar</button></div></header><textarea autocomplete="off" id="tag-text" placeholder="Cole um código documental por linha" spellcheck="false"></textarea><p>O Campo 7 é tudo o que estiver depois do sexto underline. A base incorporada pode ser substituída por uma revisão mais recente.</p></div>
+<div class="tag-input-card"><header><label for="tag-text">Códigos para conferência</label><div><span id="tag-text-count"></span><button class="text-action danger" id="tag-clear" type="button">Limpar</button></div></header><textarea autocomplete="off" id="tag-text" placeholder="Cole um código documental por linha" spellcheck="false"></textarea><p>O Campo 7 é tudo o que estiver depois do sexto underline. A base incorporada pode ser substituída por uma revisão mais recente.</p></div>
 </section>
 <div class="tag-official-evidence" id="tag-official-evidence" role="status"><strong>Base oficial incorporada</strong><span id="tag-official-evidence-text">Carregando revisão e quantidade de TAGs…</span></div>
 <section class="tag-results" hidden id="tag-results">
-<nav aria-label="Resumo da conferência de TAGs" class="tag-summary">
+<div aria-label="Resumo da conferência de TAGs" class="tag-summary" role="region">
 <div><span>Total</span><strong id="tag-count-total">0</strong></div>
 <div class="ready"><span>TAGs confirmadas</span><strong id="tag-count-confirmed">0</strong></div>
 <div class="neutral"><span>Não tagueados corretos</span><strong id="tag-count-correct">0</strong></div>
 <div class="review"><span>Corrigir ou revisar</span><strong id="tag-count-review">0</strong></div>
-</nav>
+</div>
 <div class="tag-toolbar">
 <label class="search-box"><svg viewbox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="M16 16l5 5"></path></svg><input id="tag-search" placeholder="Buscar na conferência…" type="search"/></label>
 <label><span>Situação</span><select id="tag-status-filter"><option value="all">Todas</option><option value="confirmed">TAG confirmada</option><option value="remove_nt">Remover nt-</option><option value="add_nt">Adicionar nt-</option><option value="non_tagged">Não tagueado correto</option><option value="review">Revisar</option></select></label>
@@ -338,7 +342,7 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <button class="secondary-button" disabled id="tag-copy-corrected" type="button">Copiar códigos corrigidos</button>
 <button class="primary-button" disabled id="tag-export-report" type="button">Baixar relatório</button>
 </div>
-<div class="table-card tag-table-card"><div class="table-scroll tag-table-scroll"><table class="tag-table tag-evidence-table recon-data-table" id="tag-evidence-table"><thead><tr>
+<div class="table-card tag-table-card"><div class="table-scroll tag-table-scroll"><table class="tag-table tag-evidence-table recon-data-table" id="tag-evidence-table"><caption class="sr-only">Tabela de conferência de TAGs dos códigos documentais</caption><thead><tr>
 <th scope="col">Situação</th><th scope="col">Código informado</th><th scope="col">Campo 7</th><th scope="col">Evidência oficial</th><th scope="col">Código corrigido</th><th scope="col">Conclusão</th><th scope="col">Confiança</th>
 </tr></thead><tbody id="tag-results-body"></tbody></table><empty-state class="empty-results" hidden id="tag-empty">Nenhum resultado.</empty-state></div></div><div class="allocation-preview-limit" hidden id="tag-preview-limit"></div>
 </section>
@@ -498,14 +502,14 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 <button class="secondary-button" disabled id="bases-restore-all" type="button">Restaurar todas as incorporadas</button>
 <button class="primary-button" disabled id="bases-export" type="button">Baixar relatório das bases</button>
 </div>
-<div class="table-card"><div class="table-scroll"><table class="recon-data-table bases-table" id="bases-table"><thead><tr>
+<div class="table-card"><div class="table-scroll"><table class="recon-data-table bases-table" id="bases-table"><caption class="sr-only">Tabela de bases de referência em uso pelo RECON</caption><thead><tr>
 <th scope="col">Base</th><th scope="col">Origem</th><th scope="col">Arquivo</th><th scope="col">Registros</th><th scope="col">Fixada em</th><th scope="col">Ações</th>
 </tr></thead><tbody id="bases-table-body"></tbody></table><empty-state class="empty-results" hidden id="bases-empty">Nenhuma base reconhecida.</empty-state></div></div>
 <p class="bases-note">A base que você fixa vale apenas neste navegador e neste computador — nada é enviado para servidor. Depois de substituir ou restaurar, recarregue a página para a mudança valer na próxima análise.</p>
 <input accept=".xlsx,.xls,.xlsm" hidden id="bases-file-input" type="file"/>
 </section>
 </main>
-<footer class="app-footer"><span>RECON 1.26.53 · Relações e Conformidade Documental</span><span>Arquivos processados somente neste navegador</span></footer></div>
+<footer class="app-footer"><span>RECON 1.26.53 · Relações e Conformidade Documental</span></footer></div>
 <div class="drawer-overlay" hidden="" id="databook-assistant-overlay"></div><aside aria-hidden="true" aria-labelledby="databook-assistant-title" class="databook-assistant-drawer" hidden inert id="databook-assistant-drawer">
 <header class="drawer-header">
 <div><h2 id="databook-assistant-title">Assistente de Databook</h2><span id="databook-assistant-subtitle">Revisão nesta análise</span></div>
@@ -539,7 +543,9 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 </aside>
 <div class="p1-confirm-overlay" hidden="" id="p1-confirm-overlay"></div>
 <section aria-labelledby="p1-confirm-title" aria-modal="true" class="p1-confirm-dialog" hidden="" id="p1-confirm-dialog" role="dialog">
-<div aria-hidden="true" class="p1-confirm-icon">✓</div>
+<div aria-hidden="true" class="p1-confirm-icon">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M20 6L9 17l-5-5"/></svg>
+</div>
 <div><h2 id="p1-confirm-title">Confirmar saída</h2><p id="p1-confirm-message"></p></div>
 <ul id="p1-confirm-facts"></ul>
 <section class="p1-output-audit" hidden="" id="p1-output-audit">
@@ -552,7 +558,7 @@ if (location.protocol === "http:" || location.protocol === "https:") {
 </section>
 <div class="recon-preferences-overlay" hidden id="recon-preferences-overlay"></div>
 <section aria-hidden="true" aria-labelledby="recon-preferences-title" aria-modal="true" class="recon-preferences-dialog" hidden id="recon-preferences-dialog" role="dialog">
-<header><div><span>CONFIGURAÇÕES LOCAIS</span><h2 id="recon-preferences-title">Preferências e manutenção do RECON</h2><p>Exporte filtros, restaure configurações e limpe somente o que for necessário.</p></div><button aria-label="Fechar preferências" class="icon-button" id="recon-preferences-close" type="button">×</button></header>
+<header><div><span>CONFIGURAÇÕES LOCAIS</span><h2 id="recon-preferences-title">Preferências e manutenção do RECON</h2><p>Exporte filtros, restaure configurações e limpe somente o que for necessário.</p></div><button aria-label="Fechar preferências" class="icon-button" id="recon-preferences-close" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg></button></header>
 <div class="recon-preferences-body macro6-productivity-card">
 <div class="macro6-storage-status" id="recon-preferences-storage" aria-live="polite">Calculando armazenamento local…</div>
 <div class="macro6-productivity-grid">
@@ -611,5 +617,6 @@ if ("serviceWorker" in navigator && window.isSecureContext && reconWebOrigin) {
 <script defer src="productivity_center.js"></script>
 <script defer src="recon_enhancements.js"></script>
 <script defer src="allocation_databook_finder.js"></script>
+<script defer src="recon-ux-enhancements.js"></script>
 </body>
 </html>
