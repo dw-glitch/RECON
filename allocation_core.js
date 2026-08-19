@@ -142,20 +142,28 @@
     return match[1].split(".").map((part) => String(Number(part))).join(".");
   }
 
-  function parseProjectLevelBase(workbook, XLSX) {
-    const sheet = findSheet(workbook, "Base - Caminho das Pastas");
-    const rows = rowsFromSheet(sheet, XLSX);
-    let headerIndex = -1;
-    let map = null;
-    for (let index = 0; index < Math.min(rows.length, 30); index += 1) {
-      const candidate = headerMap(rows[index]);
-      if (candidate.has("NIVEL 1") || candidate.has("NÍVEL 1")) {
-        headerIndex = index;
-        map = candidate;
-        break;
+  // A base de caminhos da EAP chega de duas formas: como aba do próprio
+  // controle ("Base - Caminho das Pastas") ou como o export do sistema, que vem
+  // numa planilha só, com a aba chamada Sheet1 e o cabeçalho algumas linhas
+  // abaixo do título. Procurar pelo cabeçalho Nivel 1 em qualquer aba cobre as
+  // duas sem depender do nome.
+  function findProjectLevelSheet(workbook, XLSX) {
+    const named = findSheet(workbook, "Base - Caminho das Pastas");
+    const candidates = named ? [named] : (workbook && workbook.SheetNames || []).map((name) => workbook.Sheets[name]);
+    for (const sheet of candidates) {
+      const rows = rowsFromSheet(sheet, XLSX);
+      for (let index = 0; index < Math.min(rows.length, 30); index += 1) {
+        const candidate = headerMap(rows[index]);
+        if (candidate.has("NIVEL 1") || candidate.has("NÍVEL 1")) return { rows, headerIndex: index, map: candidate };
       }
     }
-    if (headerIndex < 0 || !map) return [];
+    return null;
+  }
+
+  function parseProjectLevelBase(workbook, XLSX) {
+    const found = findProjectLevelSheet(workbook, XLSX);
+    if (!found) return [];
+    const { rows, headerIndex, map } = found;
     const entries = [];
     for (let index = headerIndex + 1; index < rows.length; index += 1) {
       const row = rows[index] || [];
@@ -178,14 +186,37 @@
     });
   }
 
-  function levelsFromEapBase(entries, eapValue) {
+  // Quando várias pastas dividem o mesmo código da EAP, o que as separa é a
+  // disciplina: sob 10.02.01 existem A.DINÂMICOS, B.ELÉTRICA, E.INSTRUMENTAÇÃO,
+  // H.TUBULAÇÃO e assim por diante. Se a disciplina do documento aponta para
+  // exatamente uma delas, ela resolve o nível; senão, fica só o que é comum.
+  function disambiguateByDiscipline(candidates, record) {
+    const wanted = databookDisciplineKey(record);
+    if (!wanted || candidates.length < 2) return null;
+    const depth = Math.max(...candidates.map((entry) => trimmedLevelCount(entry.levels)));
+    const matches = candidates.filter((entry) => {
+      const leaf = text((entry.levels || [])[depth - 1]);
+      return leaf && databookDisciplineKey({ discipline: leaf }) === wanted;
+    });
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  function trimmedLevelCount(levels) {
+    let count = 0;
+    (levels || []).forEach((value, index) => { if (text(value)) count = index + 1; });
+    return count;
+  }
+
+  function levelsFromEapBase(entries, eapValue, record) {
     const eap = normalizeEap(eapValue);
     if (!eap) return [];
     const candidates = (entries || []).filter((entry) => eap === entry.code || eap.startsWith(`${entry.code}.`));
     if (!candidates.length) return [];
     const deepest = Math.max(...candidates.map((entry) => entry.code.split(".").length));
     const best = candidates.filter((entry) => entry.code.split(".").length === deepest);
-    return best.length === 1 ? best[0].levels.slice() : commonLevels(best);
+    if (best.length === 1) return best[0].levels.slice();
+    const byDiscipline = disambiguateByDiscipline(best, record);
+    return byDiscipline ? byDiscipline.levels.slice() : commonLevels(best);
   }
 
   // Nas alocações oficiais, N2 e N3 dependem só dos dois primeiros campos da
@@ -211,7 +242,7 @@
     if (!eap || !control) return [];
     const exact = control.levelsByEap && control.levelsByEap.get(eap);
     if (exact && exact.some(Boolean)) return exact.slice();
-    const fromBase = levelsFromEapBase(control.projectLevelBase || [], eap);
+    const fromBase = levelsFromEapBase(control.projectLevelBase || [], eap, record);
     if (fromBase.some(Boolean)) return fromBase;
     return levelsFromSiblingEaps(control.levelsByEap, eap);
   }
@@ -323,8 +354,10 @@
     if (/EQP.*ESTAT|ESTATIC|^MEC$/.test(value)) return "EQP_ESTATICOS";
     if (/ESTRUT|METAL|^EST$/.test(value)) return "ESTRUTURA_METALICA";
     if (/CIV|^CVL$/.test(value)) return "CIVIL";
-    if (/ELE|ELT/.test(value)) return "ELETRICA";
+    // TELECOM vem antes de ELÉTRICA porque a palavra TELECOM contém "ELE" e
+    // caía em ELETRICA.
     if (/TELE|^TEL$/.test(value)) return "TELECOM";
+    if (/ELE|ELT/.test(value)) return "ELETRICA";
     if (/INSTR|^INS$/.test(value)) return "INSTRUMENTACAO";
     if (/HVAC|VENTIL|AR CONDICIONADO/.test(value)) return "HVAC";
     if (/SEGUR|^SEG$/.test(value)) return "EQP_SEGURANCA";
@@ -1884,6 +1917,7 @@
     documentEap,
     recordEap,
     levelsFromEapBase,
+    parseProjectLevelBase,
     levelsForEap,
     titleKind,
     databookDisciplineKey,

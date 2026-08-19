@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.48**.
+Versão atual: **1.26.49**.
 
 ## Execução
 
@@ -57,9 +57,16 @@ nenhuma dessas pastas resolve, e continua identificado como fallback na análise
 
 Os níveis N1 a N10 são a EAP do projeto, não as pastas do Databook: N1 é a
 unidade, N2 é o grupo da EAP e N3 o subgrupo (`UHDTD U-32`, `03.REPARO`,
-`03.04.CIVIL`). Eles vêm da EAP do Grupo 4 do nome do documento, resolvida pelo
-controle e pelas alocações anteriores. Quando a EAP exata ainda não apareceu, as
-EAPs irmãs — mesmo grupo e mesmo subgrupo — resolvem os níveis que têm em comum.
+`03.04.CIVIL`). Eles saem da EAP do Grupo 4 do nome do documento, resolvida pela
+base embutida `Caminho das Pastas UHDTD.xlsx` — o export de caminhos do projeto,
+372 pastas. A aba do próprio controle tem preferência quando existe; a base
+embutida completa os códigos que ela não cobre.
+
+Quando várias pastas dividem o mesmo código da EAP, o que as separa é a
+disciplina: sob `10.02.01` existem `A.DINÂMICOS`, `B.ELÉTRICA`,
+`E.INSTRUMENTAÇÃO`, `H.TUBULAÇÃO` e outras, e a disciplina do documento escolhe
+a pasta. Sem base e sem EAP exata, as EAPs irmãs — mesmo grupo e mesmo subgrupo
+— resolvem os níveis que têm em comum.
 
 Carregar as alocações já emitidas como histórico é o que deixa o gerador exato:
 com elas, o caminho e os níveis de um documento repetem a decisão anterior em vez

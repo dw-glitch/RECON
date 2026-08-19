@@ -73,6 +73,17 @@
       columns: [],
     },
     {
+      id: "eap-paths",
+      label: "Caminho das Pastas (EAP)",
+      summary: "Caminho de pastas do projeto por código EAP, usado para preencher N1 a N10 na alocação.",
+      consumer: "Gerar alocação",
+      kind: "workbook",
+      offlineName: "Caminho das Pastas UHDTD.xlsx",
+      bundled: { source: "Caminho das Pastas UHDTD.xlsx", sheet: "Sheet1", count: 372, unit: "caminhos" },
+      minRows: 1,
+      columns: [],
+    },
+    {
       id: "databook-rev-c",
       label: "Caminho Databook Rev.C",
       summary: "Revisão C do caminho de Databook, usada na alocação documental.",
