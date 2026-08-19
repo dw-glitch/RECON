@@ -1502,10 +1502,46 @@
     };
   }
 
-  function valveReferenceFor(record, references, tagEvidence) {
-    const catalog = references && references.valveList;
-    const lookup = sconEscopoLookupTag(record, tagEvidence);
-    if (!catalog || !isManualValveTag(lookup.tag)) return null;
+  function parseValveReparoCatalog(catalog) {
+    const columns = catalog && catalog.columns || [];
+    const position = new Map(columns.map((name, index) => [name, index]));
+    const at = (row, name) => position.has(name) ? row[position.get(name)] : "";
+    const meta = catalog && catalog.meta || {};
+    const entries = (catalog && catalog.rows || []).map((row, index) => ({
+      tag: cleanSpaces(at(row, "tag")),
+      type: cleanSpaces(at(row, "type")),
+      diameter: cleanSpaces(at(row, "diameter")),
+      document: cleanSpaces(at(row, "document")),
+      discipline: cleanSpaces(at(row, "discipline")),
+      row: index + 1,
+      description: manualValveDescription(at(row, "type")),
+      sourceFile: meta.source || "Mapa de VMs Reparo/Medição",
+      sourceSheet: meta.sheet || "MAPA - VM",
+    })).filter((entry) => isManualValveTag(entry.tag) && entry.description);
+    const byExactTag = new Map();
+    const byCanonicalTag = new Map();
+    const add = (index, key, entry) => {
+      if (!key) return;
+      if (!index.has(key)) index.set(key, []);
+      index.get(key).push(entry);
+    };
+    entries.forEach((entry) => {
+      add(byExactTag, strictTagKey(entry.tag), entry);
+      add(byCanonicalTag, canonicalTagKey(entry.tag), entry);
+    });
+    return {
+      kind: "valve-reparo-catalog",
+      entries,
+      byExactTag,
+      byCanonicalTag,
+      uniqueTagCount: new Set(entries.map((entry) => strictTagKey(entry.tag))).size,
+      sourceFile: meta.source || "Mapa de VMs Reparo/Medição",
+      sourceSheet: meta.sheet || "MAPA - VM",
+    };
+  }
+
+  function valveListReferenceFor(catalog, lookup) {
+    if (!catalog) return null;
     const exactKey = strictTagKey(lookup.tag);
     const canonicalKey = canonicalTagKey(lookup.tag);
     const entries = catalog.byExactTag.get(exactKey) || catalog.byCanonicalTag.get(canonicalKey) || [];
@@ -1538,6 +1574,42 @@
         ? "TAG exata na LI de válvulas"
         : "TAG equivalente após normalizar zeros e pontuação na LI de válvulas",
     };
+  }
+
+  // Mapa de VMs Reparo/Medição da UHDTD: consultado só quando a TAG não
+  // aparece ativa na LI de válvulas (linha ausente ou cancelada) — a LI
+  // continua sendo a fonte oficial da codificação, este mapa cobre válvulas
+  // do campo de reparo/medição que a LI ainda não tem ou que só constam nela
+  // como cancelada.
+  function valveReparoReferenceFor(catalog, lookup) {
+    if (!catalog) return null;
+    const exactKey = strictTagKey(lookup.tag);
+    const canonicalKey = canonicalTagKey(lookup.tag);
+    const entries = catalog.byExactTag.get(exactKey) || catalog.byCanonicalTag.get(canonicalKey) || [];
+    if (!entries.length) return null;
+    const first = entries[0];
+    return {
+      ...first,
+      trusted: true,
+      cancelled: false,
+      lookupTag: lookup.tag,
+      lookupTagSource: lookup.source,
+      matchedAliases: [first.tag],
+      sourceRows: [...new Set(entries.map((entry) => entry.row).filter(Boolean))],
+      matchMode: strictTagKey(first.tag) === exactKey
+        ? "TAG exata no Mapa de VMs Reparo/Medição"
+        : "TAG equivalente após normalizar zeros e pontuação no Mapa de VMs Reparo/Medição",
+    };
+  }
+
+  function valveReferenceFor(record, references, tagEvidence) {
+    const lookup = sconEscopoLookupTag(record, tagEvidence);
+    if (!isManualValveTag(lookup.tag)) return null;
+    const fromList = valveListReferenceFor(references && references.valveList, lookup);
+    if (fromList && fromList.trusted) return fromList;
+    const fromReparo = valveReparoReferenceFor(references && references.valveReparo, lookup);
+    if (fromReparo) return fromReparo;
+    return fromList;
   }
 
   function parseTagReferenceCatalog(catalog) {
@@ -2822,7 +2894,9 @@
         descriptionSource: nonTaggedRule
           ? "Catálogo controlado nt-"
           : valveInDescription
-            ? "LI de válvulas Rev. C · TAG exata"
+            ? (valveReference && /^LI de válvulas/i.test(valveReference.sourceSheet || "")
+              ? "LI de válvulas Rev. C · TAG exata"
+              : "Mapa de VMs Reparo/Medição · TAG exata")
           : trustedScon && sconDescriptionAllowed
             ? sconCombinesWithAppendix
                 ? "SCON TAG SGP + Apêndice 3 Rev.B · 3º campo da DESCRIÇÃO"
@@ -2852,6 +2926,7 @@
         valveType: valveReference && valveReference.type || "",
         valveDiameter: valveReference && valveReference.diameter || "",
         valveCancelled: Boolean(valveReference && valveReference.cancelled),
+        valveFromReparoMap: Boolean(valveReference && valveReference.trusted && !/^LI de válvulas/i.test(valveReference.sourceSheet || "")),
         valveSourceFile: valveReference && valveReference.sourceFile || "",
         valveSourcePages: valveReference && (valveReference.sourceRows || [valveReference.page]).filter(Boolean) || [],
         sconMatch: sconReference && !sconReference.ambiguousDescription ? "SIM" : sconReference ? "AMBÍGUO" : "NÃO",
@@ -3004,6 +3079,7 @@
     manualValveDescription,
     ensureManualValveDescription,
     parseValveListCatalog,
+    parseValveReparoCatalog,
     valveReferenceFor,
     parseTagReferenceCatalog,
     tagReferenceFor,

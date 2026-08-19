@@ -33,6 +33,7 @@
     sconEscopoTitleReferences: null,
     tagReferenceTitleReferences: null,
     valveListTitleReferences: null,
+    valveReparoTitleReferences: null,
     sconReferenceFile: null,
     sconTitleReferences: null,
     titleBaseLoading: true,
@@ -392,6 +393,7 @@
     merged.sconEscopo = state.sconEscopoTitleReferences || null;
     merged.tagReference = state.tagReferenceTitleReferences || null;
     merged.valveList = state.valveListTitleReferences || null;
+    merged.valveReparo = state.valveReparoTitleReferences || null;
     return merged;
   }
 
@@ -430,6 +432,7 @@
     if (row.issue === "ok") return "already_correct";
     if (row.learnedTitle) return "learned_memory";
     if (/^LI de válvulas/i.test(row.descriptionSource || "")) return "valve_list";
+    if (/^Mapa de VMs Reparo\/Medição/i.test(row.descriptionSource || "")) return "valve_reparo";
     if (/^SCON TAG SGP \+ Apêndice/i.test(row.descriptionSource || "")) return "scon_appendix";
     if (/^Apêndice 3 Rev.B/i.test(row.descriptionSource || "")) return "appendix";
     if (row.sconEscopoMatch === "SIM" && /^SCON ESCOPO/i.test(row.descriptionSource || "")) {
@@ -630,6 +633,7 @@
     const sourceLabel = {
       learned_memory: "Memória de correções (sua edição anterior)",
       valve_list: "LI de válvulas Rev. C · TAG exata",
+      valve_reparo: "Mapa de VMs Reparo/Medição · TAG exata",
       scon_appendix: "SCON TAG SGP + Apêndice 3 Rev.B",
       appendix: "Apêndice 3 Rev.B · TAG do equipamento",
       scon_exact: "SCON TAG SGP · Código SGP exato",
@@ -1043,7 +1047,11 @@
     const references = [
       row.titleStandard ? `Tipo de documento definido pela norma ET-5290.00-22000-912-1LV-001 Rev. P: ${row.titleStandard}` : "",
       row.previousTitlePattern ? `Já foi escrito assim antes nesta mesma LD: ${row.previousTitlePattern}` : "",
-      row.valveTitle ? `Descrição oficial na Lista de Válvulas: ${row.valveTitle}` : row.valveCancelled ? "A TAG está marcada como cancelada na Lista de Válvulas; a descrição foi buscada em outra base." : "",
+      row.valveTitle
+        ? row.valveFromReparoMap
+          ? `Não encontrada ativa na Lista de Válvulas; descrição encontrada no Mapa de VMs Reparo/Medição: ${row.valveTitle}`
+          : `Descrição oficial na Lista de Válvulas: ${row.valveTitle}`
+        : row.valveCancelled ? "A TAG está marcada como cancelada na Lista de Válvulas; a descrição foi buscada em outra base." : "",
       row.sconTitleComplement ? `Descrição cadastrada no SCON: ${row.sconTitleComplement}` : "",
       row.sconEscopoTitle ? `Descrição no escopo do projeto: ${row.sconEscopoTitle}` : "",
       row.appendixTitle ? `Descrição cadastrada no Apêndice 3: ${row.appendixTitle}` : "",
@@ -1074,6 +1082,7 @@
       already_correct: "O título já está de acordo com as bases consultadas.",
       learned_memory: "Baseado em uma correção que você mesmo já aprovou antes, para o mesmo padrão de título.",
       valve_list: "Encontrado na Lista de Válvulas (LI de válvulas Rev. C), pela TAG do documento.",
+      valve_reparo: "Não encontrado ativo na LI de válvulas; encontrado no Mapa de VMs Reparo/Medição, pela TAG do documento.",
       scon_appendix: "Encontrado no SCON e no Apêndice 3, que se completam.",
       appendix: "Encontrado no Apêndice 3, pela TAG do documento.",
       scon_exact: "Encontrado no SCON, pela TAG do documento.",
@@ -1347,6 +1356,18 @@
           throw new Error(`A LI de válvulas contém ${parsed.uniqueTagCount} TAGs, ${parsed.activeTagCount} ativas e ${parsed.cancelledTagCount} canceladas; eram esperadas 3.066, 2.859 e 207.`);
         }
         state.valveListTitleReferences = parsed;
+        updateTitleReferenceStatus();
+      }),
+      Promise.resolve().then(() => {
+        // Consultado só quando a TAG não está ativa na LI de válvulas: a LI
+        // continua sendo a fonte oficial da codificação.
+        const source = window.RECONValveReparoCatalog;
+        if (!source) throw new Error("O Mapa de VMs Reparo/Medição incorporado não foi carregado.");
+        const parsed = Q.parseValveReparoCatalog(source);
+        if (parsed.uniqueTagCount !== 736) {
+          throw new Error(`O Mapa de VMs Reparo/Medição contém ${parsed.uniqueTagCount} TAGs; eram esperadas 736.`);
+        }
+        state.valveReparoTitleReferences = parsed;
         updateTitleReferenceStatus();
       }),
       Promise.resolve().then(() => {

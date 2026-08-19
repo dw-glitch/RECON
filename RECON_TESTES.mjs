@@ -329,6 +329,113 @@ check("a LI incorporada contém todas as TAGs de válvulas e separa as cancelada
   assert.equal(cancelled.trusted, false);
 });
 
+check("o Mapa de VMs Reparo/Medição incorporado contém as 736 TAGs esperadas", () => {
+  const require = createRequire(import.meta.url);
+  require("./valve_reparo_catalog.js");
+  const Q = require("./audit_core.js");
+  const reparo = Q.parseValveReparoCatalog(globalThis.RECONValveReparoCatalog);
+  assert.equal(reparo.uniqueTagCount, 736);
+  assert.match(html, /<option value="valve_reparo">Mapa de VMs Reparo\/Medição<\/option>/,
+    "a tela não oferece filtro para as recomendações originadas no Mapa de VMs Reparo/Medição");
+
+  const loader = read("recon_module_loader.js");
+  const bloco = loader.match(/audit: \[[^\]]*"audit_app\.js"\]/)[0];
+  assert.ok(
+    bloco.indexOf('"valve_reparo_catalog.js"') > 0 && bloco.indexOf('"valve_reparo_catalog.js"') < bloco.indexOf('"audit_core.js"'),
+    "valve_reparo_catalog.js precisa carregar antes de audit_core.js no módulo audit",
+  );
+
+  const entry = reparo.byExactTag.get("VM-320177")[0];
+  assert.equal(entry.description, "VÁLVULA MANUAL GAVETA");
+  assert.equal(entry.diameter, '8"');
+  assert.equal(entry.document, "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-320177");
+});
+
+check("o Mapa de VMs Reparo/Medição só entra quando a TAG não está ativa na LI de válvulas", () => {
+  const require = createRequire(import.meta.url);
+  require("./valve_list_catalog.js");
+  require("./valve_reparo_catalog.js");
+  const Q = require("./audit_core.js");
+  const C = require("./core.js");
+  const valveList = Q.parseValveListCatalog(globalThis.RECONValveListCatalog);
+  const valveReparo = Q.parseValveReparoCatalog(globalThis.RECONValveReparoCatalog);
+
+  // VM-320003 está ativa na LI e também no Mapa de Reparo/Medição — a LI
+  // continua sendo a fonte oficial e precisa vencer.
+  const bothDocument = "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-320003";
+  const bothRecord = { document: bothDocument, documentKey: C.key(bothDocument), discipline: "TUBULACAO" };
+  const both = Q.valveReferenceFor(bothRecord, { valveList, valveReparo }, Q.resolveTagEvidence(bothRecord, null));
+  assert.ok(both && both.trusted);
+  assert.equal(both.description, "VÁLVULA MANUAL Gaveta", "a LI precisa vencer o Mapa de Reparo/Medição quando as duas têm a TAG");
+  assert.match(both.sourceSheet, /^LI de válvulas/);
+
+  // VM-320177 não está na LI (nem ativa nem cancelada) — só o Mapa de
+  // Reparo/Medição tem essa TAG.
+  const onlyReparoDocument = "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-320177";
+  const onlyReparoRecord = { document: onlyReparoDocument, documentKey: C.key(onlyReparoDocument), discipline: "TUBULACAO" };
+  const onlyReparo = Q.valveReferenceFor(onlyReparoRecord, { valveList, valveReparo }, Q.resolveTagEvidence(onlyReparoRecord, null));
+  assert.ok(onlyReparo && onlyReparo.trusted, "sem a TAG na LI, o Mapa de Reparo/Medição precisa assumir");
+  assert.equal(onlyReparo.description, "VÁLVULA MANUAL GAVETA");
+  assert.equal(onlyReparo.diameter, '8"');
+  assert.match(onlyReparo.sourceSheet, /^MAPA - VM/);
+
+  // TAG cancelada na LI: o Mapa de Reparo/Medição assume no lugar da linha
+  // cancelada, em vez de devolver uma descrição marcada como não confiável.
+  const cancelledValveList = Q.parseValveListCatalog({
+    meta: { source: "LI teste", revision: "C" },
+    columns: ["tag", "type", "diameter", "page", "cancelled"],
+    rows: [["VM-900001", "Válvula Esfera", "2\"", 5, 1]],
+  });
+  const reparoForCancelled = Q.parseValveReparoCatalog({
+    meta: { source: "Mapa teste", sheet: "MAPA - VM" },
+    columns: ["tag", "type", "diameter", "document", "discipline"],
+    rows: [["VM-900001", "ESFERA", "2\"", "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-900001", "TUBULACAO"]],
+  });
+  const cancelledDocument = "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-900001";
+  const cancelledRecord = { document: cancelledDocument, documentKey: C.key(cancelledDocument), discipline: "TUBULACAO" };
+  const afterCancelled = Q.valveReferenceFor(cancelledRecord, { valveList: cancelledValveList, valveReparo: reparoForCancelled }, Q.resolveTagEvidence(cancelledRecord, null));
+  assert.ok(afterCancelled && afterCancelled.trusted, "a TAG cancelada na LI não pode bloquear o Mapa de Reparo/Medição");
+  assert.match(afterCancelled.sourceSheet, /^MAPA - VM/);
+
+  // Sem a TAG em nenhuma das duas bases, a função devolve null para que o
+  // SCON TAG SGP continue como fallback, como já fazia sem este novo mapa.
+  const missingDocument = "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-999999";
+  const missingRecord = { document: missingDocument, documentKey: C.key(missingDocument), discipline: "TUBULACAO" };
+  const missing = Q.valveReferenceFor(missingRecord, { valveList, valveReparo }, Q.resolveTagEvidence(missingRecord, null));
+  assert.equal(missing, null);
+});
+
+check("no fluxo completo, o título de uma VM só do Mapa de Reparo/Medição usa essa fonte, não o SCON", () => {
+  const require = createRequire(import.meta.url);
+  require("./valve_list_catalog.js");
+  require("./valve_reparo_catalog.js");
+  const C = require("./core.js");
+  const Q = require("./audit_core.js");
+  const valveList = Q.parseValveListCatalog(globalThis.RECONValveListCatalog);
+  const valveReparo = Q.parseValveReparoCatalog(globalThis.RECONValveReparoCatalog);
+  const document = "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-320177";
+  const record = {
+    document, documentKey: C.key(document), sheet: "ET", row: 20, discipline: "TUBULACAO",
+    revision: "0", title: "",
+  };
+  const index = { documents: [{ document, documentKey: record.documentKey, group: { records: [record], history: [] } }] };
+  const scon = Q.buildSconReferenceIndex([{
+    document: "APR_TUB_U32-VM-320177",
+    titleComplement: "VM-320177 - DESCRIÇÃO SCON QUE NÃO DEVE SUBSTITUIR O MAPA",
+    fullDescription: "U32 | TUBULACAO | VM-320177 - DESCRIÇÃO SCON QUE NÃO DEVE SUBSTITUIR O MAPA",
+    sconTag: "APR_TUB_U32-VM-320177",
+    discipline: "TUBULACAO",
+    row: 50,
+  }]);
+
+  const row = Q.auditTitles(index, { valveList, valveReparo, scon }, { titleSourceMode: "auto" })[0];
+  assert.equal(row.valveMatch, "SIM");
+  assert.equal(row.descriptionSource, "Mapa de VMs Reparo/Medição · TAG exata");
+  assert.match(row.proposed, /VALVULA MANUAL GAVETA/);
+  assert.match(row.proposed, /VM-320177$/);
+  assert.doesNotMatch(row.proposed, /SCON QUE|MAPA$/);
+});
+
 check("uma TAG VM ativa usa a LI antes de SCON, Apêndice e SCON ESCOPO", () => {
   const require = createRequire(import.meta.url);
   require("./valve_list_catalog.js");
@@ -511,7 +618,7 @@ check("chooseCatalogEvidence não recalcula por entrada do catálogo o que é ig
   assert.match(source, /catalogEntryCache/, "sem memoização por entrada do catálogo — cada documento sem Databook confirmado reprocessa o catálogo inteiro do zero");
   assert.match(source, /function titleSimilarityFromTokens/, "sem função que aceita tokens já calculados");
   assert.match(source, /titleSimilarityFromTokens\(targetTokens, prepared\.searchableTokens\)/, "chooseCatalogEvidence recalcula os tokens do título do registro a cada entrada do catálogo comparada");
-  assert.match(source, /titleSimilarityFromTokens\(targetTitleTokens, titleTokens\(candidateTitle\)\)/, "chooseFamilyEvidence recalcula os tokens do título do registro a cada linha do histórico comparada");
+  assert.match(source, /titleSimilarityFromTokens\(targetTitleTokens, titleTokens\(candidateEffectiveTitle\)\)/, "chooseFamilyEvidence recalcula os tokens do título do registro a cada linha do histórico comparada");
 });
 
 check("a análise de alocação processa uma LD grande em tempo hábil (regressão de desempenho)", () => {
@@ -1460,6 +1567,65 @@ check("os níveis da alocação vêm da EAP do documento, não do caminho Databo
   assert.equal(outra.levels.filter(Boolean).length, 0, "sem EAP conhecida os níveis ficam vazios, não copiam o caminho");
 });
 
+check("a EAP do documento resolve os níveis mesmo com profundidade diferente da base", () => {
+  const A = createRequire(import.meta.url)("./allocation_core.js");
+  // Bug real: C1O-ALOC-CM-0250-2026 saiu com N1-N10 em branco para os
+  // relatórios de lançamento de cabo (Grupo 4 = 6.16.48, três níveis) porque
+  // a extração da EAP só reconhecia códigos com exatamente quatro níveis
+  // (ex.: 3.4.21.1). A base de Caminho das Pastas, por sua vez, só desce até
+  // "06.16.ELÉTRICA" (dois níveis) — a EAP do documento precisa bater com
+  // esse prefixo mais raso mesmo tendo mais partes que ele.
+  const niveisEletrica = ["UHDTD U-32", "06.MONTAGEM ELETROMECÂNICA", "06.16.ELÉTRICA"];
+  const control = {
+    rows: [], baseDocuments: new Map(), latestLdVersion: "",
+    projectLevelBase: [{ code: "6.16", levels: [...niveisEletrica, "", "", "", "", "", "", ""], rowNumber: 1 }],
+    levelsByEap: new Map(), levelsByDatabook: new Map(),
+  };
+  const caminho = "UHDT-D|DATA BOOK C&M|ELÉTRICA| C&M CABO_ELÉTRICA";
+  const build = (document) => ({
+    document, documentKey: A.key(document), title: "RELATÓRIO DE INSPEÇÃO",
+    discipline: "ELETRICA", sheet: "ET_LD_004", row: 2,
+    ldColumns: [{ header: "CAMINHO DATABOOK", value: caminho }],
+  });
+  const cabo = A.outputFromRecord(build("C1O_RNEST_U32_6.16.48_ELE_RILICE_510-CB-01A-01F"), null, null, control, "2026-08-19", null);
+  assert.equal(A.documentEap("C1O_RNEST_U32_6.16.48_ELE_RILICE_510-CB-01A-01F"), "6.16.48", "a EAP de três níveis precisa ser extraída inteira, não descartada");
+  assert.deepEqual(cabo.levels.slice(0, 3), niveisEletrica, "a EAP de três níveis precisa bater por prefixo com a base de dois níveis");
+});
+
+check("sem título na LD, o código \"nt-\" decodificado evita o Databook genérico", () => {
+  const A = createRequire(import.meta.url)("./allocation_core.js");
+  // Bug real: C1O-ALOC-CM-0249/0251-2026 saíram com o caminho geral da
+  // disciplina (UHDT-D|DATA BOOK C&M|CIVIL, sem subpasta) porque o título
+  // desses itens "nt-" ainda estava vazio na LD — a correção de títulos é um
+  // passo separado. Sem palavra nenhuma para comparar, chooseCatalogEvidence
+  // não achava nada acima do score mínimo e caía direto no geral. Decodificar
+  // o próprio código (mesmo motor de non_tagged_title_rules.js) dá à busca
+  // algo para comparar mesmo sem o título corrigido.
+  const record = { document: "C1O_RNEST_U32_5.1.3.1_CVL_DR_nt-CI-800-CHZ-311-90", title: "", discipline: "CIVIL" };
+  assert.equal(A.effectiveTitle(record), "CAIXA DE PASSAGEM - CONTIDA NO DE-5290.00-22313-800-CHZ-311-90", "o código nt- precisa decodificar como reforço de busca quando o título está vazio");
+
+  const catalogEntries = [
+    { description: "CAIXA DE PASSAGEM", databook: "UHDT-D|DATA BOOK C&M|CIVIL|CAIXA DE PASSAGEM" },
+    { description: "CONCRETO - SUPERESTRUTURA", databook: "UHDT-D|DATA BOOK C&M|CIVIL|CONCRETO - SUPERESTRUTURA" },
+  ];
+  const semCodigoNt = A.suggestCatalogDatabook({ document: "algo-sem-nt", title: "", discipline: "CIVIL" }, catalogEntries);
+  assert.equal(semCodigoNt, null, "sem título e sem código nt- para decodificar, não há base para inventar uma pasta");
+
+  const comCodigoNt = A.suggestCatalogDatabook(record, catalogEntries);
+  assert.ok(comCodigoNt, "o código decodificado precisa encontrar a pasta específica no Mapa Databook");
+  assert.equal(comCodigoNt.databook, "UHDT-D|DATA BOOK C&M|CIVIL|CAIXA DE PASSAGEM", "a pasta escolhida precisa ser a que bate com o que o código descreve, não a mais genérica");
+});
+
+check("o módulo allocation carrega non_tagged_title_rules.js antes de allocation_core.js", () => {
+  const loader = read("recon_module_loader.js");
+  const bloco = loader.match(/allocation: \[[^\]]*"allocation_app\.js"\]/)[0];
+  assert.match(bloco, /"non_tagged_title_rules\.js"/, "sem non_tagged_title_rules.js na lista do módulo allocation — effectiveTitle() decodifica os códigos nt- em silêncio, sem nada carregado");
+  assert.ok(
+    bloco.indexOf('"non_tagged_title_rules.js"') < bloco.indexOf('"allocation_core.js"'),
+    "non_tagged_title_rules.js precisa carregar antes de allocation_core.js: o require() do factory já roda na hora do IIFE",
+  );
+});
+
 check("a alocação prefere a pasta da disciplina ao caminho geral", () => {
   const { A, entries } = databookCatalogFromBase();
   const casos = [
@@ -1890,6 +2056,22 @@ check("as 348 conclusões já confirmadas continuam vencendo a regra de prefixo 
     assert.equal(N.resolve(doc).description.toUpperCase(), N.normalizeControlledDescription(confirmado).toUpperCase(), doc);
   });
   assert.ok(comRegraDePrefixo > 200, "o teste precisa cobrir uma quantidade real de documentos com regra de prefixo");
+});
+
+check("o código de bobina de cabo (nt-BOBINA) decodifica bitola e comprimento", () => {
+  const N = createRequire(import.meta.url)("./non_tagged_title_rules.js");
+  // A LD grava a sigla do PPTX ("BOB + código da bobina", slide 6) por
+  // extenso e sem hífen antes do número: "BOBINA50", não "BOB-50".
+  const doc = "C1O_RNEST_U32_3.1.1.1_ELE_RIR_nt-BOBINA50-1X185MM-469M";
+  const resolved = N.resolve(doc);
+  assert.equal(resolved.description, "CABO NOVO - BOBINA Nº 50 (1 X 185 MM²) - 469 M");
+  assert.equal(resolved.confidence, "alta");
+
+  // Sem a bitola/comprimento reconhecíveis, ainda decodifica o número da
+  // bobina, só que com confiança média em vez de inventar dado.
+  const semDetalhe = N.resolve("C1O_RNEST_U32_3.1.1.1_ELE_RIR_nt-BOBINA99");
+  assert.equal(semDetalhe.description, "CABO NOVO - BOBINA Nº 99");
+  assert.equal(semDetalhe.confidence, "media");
 });
 
 check("o título completo aplica a regra do desenho no fluxo real de análise", () => {

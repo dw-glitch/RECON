@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.53**.
+Versão atual: **1.26.56**.
 
 ## Execução
 
@@ -34,8 +34,12 @@ Para itens não tagueados (Grupo 7 começando com `nt-`), o RECON decodifica os
 prefixos padronizados da tabela do PPTX de titulação da fiscal (`LBN`/`LBE`
 leito, `ETN`/`ETE` eletroduto, `LMN`/`LME` luminária, `SPN`/`SPE` suporte,
 `EMT` estrutura metálica, `CI` caixa de passagem, `CX`/`CXINSP` caixa de
-inspeção, `CAN` canaleta, entre outros — `non_tagged_title_rules.js`). Quando
-o trecho final do código é o fim do número de um desenho de referência (ex.:
+inspeção, `CAN` canaleta, entre outros — `non_tagged_title_rules.js`). Cabos
+novos usam `BOB` + código da bobina no PPTX, mas a LD grava a sigla por
+extenso e sem hífen antes do número (`BOBINA50`, não `BOB-50`); o RECON
+reconhece as duas grafias e, quando a bitola (`1X185MM`) e o comprimento
+(`469M`) do código também batem com o padrão, decodifica ambos no título.
+Quando o trecho final do código é o fim do número de um desenho de referência (ex.:
 `130-CHZ-102`), o título passa a dizer "contida/contido no
 DE-5290.00-22313-...", em vez de tentar decodificar esse trecho como um lugar
 em palavras — essa é a regra do desenho descrita no PPTX da fiscal. Uma
@@ -45,7 +49,10 @@ norma vigente, consulta a Tabela 13 pelo Grupo 6 dos relatórios e compara o
 padrão com títulos anteriores da própria LD antes de montar a recomendação.
 A TAG usada na busca vem do Grupo 7 do nome do documento. Para válvulas manuais,
 a prioridade é a LI-5290.00-22313-940-CHZ-202 Rev. C; linhas canceladas são
-ignoradas e a SCON TAG SGP assume como fallback, mesmo quando a descrição está
+ignoradas. Quando a TAG não está ativa na LI (ausente ou cancelada), o Mapa de
+VMs Reparo/Medição da UHDTD assume no lugar dela — a LI continua sendo a fonte
+oficial da codificação, o mapa só cobre o que ela ainda não tem. Só depois
+disso a SCON TAG SGP assume como fallback, mesmo quando a descrição está
 em outra disciplina. Para as demais TAGs, SCON e Apêndice 3 podem se
 complementar. A SCON ESCOPO só descreve o título quando nenhuma fonte anterior
 resolveu a TAG, evitando recomendações vazias, e apenas no modo automático — os
@@ -73,13 +80,20 @@ e, por último, a pasta da disciplina no próprio mapa — RIR ou C&M conforme a
 família do documento, ou a pasta mais próxima do título quando a disciplina não
 separa RIR de C&M, como PINTURA. O caminho geral da disciplina só entra quando
 nenhuma dessas pastas resolve, e continua identificado como fallback na análise.
+Quando o título ainda está vazio na LD (item "nt-" ainda não corrigido na aba
+Títulos), a busca no Mapa Databook decodifica o próprio código pelo mesmo motor
+da correção de títulos (`non_tagged_title_rules.js`) como reforço, em vez de
+comparar contra nada e cair direto no caminho geral.
 
 Os níveis N1 a N10 são a EAP do projeto, não as pastas do Databook: N1 é a
 unidade, N2 é o grupo da EAP e N3 o subgrupo (`UHDTD U-32`, `03.REPARO`,
 `03.04.CIVIL`). Eles saem da EAP do Grupo 4 do nome do documento, resolvida pela
 base embutida `Caminho das Pastas UHDTD.xlsx` — o export de caminhos do projeto,
 372 pastas. A aba do próprio controle tem preferência quando existe; a base
-embutida completa os códigos que ela não cobre.
+embutida completa os códigos que ela não cobre. A profundidade da EAP varia por
+área do projeto (`6.16.48` tem três níveis, `3.4.21.1` tem quatro): o RECON
+extrai a EAP inteira pela posição no nome do documento, qualquer que seja sua
+profundidade, e casa por prefixo com o nível mais raso que a base tiver.
 
 Quando várias pastas dividem o mesmo código da EAP, o que as separa é a
 disciplina: sob `10.02.01` existem `A.DINÂMICOS`, `B.ELÉTRICA`,
