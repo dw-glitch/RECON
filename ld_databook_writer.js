@@ -2,10 +2,10 @@
   const contracts = root.RECONContracts || (typeof module === "object" && module.exports ? require("./recon_contracts.js") : null);
   const preservation = root.RECONLdPreservation || (typeof module === "object" && module.exports ? require("./ld_preservation.js") : null);
   const allocationCore = root.AllocationCore || (typeof module === "object" && module.exports ? require("./allocation_core.js") : null);
-  const api = factory(contracts, preservation, allocationCore);
+  const api = factory(root, contracts, preservation, allocationCore);
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.RECONDatabookWriter = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function (Contracts, Preservation, AllocationCore) {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (root, Contracts, Preservation, AllocationCore) {
   "use strict";
 
   function rawText(value) { return value === null || value === undefined ? "" : String(value); }
@@ -59,6 +59,41 @@
       .replace(/\s+t\s*=\s*'[^']*'/gi, "");
   }
 
+  function columnIndexFromRef(cellRef) {
+    const letters = String(cellRef || "").match(/^[A-Z]+/i);
+    if (!letters) return -1;
+    return letters[0].toUpperCase().split("").reduce((total, letter) => total * 26 + (letter.charCodeAt(0) - 64), 0);
+  }
+
+  // O Excel exige que as células de uma linha estejam em ordem crescente de
+  // coluna. Quando o título está realmente vazio, a célula não existe no XML e
+  // precisa ser criada — acrescentar no fim da linha produzia A B D E C, e o
+  // Excel abria o arquivo com o aviso de conteúdo reparado.
+  function insertCellInOrder(cells, cellRef, cellXml) {
+    const target = columnIndexFromRef(cellRef);
+    if (target < 0) return `${cells}${cellXml}`;
+    const pattern = /<c\b[^>]*\br="([A-Z]+\d+)"[^>]*(?:\/>|>[\s\S]*?<\/c>)/gi;
+    let match;
+    while ((match = pattern.exec(cells))) {
+      if (columnIndexFromRef(match[1]) > target) {
+        return `${cells.slice(0, match.index)}${cellXml}${cells.slice(match.index)}`;
+      }
+    }
+    return `${cells}${cellXml}`;
+  }
+
+  // O atributo spans declara a faixa de colunas usada na linha. Deixá-lo menor
+  // que a célula criada é outra origem de conteúdo reparado.
+  function widenRowSpans(rowOpenTag, cellRef) {
+    const target = columnIndexFromRef(cellRef);
+    if (target < 0) return rowOpenTag;
+    return rowOpenTag.replace(/\bspans="(\d+):(\d+)"/i, (all, start, end) => {
+      const first = Math.min(Number(start), target);
+      const last = Math.max(Number(end), target);
+      return `spans="${first}:${last}"`;
+    });
+  }
+
   function patchCellXml(xml, cellRef, rowNumber, value) {
     const escapedRef = escapeRegExp(cellRef);
     const content = `<is><t xml:space="preserve">${xmlEscape(value)}</t></is>`;
@@ -69,7 +104,10 @@
     if (self.test(xml)) return xml.replace(self, (_all, attributes) => renderCell(attributes));
     const row = new RegExp(`(<row\\b[^>]*\\br="${rowNumber}"[^>]*>)([\\s\\S]*?)(<\\/row>)`, "i");
     if (!row.test(xml)) throw new Error(`Linha ${rowNumber} não localizada na estrutura interna da LD.`);
-    return xml.replace(row, (_all, open, cells, close) => `${open}${cells}<c r="${cellRef}" t="inlineStr">${content}</c>${close}`);
+    return xml.replace(row, (_all, open, cells, close) => {
+      const cell = `<c r="${cellRef}" t="inlineStr">${content}</c>`;
+      return `${widenRowSpans(open, cellRef)}${insertCellInOrder(cells, cellRef, cell)}${close}`;
+    });
   }
 
   async function planChanges(file, approvedRows, XLSX, JSZip) {
@@ -169,5 +207,5 @@
     };
   }
 
-  return { apply, planChanges, findDatabookColumn, patchCellXml };
+  return { apply, planChanges, findDatabookColumn, patchCellXml, insertCellInOrder, widenRowSpans, columnIndexFromRef };
 });
