@@ -459,9 +459,42 @@
     return [...unique.values()];
   }
 
+  // Base de caminhos da EAP embutida: é ela que resolve N1..N10 pelo código EAP
+  // do documento quando o controle não traz a aba própria ou não cobre o
+  // código. Fica em cache porque a leitura é a mesma em toda análise.
+  let eapLevelBaseCache = null;
+
+  async function loadEapLevelBase() {
+    if (eapLevelBaseCache) return eapLevelBaseCache;
+    try {
+      const offline = window.RECONOfflineResources;
+      const name = "Caminho das Pastas UHDTD.xlsx";
+      if (!offline || !(offline.has(name) || await offline.ensure(name))) throw new Error("Base de caminhos da EAP indisponível");
+      const buffer = offline.arrayBuffer(name);
+      const workbook = window.RECONWorkbookWorker
+        ? await window.RECONWorkbookWorker.readBuffer(buffer, "eap-paths", { cellDates: true })
+        : XLSX.read(buffer, { type: "array", cellDates: true });
+      eapLevelBaseCache = A.parseProjectLevelBase(workbook, XLSX);
+    } catch (error) {
+      console.warn("Base de caminhos da EAP não pôde ser lida.", error);
+      eapLevelBaseCache = [];
+    }
+    return eapLevelBaseCache;
+  }
+
+  // O controle manda quando traz a própria aba de caminhos; a base embutida
+  // completa os códigos que ele não cobre, em vez de disputar com ele.
+  function mergeEapLevelBase(parsed, embedded) {
+    const own = (parsed && parsed.projectLevelBase) || [];
+    const known = new Set(own.map((entry) => entry.code));
+    const complement = (embedded || []).filter((entry) => !known.has(entry.code));
+    return own.concat(complement);
+  }
+
   async function loadControl(file, quiet) {
     const workbook = await readWorkbook(file);
     const parsed = A.parseControlWorkbook(workbook, XLSX);
+    parsed.projectLevelBase = mergeEapLevelBase(parsed, await loadEapLevelBase());
     state.control = parsed;
     state.controlSource = file.name;
     if (state.codeAutomatic || !A.parseAllocationCode(els.code.value)) {

@@ -568,10 +568,10 @@ check("a aba Bases está registrada na interface, no carregador e no precache", 
   }
 });
 
-check("o registro de bases descreve as sete bases que o RECON reconhece", () => {
+check("o registro de bases descreve as oito bases que o RECON reconhece", () => {
   const ids = Bases.descriptors().map((item) => item.id);
   assert.deepEqual(ids.slice().sort(), [
-    "allocation-template", "databook-rev-a", "databook-rev-c",
+    "allocation-template", "databook-rev-a", "databook-rev-c", "eap-paths",
     "scon-escopo", "scon-tag-sgp", "tag-appendix", "titles-control",
   ]);
   // Os volumes precisam bater com o que audit_app.js confere ao carregar as
@@ -1543,6 +1543,51 @@ check("o caminho geral escreve PROCEDIMENTOS DE EXECUÇÃO como na base", () => 
   const bloco = fonte.slice(fonte.indexOf("function generalDatabookFallback"), fonte.indexOf("function titleTokens"));
   assert.doesNotMatch(bloco, /EDECUÇÃO/, "o caminho gravado precisa usar a grafia da Rev.C, não a da Rev.B");
   assert.match(bloco, /GERAL - PROCEDIMENTOS DE EXECUÇÃO/);
+});
+
+check("a base de Caminho das Pastas embutida resolve os níveis pelo código EAP", () => {
+  const require2 = createRequire(import.meta.url);
+  const XLSX = require2("./xlsx.full.min.js");
+  globalThis.XLSX = XLSX;
+  const A = require2("./allocation_core.js");
+  const registry = new Map();
+  const previous = globalThis.RECONOfflineResources;
+  globalThis.RECONOfflineResources = { register: (map) => { Object.entries(map).forEach(([name, item]) => registry.set(name, item)); } };
+  try {
+    new vm.Script(read("offline_recon_eap_paths.js")).runInThisContext();
+  } finally {
+    globalThis.RECONOfflineResources = previous;
+  }
+  const item = registry.get("Caminho das Pastas UHDTD.xlsx");
+  assert.ok(item, "a base precisa se registrar com o nome que o gerador procura");
+  const workbook = XLSX.read(Buffer.from(item.base64, "base64"), { type: "buffer", cellDates: true });
+  const projectLevelBase = A.parseProjectLevelBase(workbook, XLSX);
+  assert.ok(projectLevelBase.length >= 350, `a base precisa carregar os caminhos (veio ${projectLevelBase.length})`);
+
+  const control = { rows: [], baseDocuments: new Map(), levelsByEap: new Map(), levelsByDatabook: new Map(), projectLevelBase, latestLdVersion: "" };
+  const build = (document, discipline) => ({
+    document, documentKey: A.key(document), title: "", discipline, sheet: "ET_LD_003", row: 2,
+    ldColumns: [{ header: "DISCIPLINA", value: discipline }],
+  });
+
+  // EAP 3.4.21.1 → 03.REPARO / 03.04.CIVIL, como nas alocações oficiais.
+  const civil = A.outputFromRecord(build("C1O_RNEST_U32_3.4.21.1_CVL_LAC_B-32001B", "CIVIL"), null, null, control, "2026-08-18", null);
+  assert.deepEqual(civil.levels.slice(0, 3), ["UHDTD U-32", "03.REPARO", "03.04.CIVIL"]);
+
+  // Sob 10.02.01 há uma pasta por disciplina; a do documento é quem decide.
+  const tubulacao = A.outputFromRecord(build("C1O_RNEST_U32_10.2.1.2_TUB_RIR_nt-NF-1465", "TUBULAÇÃO"), null, null, control, "2026-08-18", null);
+  assert.equal(tubulacao.levels[3], "10.02.01.H.TUBULAÇÃO");
+  const eletrica = A.outputFromRecord(build("C1O_RNEST_U32_10.2.1.2_ELE_RIR_nt-NF-542028", "ELÉTRICA"), null, null, control, "2026-08-18", null);
+  assert.equal(eletrica.levels[3], "10.02.01.B.ELÉTRICA");
+  const telecom = A.outputFromRecord(build("C1O_RNEST_U32_10.2.1.2_TEL_RIR_nt-NF-1", "TELECOM"), null, null, control, "2026-08-18", null);
+  assert.equal(telecom.levels[3], "10.02.01.G.TELECOM", "TELECOM não pode ser confundido com ELÉTRICA");
+});
+
+check("TELECOM é reconhecido antes de ELÉTRICA na disciplina do Databook", () => {
+  const A = createRequire(import.meta.url)("./allocation_core.js");
+  assert.equal(A.databookDisciplineKey({ discipline: "TELECOM" }), "TELECOM");
+  assert.equal(A.databookDisciplineKey({ discipline: "10.02.01.G.TELECOM" }), "TELECOM");
+  assert.equal(A.databookDisciplineKey({ discipline: "ELÉTRICA" }), "ELETRICA");
 });
 
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));
