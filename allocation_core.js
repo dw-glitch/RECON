@@ -2,10 +2,11 @@
   const core = root.TriagemCore || (typeof module === "object" && module.exports ? require("./core.js") : null);
   const conflicts = root.LDConflictCore || (typeof module === "object" && module.exports ? require("./ld_conflicts.js") : null);
   const confirmations = root.RECONAllocationConfirmations || (typeof module === "object" && module.exports ? require("./allocation_confirmation_sources.js") : null);
-  const api = factory(core, conflicts, confirmations);
+  const nonTagged = root.RECONNonTaggedTitles || (typeof module === "object" && module.exports ? require("./non_tagged_title_rules.js") : null);
+  const api = factory(core, conflicts, confirmations, nonTagged);
   if (typeof module === "object" && module.exports) module.exports = api;
   root.AllocationCore = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function (C, F, P) {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (C, F, P, NT) {
   "use strict";
 
   const READY = "pronto";
@@ -102,13 +103,23 @@
   }
 
   function normalizeEap(value) {
-    const match = text(value).match(/(\d+(?:\.\d+){3})/);
+    // A profundidade da EAP varia por área do projeto (ex.: 6.16.48 tem 3
+    // níveis, 3.4.21.1 tem 4): exigir sempre 4 partes deixava a EAP inteira
+    // sem bater e a linha saía sem nenhum N1-N10, mesmo quando a base
+    // reconhecia o código mais raso por prefixo.
+    const match = text(value).match(/(\d+(?:\.\d+){1,6})/);
     if (!match) return "";
     return match[1].split(".").map((part) => String(Number(part))).join(".");
   }
 
   function documentEap(value) {
-    const token = text(value).split("_").find((part) => /^\d+(?:\.\d+){3}$/.test(part.trim()));
+    const document = text(value);
+    // Grupo 4 do nome do documento é sempre a EAP nos documentos RNEST,
+    // qualquer que seja sua profundidade — extrair pela posição evita
+    // depender de um padrão de tamanho fixo.
+    const groups = document.split("_");
+    if (groups.length >= 7 && norm(groups[1]) === "RNEST") return normalizeEap(groups[3]);
+    const token = groups.find((part) => /^\d+(?:\.\d+){1,6}$/.test(part.trim()));
     return normalizeEap(token);
   }
 
@@ -430,7 +441,7 @@
     if (!ranked.length) {
       margin = 6;
       byFamily = false;
-      const documentTokens = titleTokens(`${record && record.title || ""} ${text(record && record.document).split("_").pop() || ""}`);
+      const documentTokens = titleTokens(`${effectiveTitle(record)} ${text(record && record.document).split("_").pop() || ""}`);
       (catalogEntries || []).forEach((entry) => {
         const levels = entryLevels(entry);
         if (levels.length < 4 || norm(levels[2]).replace(/S$/, "") !== folder.replace(/S$/, "")) return;
@@ -485,6 +496,21 @@
       discipline,
       fallback: true,
     };
+  }
+
+  // Muito item "nt-" chega na alocação com o título ainda vazio na LD (a
+  // correção de títulos é um passo separado). Sem palavra nenhuma para
+  // comparar, a escolha do Databook não tinha como diferenciar uma pasta
+  // específica da pasta geral da disciplina — mesmo quando o próprio código
+  // já entrega o que o documento é (non_tagged_title_rules.js já decodifica
+  // isso para a correção de títulos; aqui é o mesmo motor, só que como
+  // reforço de busca, não como título a gravar).
+  function effectiveTitle(record) {
+    const title = text(record && record.title);
+    if (title) return title;
+    if (!NT) return "";
+    const resolved = NT.resolve(record && record.document);
+    return resolved && resolved.description ? resolved.description : "";
   }
 
   function titleTokens(value) {
@@ -1014,9 +1040,10 @@
   function chooseFamilyEvidence(record, rows, index, sourceType) {
     const targetFamily = documentFamily(record.document);
     if (!targetFamily.key) return null;
+    const targetTitle = effectiveTitle(record);
     const targetKind = titleKind(record.title);
-    const targetSubjects = subjectTags(record.document, record.title, "");
-    const targetTitleTokens = titleTokens(record.title);
+    const targetSubjects = subjectTags(record.document, targetTitle, "");
+    const targetTitleTokens = titleTokens(targetTitle);
     const targetDiscipline = disciplineKey(record.discipline);
     const targetSequence = documentSequence(record.document);
     const dedupe = new Set();
@@ -1029,10 +1056,11 @@
       const candidateFamily = documentFamily(row.document);
       if (candidateFamily.key !== targetFamily.key) return;
       const candidateTitle = candidateRecord && candidateRecord.title || row.approvedTitle || row.title || row.originalTitle || "";
+      const candidateEffectiveTitle = effectiveTitle({ title: candidateTitle, document: row.document });
       const candidateKind = titleKind(candidateTitle);
-      const candidateSubjects = subjectTags(row.document, candidateTitle, row.databook);
+      const candidateSubjects = subjectTags(row.document, candidateEffectiveTitle, row.databook);
       const subjectMatch = setsIntersect(targetSubjects, candidateSubjects);
-      const similarity = titleSimilarityFromTokens(targetTitleTokens, titleTokens(candidateTitle));
+      const similarity = titleSimilarityFromTokens(targetTitleTokens, titleTokens(candidateEffectiveTitle));
       const kindMatch = Boolean(targetKind && candidateKind && targetKind === candidateKind);
       if (targetKind && candidateKind && !kindMatch) return;
       if (targetSubjects.size && !subjectMatch) return;
@@ -1166,10 +1194,11 @@
   }
 
   function chooseCatalogEvidence(record, catalogEntries) {
+    const title = effectiveTitle(record);
     const targetKind = titleKind(record.title);
     const targetDiscipline = disciplineKey(record.discipline);
-    const targetTokens = titleTokens(record.title);
-    const targetSubjects = subjectTags(record.document, record.title, "");
+    const targetTokens = titleTokens(title);
+    const targetSubjects = subjectTags(record.document, title, "");
     const ranked = (catalogEntries || []).map((entry) => {
       const prepared = prepareCatalogEntry(entry);
       const searchableNorm = prepared.searchableNorm;
@@ -1920,6 +1949,7 @@
     parseProjectLevelBase,
     levelsForEap,
     titleKind,
+    effectiveTitle,
     databookDisciplineKey,
     databookFamilyForRecord,
     generalDatabookFallback,
