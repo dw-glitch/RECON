@@ -1,0 +1,266 @@
+/*
+ * RECON — Melhorias UX/UI
+ * recon-ux-improvements.css
+ *
+ * Carregado APÓS design-system.css, recon-ui.css e recon-final.css.
+ * Usa as mesmas variáveis CSS do design system existente.
+ * Não altera nenhum arquivo CSS pré-existente.
+ *
+ * Pontos cobertos (ver análise UX/UI):
+ *   #4  — Toolbar de alocação reorganizada
+ *   #5  — Pulso visual no card da LD após carregamento
+ *   #16 — Animação de troca de módulo
+ *   #19 — Harmonização de border-radius
+ *   #21 — Foco com contraste adequado (WCAG AA)
+ *   #13 — Estado de loading no botão primário
+ *   Extras: tooltip no modo compacto, melhorias de densidade visual
+ */
+
+/* ─────────────────────────────────────────────
+   #21 — Cor de foco com contraste WCAG ≥ 4.5:1
+   Substitui o amarelo (#f4b740) pelo azul da marca
+   ──────────────────────────────────────────── */
+html[data-app="RECON"] :is(
+  button, input, select, textarea, summary,
+  [tabindex], [role="button"], a[href]
+):focus-visible {
+  outline: 3px solid var(--brand-600, #1479a6);
+  outline-offset: 2px;
+  box-shadow: none; /* remove ring duplicado do design-system */
+}
+
+/* ─────────────────────────────────────────────
+   #19 — Harmonização de border-radius
+   Alinha --ui-radius com os tokens do design system
+   ──────────────────────────────────────────── */
+html[data-app="RECON"][data-ui-generation="3"] {
+  --ui-radius: var(--radius-md);       /* 13px */
+  --ui-radius-sm: var(--radius-sm);    /* 9px  */
+}
+
+/* ─────────────────────────────────────────────
+   #5 — Pulso visual no card da LD após carregamento
+   Ativado por JS adicionando .ld-just-loaded ao card
+   ──────────────────────────────────────────── */
+@keyframes recon-ld-pulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success-700) 40%, transparent); }
+  60%  { box-shadow: 0 0 0 6px color-mix(in srgb, var(--success-700) 0%, transparent); }
+  100% { box-shadow: var(--shadow-1); }
+}
+
+html[data-app="RECON"] .recon-source.ld-just-loaded {
+  border-color: var(--success-700);
+  animation: recon-ld-pulse 1s ease-out forwards;
+}
+
+/* ─────────────────────────────────────────────
+   #16 — Animação de entrada na troca de módulo
+   ──────────────────────────────────────────── */
+@keyframes recon-module-fadein {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+html[data-app="RECON"] .module-view.active {
+  animation: recon-module-fadein 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-app="RECON"] .module-view.active {
+    animation: none;
+  }
+}
+
+/* ─────────────────────────────────────────────
+   #4 — Toolbar de alocação reorganizada
+   Separa filtros e exportações em grupos visuais claros
+   ──────────────────────────────────────────── */
+html[data-app="RECON"] .allocation-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.8rem;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  /* linha divisória via gradiente entre os dois grupos */
+}
+
+/* Grupo de filtros — cresce para ocupar o espaço disponível */
+html[data-app="RECON"] .allocation-toolbar-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Grupo de exportação — fixo, separado por borda */
+html[data-app="RECON"] .allocation-toolbar-exports {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--border-1);
+}
+
+/* Em telas estreitas, os grupos empilham */
+@media (max-width: 900px) {
+  html[data-app="RECON"] .allocation-toolbar-exports {
+    padding-left: 0;
+    border-left: none;
+    border-top: 1px solid var(--border-1);
+    padding-top: 0.5rem;
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+/* ─────────────────────────────────────────────
+   #13 — Estado de loading no botão primário
+   Ativado por JS adicionando .btn-loading ao botão
+   ──────────────────────────────────────────── */
+@keyframes recon-spin {
+  to { transform: rotate(360deg); }
+}
+
+html[data-app="RECON"] button.btn-loading {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+  cursor: wait;
+}
+
+html[data-app="RECON"] button.btn-loading::after {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: -0.55rem 0 0 -0.55rem;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: recon-spin 0.7s linear infinite;
+}
+
+/* Loading em botão secundário */
+html[data-app="RECON"] button.secondary-button.btn-loading::after {
+  border-color: color-mix(in srgb, var(--brand-700) 30%, transparent);
+  border-top-color: var(--brand-700);
+}
+
+/* ─────────────────────────────────────────────
+   Sidebar tooltip — reforço visual para modo compacto
+   O JS adiciona title; aqui garantimos que .module-link
+   no modo ícone mostre cursor adequado
+   ──────────────────────────────────────────── */
+html[data-app="RECON"] .module-link[title] {
+  cursor: pointer;
+}
+
+/* ─────────────────────────────────────────────
+   #6 — Badge "Precisa de LD" nos cards da home
+   Aplicado via JS com .card-needs-ld
+   ──────────────────────────────────────────── */
+html[data-app="RECON"] .p1-task-grid button.card-needs-ld {
+  position: relative;
+}
+
+html[data-app="RECON"] .p1-task-grid button.card-needs-ld::before {
+  content: attr(data-needs-badge);
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  background: var(--warning-100);
+  color: var(--warning-800);
+  border: 1px solid color-mix(in srgb, var(--warning-800) 20%, transparent);
+  font-size: 0.68rem;
+  font-weight: 750;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* ─────────────────────────────────────────────
+   Melhorias gerais de densidade e legibilidade
+   ──────────────────────────────────────────── */
+
+/* Tabelas — caption acessível mas invisível visualmente */
+html[data-app="RECON"] table caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Ícones de arquivo — label descritivo */
+html[data-app="RECON"] .source-icon[data-label]::after,
+html[data-app="RECON"] .file-icon[data-label]::after {
+  display: none; /* label está no aria-label do elemento pai */
+}
+
+/* Contadores inicialmente ocultos até ter valor */
+html[data-app="RECON"] .counter-zero {
+  display: none;
+}
+
+/* Barras de resumo de métricas como region, não nav */
+html[data-app="RECON"] [data-metrics-region] {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.65rem;
+}
+
+/* Indicador de arredondado nos ícones de arquivo com letra */
+html[data-app="RECON"] .source-icon,
+html[data-app="RECON"] .file-icon {
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+}
+
+/* Melhor contraste no estado de LD carregada */
+html[data-app="RECON"] .recon-source.p1-loaded .file-source {
+  border-color: var(--success-700);
+  background: color-mix(in srgb, var(--success-100) 60%, var(--surface-2));
+}
+
+/* ─────────────────────────────────────────────
+   Drawer e dialog — reforço visual
+   ──────────────────────────────────────────── */
+html[data-app="RECON"] [role="dialog"] {
+  /* Garante que dialogs sempre ficam sobre o overlay */
+  isolation: isolate;
+}
+
+/* Botão fechar com SVG — padding uniforme */
+html[data-app="RECON"] .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem;
+  border-radius: var(--radius-sm);
+  min-height: auto;
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+html[data-app="RECON"] .icon-button svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
