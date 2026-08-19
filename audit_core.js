@@ -2170,6 +2170,95 @@
     return cleanTitlePart(result);
   }
 
+  // Espelho de trimTypeDescriptionOverlap: em vez de encurtar o tipo, encurta a
+  // descrição. É o que vale quando o tipo vem da norma e precisa ficar literal —
+  // sem isto, uma descrição que já começa pelo tipo produzia
+  // "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO - RELATÓRIO DE INSPEÇÃO DE
+  // RECEBIMENTO DE VÁLVULA MANUAL". Exige duas palavras em comum para não
+  // recortar descrição por coincidência de uma palavra só.
+  // As 328 redações da Tabela 13 são os tipos documentais válidos. Quando a
+  // norma troca o tipo de um documento, a redação antiga continuava no título
+  // e virava descrição — "RELATÓRIO DE LIBERAÇÃO DE ACABAMENTO - LAUDO DE
+  // ACABAMENTO". Reconhecer qualquer redação normativa no início do título
+  // atual evita carregar o texto que a norma acabou de substituir.
+  let normativeTitlePrefixes = null;
+
+  function normativeTitleList() {
+    if (normativeTitlePrefixes) return normativeTitlePrefixes;
+    const wordings = new Set();
+    ((T && T.REPORT_TITLES) || []).forEach((entry) => {
+      const title = norm(Array.isArray(entry) ? entry[1] : entry && entry.title);
+      if (title && title.split(/\s+/).length >= 2) wordings.add(title);
+    });
+    normativeTitlePrefixes = [...wordings].sort((left, right) => right.length - left.length);
+    return normativeTitlePrefixes;
+  }
+
+  function stripNormativeTitlePrefix(value) {
+    const clean = cleanTitlePart(value);
+    if (!clean) return "";
+    const normalized = norm(clean);
+    for (const wording of normativeTitleList()) {
+      if (normalized !== wording && !normalized.startsWith(`${wording} `) && !normalized.startsWith(`${wording}-`)) continue;
+      if (normalized === wording) return "";
+      // Recorta pelo número de palavras, não por índice do texto normalizado:
+      // acentos e pontuação deslocam as posições entre as duas formas.
+      const wordCount = wording.split(/\s+/).length;
+      const tokens = [...clean.matchAll(/[\p{L}\p{N}]+/gu)];
+      if (tokens.length <= wordCount) return "";
+      const rest = clean.slice(tokens[wordCount].index).replace(/^\s*[-–—:]\s*/, "");
+      return cleanTitlePart(rest);
+    }
+    return clean;
+  }
+
+  function trimDescriptionTypeOverlap(type, description) {
+    const cleanType = cleanTitlePart(type);
+    const cleanDescription = cleanTitlePart(description);
+    if (!cleanType || !cleanDescription) return cleanDescription;
+    const tokens = (value) => [...value.matchAll(/[\p{L}\p{N}]+/gu)].map((match) => ({
+      key: norm(match[0]),
+      index: match.index,
+      end: match.index + match[0].length,
+    }));
+    const typeTokens = tokens(cleanType);
+    const descriptionTokens = tokens(cleanDescription);
+    if (!typeTokens.length || !descriptionTokens.length) return cleanDescription;
+    let best = 0;
+    for (let start = 0; start < typeTokens.length; start += 1) {
+      let matched = 0;
+      while (
+        start + matched < typeTokens.length
+        && matched < descriptionTokens.length
+        && typeTokens[start + matched].key === descriptionTokens[matched].key
+      ) matched += 1;
+      if (matched > best) best = matched;
+    }
+    // Uma descrição que não acrescenta nenhuma palavra nova ao tipo é ruído:
+    // "RELATÓRIO DE INSPEÇÃO DA MONTAGEM ... DO TRANSFORMADOR" com
+    // "MONTAGEM DE TRANSFORMADOR" repete o que o tipo já diz.
+    const connectors = new Set(["DE", "DA", "DO", "DAS", "DOS", "E", "PARA", "EM", "NA", "NO", "A", "O", "AS", "OS"]);
+    const typeKeys = new Set(typeTokens.map((token) => token.key));
+    const contentTokens = descriptionTokens.filter((token) => !connectors.has(token.key));
+    if (contentTokens.length && contentTokens.every((token) => typeKeys.has(token.key))) return "";
+
+    // Uma palavra só normalmente é coincidência, mas quando o tipo termina
+    // exatamente na palavra em que a descrição começa — "RELATÓRIO DE MONTAGEM"
+    // com "MONTAGEM DE BOMBA" — a repetição é real.
+    if (best < 2) {
+      const lastType = typeTokens[typeTokens.length - 1];
+      const firstDescription = descriptionTokens[0];
+      const repeatsLastWord = lastType.key === firstDescription.key && lastType.key.length >= 4;
+      if (!repeatsLastWord || descriptionTokens.length < 2) return cleanDescription;
+      best = 1;
+    }
+    if (best >= descriptionTokens.length) return "";
+    const rest = cleanDescription
+      .slice(descriptionTokens[best].index)
+      .replace(/^\s*(?:DE|DO|DA|DOS|DAS|PARA|E)\s+/i, "");
+    return cleanTitlePart(rest) || "";
+  }
+
   function trimTypeDescriptionOverlap(type, description) {
     const cleanType = cleanTitlePart(type);
     const cleanDescription = cleanTitlePart(description);
@@ -2198,12 +2287,17 @@
     return cleanType;
   }
 
-  // O título recomendado sai sempre em caixa alta, qualquer que seja a caixa
-  // usada na base de origem — SCON TAG SGP, SCON ESCOPO e Apêndice 3 gravam a
-  // descrição de formas diferentes, e a LD precisa de um padrão único.
-  // toLocaleUpperCase("pt-BR") preserva os acentos: "ção" vira "ÇÃO".
+  // O título recomendado sai sempre em caixa alta e sem acento, qualquer que
+  // seja a caixa usada na base de origem — SCON TAG SGP, SCON ESCOPO e Apêndice
+  // 3 gravam a descrição de formas diferentes, e a LD precisa de um padrão
+  // único. A remoção dos acentos usa NFD para separar a letra do sinal e
+  // descartar apenas o sinal, de modo que "ÇÃO" vira "CAO" sem perder letras.
+  // A TAG não passa por aqui: ela é copiada literal do Grupo 7.
   function upperCaseTitle(value) {
-    return String(value == null ? "" : value).toLocaleUpperCase("pt-BR");
+    return String(value == null ? "" : value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleUpperCase("pt-BR");
   }
 
   function buildTitle(type, description, tag, options) {
@@ -2217,9 +2311,14 @@
     // O texto definido pela norma deve permanecer literal na frente do título.
     // Para os demais fallbacks, conserva-se a limpeza anterior de parênteses e
     // sobreposição com a descrição vinda das bases.
-    const cleanType = settings.preserveType
-      ? cleanTitlePart(type)
-      : trimTypeDescriptionOverlap(removeParentheticalContent(type), cleanDescription);
+    let cleanType;
+    if (settings.preserveType) {
+      // A redação da norma fica literal; quem cede é a descrição.
+      cleanType = cleanTitlePart(type);
+      cleanDescription = trimDescriptionTypeOverlap(cleanType, cleanDescription);
+    } else {
+      cleanType = trimTypeDescriptionOverlap(removeParentheticalContent(type), cleanDescription);
+    }
     const parts = [];
     [cleanType, cleanDescription].map(cleanTitlePart).filter(Boolean).forEach((part) => {
       if (!parts.some((current) => norm(current) === norm(part) || norm(current).includes(norm(part)))) parts.push(part);
@@ -2517,8 +2616,13 @@
       // duas formas. A segunda passagem cobre títulos em que a TAG correta
       // aparece com outro separador ou repetida.
       const descriptionWithoutObservedTag = stripKnownParts(current, currentDescriptionType, explicitTitle);
-      const currentDescription = stripKnownParts(descriptionWithoutObservedTag, "", documentNameTag || tag);
-      const sconEscopoLastResort = sconEscopoReference
+      const currentDescription = stripNormativeTitlePrefix(
+        stripKnownParts(descriptionWithoutObservedTag, "", documentNameTag || tag),
+      );
+      // O último recurso continua sendo o SCON ESCOPO, mas só no modo
+      // automático: nos modos "Somente SCON TAG SGP" e "Somente Apêndice 3" a
+      // própria tela promete ignorá-lo, e ele estava entrando assim mesmo.
+      const sconEscopoLastResort = sconEscopoReference && sconEscopoDescriptionAllowed
         ? usableDescription(sconEscopoReference.description || sconEscopoReference.title)
         : "";
       const rawDescription = nonTaggedRule && nonTaggedRule.description
@@ -2534,6 +2638,17 @@
         // uma descrição do escopo a deixar a recomendação vazia.
         || sconEscopoLastResort
         || currentDescription;
+      const sconEscopoLastResortUsed = Boolean(
+        sconEscopoLastResort
+        && !nonTaggedRule
+        && !sconCombinedDescription
+        && !(trustedDescription && referenceDescription)
+        && !(externalTagDrivesDescription && externalTagDescription)
+        && !explicitComplementary
+        && !explicitDescription
+        && !explicitScon
+        && !manualValve
+      );
       const description = pruneRedundantTitleDescription(type, rawDescription);
       const descriptionIdentifiers = technicalIdentifiers(description);
       const titleTag = nonTaggedRule ? "" : documentNameTag || tag;
@@ -2714,10 +2829,10 @@
                 : manualValve
                   ? "SCON TAG SGP · fallback da LI de válvulas"
                   : "SCON TAG SGP · 3º campo da DESCRIÇÃO"
-            : explicitComplementary
-              ? "Complementar da LD"
-              : trustedDescription
-                ? "Base controlada de títulos"
+            : trustedDescription
+              ? "Base controlada de títulos"
+              : explicitComplementary
+                ? "Complementar da LD"
                 : externalTagDrivesDescription
                   ? sconEscopoInDescription && appendixInDescription
                     ? "SCON ESCOPO + Apêndice 3 Rev.B"
@@ -2730,7 +2845,7 @@
                             ? "SCON ESCOPO · TAG + EAP"
                             : "SCON ESCOPO · busca progressiva"
                       : "Apêndice 3 Rev.B · TAG do equipamento"
-                  : explicitDescription ? "Descrição da LD" : explicitScon ? "SCON da LD" : manualValve ? "Regra mínima da TAG VM · VÁLVULA MANUAL" : "Título atual",
+                  : explicitDescription ? "Descrição da LD" : explicitScon ? "SCON da LD" : manualValve ? "Regra mínima da TAG VM · VÁLVULA MANUAL" : sconEscopoLastResortUsed ? "SCON ESCOPO · último recurso" : "Título atual",
         valveMatch: valveReference && valveReference.trusted ? "SIM" : valveReference && valveReference.cancelled ? "CANCELADA" : "NÃO",
         valveMatchMode: valveReference && valveReference.matchMode || "",
         valveTitle,
@@ -2900,6 +3015,8 @@
     pruneRedundantTitleDescription,
     stripLeadingTitleTags,
     trimTypeDescriptionOverlap,
+    trimDescriptionTypeOverlap,
+    stripNormativeTitlePrefix,
     buildTitle,
     upperCaseTitle,
     auditTitles,
