@@ -329,6 +329,113 @@ check("a LI incorporada contém todas as TAGs de válvulas e separa as cancelada
   assert.equal(cancelled.trusted, false);
 });
 
+check("o Mapa de VMs Reparo/Medição incorporado contém as 736 TAGs esperadas", () => {
+  const require = createRequire(import.meta.url);
+  require("./valve_reparo_catalog.js");
+  const Q = require("./audit_core.js");
+  const reparo = Q.parseValveReparoCatalog(globalThis.RECONValveReparoCatalog);
+  assert.equal(reparo.uniqueTagCount, 736);
+  assert.match(html, /<option value="valve_reparo">Mapa de VMs Reparo\/Medição<\/option>/,
+    "a tela não oferece filtro para as recomendações originadas no Mapa de VMs Reparo/Medição");
+
+  const loader = read("recon_module_loader.js");
+  const bloco = loader.match(/audit: \[[^\]]*"audit_app\.js"\]/)[0];
+  assert.ok(
+    bloco.indexOf('"valve_reparo_catalog.js"') > 0 && bloco.indexOf('"valve_reparo_catalog.js"') < bloco.indexOf('"audit_core.js"'),
+    "valve_reparo_catalog.js precisa carregar antes de audit_core.js no módulo audit",
+  );
+
+  const entry = reparo.byExactTag.get("VM-320177")[0];
+  assert.equal(entry.description, "VÁLVULA MANUAL GAVETA");
+  assert.equal(entry.diameter, '8"');
+  assert.equal(entry.document, "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-320177");
+});
+
+check("o Mapa de VMs Reparo/Medição só entra quando a TAG não está ativa na LI de válvulas", () => {
+  const require = createRequire(import.meta.url);
+  require("./valve_list_catalog.js");
+  require("./valve_reparo_catalog.js");
+  const Q = require("./audit_core.js");
+  const C = require("./core.js");
+  const valveList = Q.parseValveListCatalog(globalThis.RECONValveListCatalog);
+  const valveReparo = Q.parseValveReparoCatalog(globalThis.RECONValveReparoCatalog);
+
+  // VM-320003 está ativa na LI e também no Mapa de Reparo/Medição — a LI
+  // continua sendo a fonte oficial e precisa vencer.
+  const bothDocument = "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-320003";
+  const bothRecord = { document: bothDocument, documentKey: C.key(bothDocument), discipline: "TUBULACAO" };
+  const both = Q.valveReferenceFor(bothRecord, { valveList, valveReparo }, Q.resolveTagEvidence(bothRecord, null));
+  assert.ok(both && both.trusted);
+  assert.equal(both.description, "VÁLVULA MANUAL Gaveta", "a LI precisa vencer o Mapa de Reparo/Medição quando as duas têm a TAG");
+  assert.match(both.sourceSheet, /^LI de válvulas/);
+
+  // VM-320177 não está na LI (nem ativa nem cancelada) — só o Mapa de
+  // Reparo/Medição tem essa TAG.
+  const onlyReparoDocument = "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-320177";
+  const onlyReparoRecord = { document: onlyReparoDocument, documentKey: C.key(onlyReparoDocument), discipline: "TUBULACAO" };
+  const onlyReparo = Q.valveReferenceFor(onlyReparoRecord, { valveList, valveReparo }, Q.resolveTagEvidence(onlyReparoRecord, null));
+  assert.ok(onlyReparo && onlyReparo.trusted, "sem a TAG na LI, o Mapa de Reparo/Medição precisa assumir");
+  assert.equal(onlyReparo.description, "VÁLVULA MANUAL GAVETA");
+  assert.equal(onlyReparo.diameter, '8"');
+  assert.match(onlyReparo.sourceSheet, /^MAPA - VM/);
+
+  // TAG cancelada na LI: o Mapa de Reparo/Medição assume no lugar da linha
+  // cancelada, em vez de devolver uma descrição marcada como não confiável.
+  const cancelledValveList = Q.parseValveListCatalog({
+    meta: { source: "LI teste", revision: "C" },
+    columns: ["tag", "type", "diameter", "page", "cancelled"],
+    rows: [["VM-900001", "Válvula Esfera", "2\"", 5, 1]],
+  });
+  const reparoForCancelled = Q.parseValveReparoCatalog({
+    meta: { source: "Mapa teste", sheet: "MAPA - VM" },
+    columns: ["tag", "type", "diameter", "document", "discipline"],
+    rows: [["VM-900001", "ESFERA", "2\"", "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-900001", "TUBULACAO"]],
+  });
+  const cancelledDocument = "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-900001";
+  const cancelledRecord = { document: cancelledDocument, documentKey: C.key(cancelledDocument), discipline: "TUBULACAO" };
+  const afterCancelled = Q.valveReferenceFor(cancelledRecord, { valveList: cancelledValveList, valveReparo: reparoForCancelled }, Q.resolveTagEvidence(cancelledRecord, null));
+  assert.ok(afterCancelled && afterCancelled.trusted, "a TAG cancelada na LI não pode bloquear o Mapa de Reparo/Medição");
+  assert.match(afterCancelled.sourceSheet, /^MAPA - VM/);
+
+  // Sem a TAG em nenhuma das duas bases, a função devolve null para que o
+  // SCON TAG SGP continue como fallback, como já fazia sem este novo mapa.
+  const missingDocument = "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-999999";
+  const missingRecord = { document: missingDocument, documentKey: C.key(missingDocument), discipline: "TUBULACAO" };
+  const missing = Q.valveReferenceFor(missingRecord, { valveList, valveReparo }, Q.resolveTagEvidence(missingRecord, null));
+  assert.equal(missing, null);
+});
+
+check("no fluxo completo, o título de uma VM só do Mapa de Reparo/Medição usa essa fonte, não o SCON", () => {
+  const require = createRequire(import.meta.url);
+  require("./valve_list_catalog.js");
+  require("./valve_reparo_catalog.js");
+  const C = require("./core.js");
+  const Q = require("./audit_core.js");
+  const valveList = Q.parseValveListCatalog(globalThis.RECONValveListCatalog);
+  const valveReparo = Q.parseValveReparoCatalog(globalThis.RECONValveReparoCatalog);
+  const document = "C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-320177";
+  const record = {
+    document, documentKey: C.key(document), sheet: "ET", row: 20, discipline: "TUBULACAO",
+    revision: "0", title: "",
+  };
+  const index = { documents: [{ document, documentKey: record.documentKey, group: { records: [record], history: [] } }] };
+  const scon = Q.buildSconReferenceIndex([{
+    document: "APR_TUB_U32-VM-320177",
+    titleComplement: "VM-320177 - DESCRIÇÃO SCON QUE NÃO DEVE SUBSTITUIR O MAPA",
+    fullDescription: "U32 | TUBULACAO | VM-320177 - DESCRIÇÃO SCON QUE NÃO DEVE SUBSTITUIR O MAPA",
+    sconTag: "APR_TUB_U32-VM-320177",
+    discipline: "TUBULACAO",
+    row: 50,
+  }]);
+
+  const row = Q.auditTitles(index, { valveList, valveReparo, scon }, { titleSourceMode: "auto" })[0];
+  assert.equal(row.valveMatch, "SIM");
+  assert.equal(row.descriptionSource, "Mapa de VMs Reparo/Medição · TAG exata");
+  assert.match(row.proposed, /VALVULA MANUAL GAVETA/);
+  assert.match(row.proposed, /VM-320177$/);
+  assert.doesNotMatch(row.proposed, /SCON QUE|MAPA$/);
+});
+
 check("uma TAG VM ativa usa a LI antes de SCON, Apêndice e SCON ESCOPO", () => {
   const require = createRequire(import.meta.url);
   require("./valve_list_catalog.js");

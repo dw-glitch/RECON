@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.55**.
+Versão atual: **1.26.56**.
 
 ## Execução
 
@@ -49,7 +49,10 @@ norma vigente, consulta a Tabela 13 pelo Grupo 6 dos relatórios e compara o
 padrão com títulos anteriores da própria LD antes de montar a recomendação.
 A TAG usada na busca vem do Grupo 7 do nome do documento. Para válvulas manuais,
 a prioridade é a LI-5290.00-22313-940-CHZ-202 Rev. C; linhas canceladas são
-ignoradas e a SCON TAG SGP assume como fallback, mesmo quando a descrição está
+ignoradas. Quando a TAG não está ativa na LI (ausente ou cancelada), o Mapa de
+VMs Reparo/Medição da UHDTD assume no lugar dela — a LI continua sendo a fonte
+oficial da codificação, o mapa só cobre o que ela ainda não tem. Só depois
+disso a SCON TAG SGP assume como fallback, mesmo quando a descrição está
 em outra disciplina. Para as demais TAGs, SCON e Apêndice 3 podem se
 complementar. A SCON ESCOPO só descreve o título quando nenhuma fonte anterior
 resolveu a TAG, evitando recomendações vazias, e apenas no modo automático — os
