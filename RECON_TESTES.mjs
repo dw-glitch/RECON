@@ -1788,4 +1788,48 @@ check("os gravadores da LD recebem o escopo global em vez de um root solto", () 
   }
 });
 
+// ===================== LINGUAGEM DO RELATÓRIO EXCEL DE TÍTULOS =====================
+
+check("as colunas \"O que as bases informam\" e \"Fonte principal\" não usam jargão de busca", () => {
+  const fonte = read("audit_app.js");
+  const inicio = fonte.indexOf("function titleReferenceSummary");
+  const fim = fonte.indexOf("function excelColumns");
+  assert.ok(inicio > 0 && fim > inicio, "as duas funções do Excel de títulos precisam continuar existindo nesse trecho");
+  const trecho = fonte.slice(inicio, fim);
+  // As chaves do mapa de categorias (scon_escopo_fallback, sconMatchMode...)
+  // são nomes internos que nunca chegam ao usuário; só o texto entre aspas —
+  // o que de fato vira célula do Excel — não pode ter jargão de busca.
+  const semComentarios = trecho.replace(/\/\/[^\n]*/g, "");
+  const textoVisivel = [...semComentarios.matchAll(/"([^"]*)"/g)].map((match) => match[1]).join(" | ");
+  // Palavras que só fazem sentido para quem leu o código do RECON — não para
+  // quem só abre a planilha entregue. "descriptionSource" e os campos
+  // *MatchMode guardam a explicação de COMO a busca funcionou por dentro
+  // (ex.: "TAG equivalente após normalizar zeros e pontuação"); o relatório
+  // só pode dizer QUAL base confirmou o título, em frase corrida.
+  ["fallback", "matchmode", "busca progressiva", "normalizar"].forEach((termo) => {
+    assert.doesNotMatch(textoVisivel, new RegExp(termo, "i"), `o texto entregue ao usuário não pode conter o termo técnico "${termo}"`);
+  });
+  // Os campos internos não podem nem ser lidos por essas funções: sem isso, a
+  // linguagem simples de hoje volta a depender de uma string de depuração.
+  ["descriptionSource", "titleStandardSource", "sconMatchMode", "sconEscopoMatchMode", "appendixMatchMode", "valveMatchMode"].forEach((campo) => {
+    assert.doesNotMatch(trecho, new RegExp(`row\.${campo}\b`), `as funções do Excel não podem mais ler row.${campo}`);
+  });
+  // Continua sendo uma frase corrida, não uma lista de campos internos.
+  assert.match(trecho, /Encontrado no SCON/);
+  assert.match(trecho, /Encontrado na Lista de Válvulas/);
+  assert.match(trecho, /confira manualmente|Confira manualmente/i);
+});
+
+check("um título sem nenhuma base encontrada não é rotulado como base controlada", () => {
+  const fonte = read("audit_app.js");
+  const inicio = fonte.indexOf("function titleSourceCategory");
+  const fim = fonte.indexOf("function readTitleFilters");
+  assert.ok(inicio > 0 && fim > inicio);
+  const trecho = fonte.slice(inicio, fim);
+  // "Título atual" é o valor de reserva do motor quando NENHUMA base
+  // confirmou nada; sem esta exclusão, esses documentos apareciam no Excel
+  // como "Encontrado em uma base de referência controlada", o que é falso.
+  assert.match(trecho, /Titulo atual/i, "a exclusão de documentos sem nenhuma base encontrada precisa continuar existindo");
+});
+
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));
