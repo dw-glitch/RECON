@@ -365,7 +365,7 @@ check("uma TAG VM ativa usa a LI antes de SCON, Apêndice e SCON ESCOPO", () => 
   const row = Q.auditTitles(index, { valveList, scon, sconEscopo, tagReference }, { titleSourceMode: "auto" })[0];
   assert.equal(row.valveMatch, "SIM");
   assert.equal(row.descriptionSource, "LI de válvulas Rev. C · TAG exata");
-  assert.match(row.proposed, /VÁLVULA MANUAL GAVETA/);
+  assert.match(row.proposed, /VALVULA MANUAL GAVETA/);
   assert.match(row.proposed, /VM-320002$/);
   assert.doesNotMatch(row.proposed, /SCON QUE|APÊNDICE|ÁREA: U32/);
 });
@@ -414,7 +414,7 @@ check("SCON ESCOPO e a regra mínima VM impedem recomendações vazias", () => {
   const minimum = Q.auditTitles(makeIndex(valveRecord), {}, { titleSourceMode: "auto" })[0];
   assert.equal(minimum.descriptionSource, "Regra mínima da TAG VM · VÁLVULA MANUAL");
   assert.ok(minimum.proposed);
-  assert.match(minimum.proposed, /VÁLVULA MANUAL/);
+  assert.match(minimum.proposed, /VALVULA MANUAL/);
   assert.match(minimum.proposed, /VM-999999$/);
 });
 
@@ -759,18 +759,20 @@ check("a coluna de ações da tabela de bases continua sendo uma célula de tabe
 
 // ===================== TÍTULO SEMPRE EM CAIXA ALTA =====================
 
-check("o título recomendado sai em caixa alta qualquer que seja a caixa da base", () => {
+check("o título recomendado sai em caixa alta e sem acento", () => {
   const Q = createRequire(import.meta.url)("./audit_core.js");
-  // As três bases gravam a descrição com caixas diferentes; a LD precisa de um
-  // padrão único, então a composição normaliza no final.
+  // As três bases gravam a descrição com caixas e acentuações diferentes; a LD
+  // precisa de um padrão único, então a composição normaliza no final.
   assert.equal(Q.buildTitle("bomba de água gelada", "hvac se-3200", "B-32110A"),
-    "BOMBA DE ÁGUA GELADA - HVAC SE-3200 - B-32110A");
+    "BOMBA DE AGUA GELADA - HVAC SE-3200 - B-32110A");
   assert.equal(Q.buildTitle("Vaso Separador", "unidade de tratamento", "V-32001"),
     "VASO SEPARADOR - UNIDADE DE TRATAMENTO - V-32001");
-  // toLocaleUpperCase("pt-BR") preserva acento; toUpperCase() de locale errado
-  // ou uma normalização NFD perderiam o "Ç" e o "Ã".
-  assert.equal(Q.upperCaseTitle("execução de canaleta"), "EXECUÇÃO DE CANALETA");
-  assert.equal(Q.buildTitle("", "caixa de inspeção", "CXINSP-110"), "CAIXA DE INSPEÇÃO - CXINSP-110");
+  assert.equal(Q.upperCaseTitle("execução de canaleta"), "EXECUCAO DE CANALETA");
+  assert.equal(Q.buildTitle("", "caixa de inspeção", "CXINSP-110"), "CAIXA DE INSPECAO - CXINSP-110");
+  // A cedilha e o til somem, mas a letra fica: "ÇÃO" vira "CAO", não "CO".
+  assert.equal(Q.upperCaseTitle("ção"), "CAO");
+  // A TAG não passa pela normalização: ela é copiada literal do Grupo 7.
+  assert.equal(Q.buildTitle("inspeção", "válvula", "Vm-327721"), "INSPECAO - VALVULA - Vm-327721");
 });
 
 check("a sugestão vinda da memória de correções também sai em caixa alta", () => {
@@ -850,7 +852,7 @@ check("o tipo normativo permanece na frente da descrição encontrada nas bases"
   ] };
   const row = Q.auditTitles(index, null, {}).find((item) => item.document === document);
   assert.equal(row.issue, "document_type");
-  assert.equal(row.proposed, "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO - VÁLVULA DE BLOQUEIO - V-32001");
+  assert.equal(row.proposed, "RELATORIO DE INSPECAO DE RECEBIMENTO - VALVULA DE BLOQUEIO - V-32001");
   assert.equal(row.titleStandardCode, "RIR");
   assert.equal(row.previousTitlePattern, "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO");
   assert.match(row.evidence, /Rev\. P · Tabela 13/);
@@ -860,7 +862,7 @@ check("o tipo normativo permanece na frente da descrição encontrada nas bases"
 check("parênteses que fazem parte do título normativo não são removidos", () => {
   const Q = createRequire(import.meta.url)("./audit_core.js");
   assert.equal(Q.buildTitle("CERTIFICADO DE TESTE DE PRESSÃO EM EQUIPAMENTOS (SELO MECÂNICO)", "bomba", "B-1", { preserveType: true }),
-    "CERTIFICADO DE TESTE DE PRESSÃO EM EQUIPAMENTOS (SELO MECÂNICO) - BOMBA - B-1");
+    "CERTIFICADO DE TESTE DE PRESSAO EM EQUIPAMENTOS (SELO MECANICO) - BOMBA - B-1");
 });
 
 check("a TAG errada do título é substituída exatamente pela TAG do nome do documento", () => {
@@ -886,7 +888,7 @@ check("a TAG errada do título é substituída exatamente pela TAG do nome do do
   assert.equal(row.documentNameTag, "Vm-327721");
   assert.equal(row.titleTagFound, "VM-327722");
   assert.equal(row.titleTag, "Vm-327721");
-  assert.equal(row.proposed, "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO - VÁLVULA MANUAL - Vm-327721");
+  assert.equal(row.proposed, "RELATORIO DE INSPECAO DE RECEBIMENTO - VALVULA MANUAL - Vm-327721");
   assert.ok(!row.proposed.includes("VM-327722"), "a TAG incorreta permaneceu na sugestão");
   assert.equal((row.proposed.match(/Vm-327721/g) || []).length, 1, "a TAG documental deve aparecer uma única vez");
 });
@@ -932,7 +934,7 @@ check("a correção remove também a forma literal TAG: antes do identificador e
   const row = Q.auditTitles(index, null, {})[0];
 
   assert.equal(row.issue, "wrong_tag");
-  assert.equal(row.proposed, "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO - BOMBA DE TESTE - B-32014A");
+  assert.equal(row.proposed, "RELATORIO DE INSPECAO DE RECEBIMENTO - BOMBA DE TESTE - B-32014A");
   assert.ok(!/TAG\s*:/i.test(row.proposed));
   assert.ok(!row.proposed.includes("B-32014B"));
 });
@@ -976,9 +978,9 @@ check("uma válvula ausente da LI usa a descrição da SCON antes da SCON ESCOPO
   const row = Q.auditTitles(index, { scon, sconEscopo }, { titleSourceMode: "auto" })[0];
   assert.equal(row.sconEscopoMatch, "SIM");
   assert.match(row.sconEscopoMatchMode, /fallback seguro por EAP \+ atividade documental/i);
-  assert.equal(row.proposed, "RELATÓRIO DE REPARO DE VÁLVULAS - VÁLVULA MANUAL - VM-327721");
+  assert.equal(row.proposed, "RELATORIO DE REPARO DE VALVULAS - VALVULA MANUAL - VM-327721");
   assert.equal(row.descriptionSource, "SCON TAG SGP · fallback da LI de válvulas");
-  assert.match(row.proposed, /VÁLVULA MANUAL/);
+  assert.match(row.proposed, /VALVULA MANUAL/);
   assert.doesNotMatch(row.proposed, /ÁREA: U32/, "SCON ESCOPO não permaneceu como último recurso");
 });
 
@@ -1024,7 +1026,7 @@ check("SCON e Apêndice resolvem a TAG sem incorporar a SCON ESCOPO", () => {
   });
   const row = Q.auditTitles(index, { scon, sconEscopo, tagReference }, { titleSourceMode: "auto" })[0];
   assert.equal(row.proposed,
-    "RELATÓRIO DE PREPARAÇÃO PARA TRANSPORTE - TROCADOR CASCO TUBO DA B-32009A - P-B-32009A");
+    "RELATORIO DE PREPARACAO PARA TRANSPORTE - TROCADOR CASCO TUBO DA B-32009A - P-B-32009A");
   assert.equal(row.sconEscopoMatch, "SIM");
   assert.equal(row.appendixMatch, "SIM");
   assert.equal(row.descriptionSource, "SCON TAG SGP + Apêndice 3 Rev.B · 3º campo da DESCRIÇÃO");
@@ -1588,6 +1590,68 @@ check("TELECOM é reconhecido antes de ELÉTRICA na disciplina do Databook", () 
   assert.equal(A.databookDisciplineKey({ discipline: "TELECOM" }), "TELECOM");
   assert.equal(A.databookDisciplineKey({ discipline: "10.02.01.G.TELECOM" }), "TELECOM");
   assert.equal(A.databookDisciplineKey({ discipline: "ELÉTRICA" }), "ELETRICA");
+});
+
+check("o tipo da norma não se repete dentro da descrição", () => {
+  const Q = createRequire(import.meta.url)("./audit_core.js");
+  // A redação da norma fica literal; quem cede é a descrição.
+  assert.equal(
+    Q.buildTitle("Relatório de Inspeção de Recebimento", "RELATÓRIO DE INSPEÇÃO DE RECEBIMENTO DE VÁLVULA MANUAL", "VM-320001", { preserveType: true }),
+    "RELATORIO DE INSPECAO DE RECEBIMENTO - VALVULA MANUAL - VM-320001");
+  // Sufixo do tipo repetido no começo da descrição.
+  assert.equal(
+    Q.buildTitle("Relatório de Inspeção de Recebimento", "INSPEÇÃO DE RECEBIMENTO DE TUBOS", "TB-1", { preserveType: true }),
+    "RELATORIO DE INSPECAO DE RECEBIMENTO - TUBOS - TB-1");
+  // Uma palavra só, mas exatamente a última do tipo.
+  assert.equal(
+    Q.buildTitle("Relatório de Montagem", "MONTAGEM DE BOMBA CENTRÍFUGA", "BA-1", { preserveType: true }),
+    "RELATORIO DE MONTAGEM - BOMBA CENTRIFUGA - BA-1");
+  // Descrição que não acrescenta nenhuma palavra nova é descartada.
+  assert.equal(
+    Q.buildTitle("Relatório de Inspeção da Montagem e das Interligações do Transformador", "MONTAGEM DE TRANSFORMADOR", "TL-32016", { preserveType: true }),
+    "RELATORIO DE INSPECAO DA MONTAGEM E DAS INTERLIGACOES DO TRANSFORMADOR - TL-32016");
+  // Descrição legítima continua inteira.
+  assert.equal(
+    Q.buildTitle("Relatório de Inspeção de Recebimento", "VÁLVULA MANUAL", "VM-2", { preserveType: true }),
+    "RELATORIO DE INSPECAO DE RECEBIMENTO - VALVULA MANUAL - VM-2");
+});
+
+check("a área do SCON ESCOPO permanece no título recomendado", () => {
+  const Q = createRequire(import.meta.url)("./audit_core.js");
+  assert.equal(
+    Q.buildTitle("Relatório de Liberação de Acabamento", "PAREDE - ÁREA: 510 - SE-3200", "FACHADA2L", { preserveType: true }),
+    "RELATORIO DE LIBERACAO DE ACABAMENTO - PAREDE - AREA: 510 - SE-3200 - FACHADA2L");
+});
+
+check("a redação normativa antiga não sobrevive como descrição", () => {
+  const Q = createRequire(import.meta.url)("./audit_core.js");
+  // Redação que existe na Tabela 13 é reconhecida como tipo e retirada.
+  assert.equal(Q.stripNormativeTitlePrefix("Relatório de Inspeção de Recebimento - VÁLVULA"), "VÁLVULA");
+  assert.equal(Q.stripNormativeTitlePrefix("RELATÓRIO DE LIBERAÇÃO DE ACABAMENTO"), "");
+  // Texto que não é redação da norma continua inteiro: não se apaga descrição.
+  assert.equal(Q.stripNormativeTitlePrefix("CONCRETO ARMADO"), "CONCRETO ARMADO");
+});
+
+check("o SCON ESCOPO não descreve o título nos modos restritos", () => {
+  const fonte = read("audit_core.js");
+  const trecho = fonte.slice(fonte.indexOf("const sconEscopoLastResort"), fonte.indexOf("const sconEscopoLastResort") + 260);
+  assert.match(trecho, /sconEscopoDescriptionAllowed/, "o último recurso precisa respeitar o modo escolhido na tela");
+  // A tela promete que os modos restritos ignoram o SCON ESCOPO.
+  assert.match(html, /Ignora o Apêndice 3 Rev\.B e o SCON ESCOPO/);
+  assert.match(html, /Ignora o SCON TAG SGP e o SCON ESCOPO/);
+});
+
+check("a origem da evidência acompanha a fonte que realmente descreveu", () => {
+  const fonte = read("audit_core.js");
+  const inicio = fonte.indexOf("descriptionSource: nonTaggedRule");
+  const cadeia = fonte.slice(inicio, inicio + 2200);
+  assert.match(cadeia, /SCON ESCOPO · último recurso/, "o último recurso precisa aparecer como origem, não como “Título atual”");
+  // Mesma ordem da cadeia que define o valor: base controlada antes da coluna
+  // Complementar, senão o rótulo aponta uma fonte que não foi usada.
+  const posBase = cadeia.indexOf('"Base controlada de títulos"');
+  const posComplementar = cadeia.indexOf('"Complementar da LD"');
+  assert.ok(posBase > 0 && posComplementar > 0);
+  assert.ok(posBase < posComplementar, "a base controlada é consultada antes da coluna Complementar");
 });
 
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));
