@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.52**.
+Versão atual: **1.26.53**.
 
 ## Execução
 
@@ -28,7 +28,19 @@ acento** (`ÇÃO` vira `CAO`), qualquer que seja a grafia da base de origem; a T
 colocado na frente da descrição localizada nas bases, e a descrição é aparada
 quando repete o tipo: uma descrição que não acrescenta nenhuma palavra nova sai
 inteira do título. Redações da própria Tabela 13 encontradas no início do título
-atual são tratadas como tipo antigo e não viram descrição. O RECON usa a ET-5290.00-22000-912-1LV-001 Rev. P como
+atual são tratadas como tipo antigo e não viram descrição.
+
+Para itens não tagueados (Grupo 7 começando com `nt-`), o RECON decodifica os
+prefixos padronizados da tabela do PPTX de titulação da fiscal (`LBN`/`LBE`
+leito, `ETN`/`ETE` eletroduto, `LMN`/`LME` luminária, `SPN`/`SPE` suporte,
+`EMT` estrutura metálica, `CI` caixa de passagem, `CX`/`CXINSP` caixa de
+inspeção, `CAN` canaleta, entre outros — `non_tagged_title_rules.js`). Quando
+o trecho final do código é o fim do número de um desenho de referência (ex.:
+`130-CHZ-102`), o título passa a dizer "contida/contido no
+DE-5290.00-22313-...", em vez de tentar decodificar esse trecho como um lugar
+em palavras — essa é a regra do desenho descrita no PPTX da fiscal. Uma
+conclusão já confirmada manualmente sempre tem prioridade sobre a regra de
+prefixo. O RECON usa a ET-5290.00-22000-912-1LV-001 Rev. P como
 norma vigente, consulta a Tabela 13 pelo Grupo 6 dos relatórios e compara o
 padrão com títulos anteriores da própria LD antes de montar a recomendação.
 A TAG usada na busca vem do Grupo 7 do nome do documento. Para válvulas manuais,

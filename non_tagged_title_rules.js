@@ -287,6 +287,11 @@
   "C1O_RNEST_U32_5.9.10.1_CVL_LCOMP_NT-CX-INSP-DRENO-EIXOSB1-21": "CAIXA DE INSPEÇÃO DE DRENO - CX-INSP-DRENO-EIXOSB1-21"
 };
 
+  // "feminine" ajusta a concordância de "CONTIDO/CONTIDA NO <DE>" quando o
+  // código termina na referência de um desenho (slide 9 do PPTX da fiscal:
+  // "Caixa de Passagem contida no DE-..."). Sem a marcação, o padrão é
+  // masculino, igual às regras dedicadas já existentes (LEITO, ELETRODUTO,
+  // SUPORTE).
   const PREFIX_RULES = Object.freeze({
     LBN: { what: "LEITO NOVO", source: "PPTX · tabela de itens não tagueados" },
     LBE: { what: "LEITO EXISTENTE", source: "PPTX · tabela de itens não tagueados" },
@@ -294,37 +299,40 @@
     ETN: { what: "ELETRODUTO NOVO", source: "PPTX · tabela de itens não tagueados" },
     ETE: { what: "ELETRODUTO EXISTENTE", source: "PPTX · tabela de itens não tagueados" },
     ETR: { what: "ELETRODUTO REMANESCENTE", source: "Histórico controlado da LD" },
-    LMN: { what: "LUMINÁRIA NOVA", source: "PPTX · tabela de itens não tagueados" },
-    LME: { what: "LUMINÁRIA EXISTENTE", source: "PPTX · tabela de itens não tagueados" },
-    LMR: { what: "LUMINÁRIA REMANESCENTE", source: "Histórico controlado da LD" },
+    LMN: { what: "LUMINÁRIA NOVA", source: "PPTX · tabela de itens não tagueados", feminine: true },
+    LME: { what: "LUMINÁRIA EXISTENTE", source: "PPTX · tabela de itens não tagueados", feminine: true },
+    LMR: { what: "LUMINÁRIA REMANESCENTE", source: "Histórico controlado da LD", feminine: true },
     SPN: { what: "SUPORTE NOVO", source: "PPTX · tabela de itens não tagueados" },
     SPE: { what: "SUPORTE EXISTENTE", source: "PPTX · tabela de itens não tagueados" },
-    EMT: { what: "ESTRUTURA METÁLICA", source: "PPTX · tabela de itens não tagueados" },
-    VM: { what: "VÁLVULA MANUAL", source: "PPTX · tabela de itens não tagueados" },
-    CNXN: { what: "CONEXÃO NOVA", source: "PPTX · tabela de itens não tagueados" },
-    CNXE: { what: "CONEXÃO EXISTENTE", source: "PPTX · tabela de itens não tagueados" },
-    MISN: { what: "MISCELÂNEA NOVA", source: "PPTX · tabela de itens não tagueados" },
-    MISE: { what: "MISCELÂNEA EXISTENTE", source: "PPTX · tabela de itens não tagueados" },
+    EMT: { what: "ESTRUTURA METÁLICA", source: "PPTX · tabela de itens não tagueados", feminine: true },
+    VM: { what: "VÁLVULA MANUAL", source: "PPTX · tabela de itens não tagueados", feminine: true },
+    CNXN: { what: "CONEXÃO NOVA", source: "PPTX · tabela de itens não tagueados", feminine: true },
+    CNXE: { what: "CONEXÃO EXISTENTE", source: "PPTX · tabela de itens não tagueados", feminine: true },
+    MISN: { what: "MISCELÂNEA NOVA", source: "PPTX · tabela de itens não tagueados", feminine: true },
+    MISE: { what: "MISCELÂNEA EXISTENTE", source: "PPTX · tabela de itens não tagueados", feminine: true },
     AND: { what: "ANDAIME", source: "PPTX · tabela de itens não tagueados" },
     BOB: { what: "CABO NOVO", source: "PPTX · tabela de itens não tagueados" },
     PIPE: { what: "ELETRODUTO", source: "Histórico controlado da LD" },
-    INSILUMIN: { what: "LUMINÁRIA", source: "Histórico controlado da LD" },
-    SLCABOS: { what: "BANDEJA DE CABOS", source: "Histórico controlado da LD" },
-    NF: { what: "NOTA FISCAL", source: "Histórico controlado da LD" },
+    INSILUMIN: { what: "LUMINÁRIA", source: "Histórico controlado da LD", feminine: true },
+    SLCABOS: { what: "BANDEJA DE CABOS", source: "Histórico controlado da LD", feminine: true },
+    NF: { what: "NOTA FISCAL", source: "Histórico controlado da LD", feminine: true },
     ENV: { what: "ENVELOPE", source: "Histórico controlado da LD" },
     PISO: { what: "PISO DE CONCRETO", source: "Histórico controlado da LD" },
     SUP: { what: "SUPORTE DA ESTRUTURA METÁLICA", source: "Histórico controlado da LD" },
-    PLAT: { what: "PLATAFORMA", source: "Histórico controlado da LD" },
-    SKID: { what: "BASE DO SKID", source: "Histórico controlado da LD" },
-    CX: { what: "CAIXA DE INSPEÇÃO", source: "Histórico controlado da LD" },
-    CXINSP: { what: "CAIXA DE INSPEÇÃO", source: "Histórico controlado da LD" },
-    CPC: { what: "CAIXA DE PASSAGEM", source: "Histórico controlado da LD" },
-    CPO: { what: "CAIXA DE PASSAGEM", source: "Histórico controlado da LD" },
-    CPL: { what: "CAIXA DE PASSAGEM", source: "Histórico controlado da LD" },
-    PVO: { what: "CAIXA DE PASSAGEM", source: "Histórico controlado da LD" },
-    CAN: { what: "CANALETA", source: "Histórico controlado da LD" },
-    CCC: { what: "CAIXA DE DRENAGEM", source: "Histórico controlado da LD" },
-    CCO: { what: "CAIXA DE DRENAGEM", source: "Histórico controlado da LD" },
+    PLAT: { what: "PLATAFORMA", source: "Histórico controlado da LD", feminine: true },
+    SKID: { what: "BASE DO SKID", source: "Histórico controlado da LD", feminine: true },
+    // CI é a caixa de passagem (slide 9 do PPTX da fiscal); CX/CXINSP são a
+    // caixa de inspeção — prefixos parecidos, itens diferentes.
+    CI: { what: "CAIXA DE PASSAGEM", source: "PPTX · tabela de itens não tagueados", feminine: true },
+    CX: { what: "CAIXA DE INSPEÇÃO", source: "Histórico controlado da LD", feminine: true },
+    CXINSP: { what: "CAIXA DE INSPEÇÃO", source: "Histórico controlado da LD", feminine: true },
+    CPC: { what: "CAIXA DE PASSAGEM", source: "Histórico controlado da LD", feminine: true },
+    CPO: { what: "CAIXA DE PASSAGEM", source: "Histórico controlado da LD", feminine: true },
+    CPL: { what: "CAIXA DE PASSAGEM", source: "Histórico controlado da LD", feminine: true },
+    PVO: { what: "CAIXA DE PASSAGEM", source: "Histórico controlado da LD", feminine: true },
+    CAN: { what: "CANALETA", source: "Histórico controlado da LD", feminine: true },
+    CCC: { what: "CAIXA DE DRENAGEM", source: "Histórico controlado da LD", feminine: true },
+    CCO: { what: "CAIXA DE DRENAGEM", source: "Histórico controlado da LD", feminine: true },
     U32: { what: "CABO", source: "Histórico controlado da LD" },
     C: { what: "CABO", source: "Histórico controlado da LD" }
   });
@@ -401,6 +409,26 @@
       const complement = rest.join(" ").replace(/CONEXOES/ig, "CONEXÕES").replace(/TUBOS/ig, "TUBOS");
       const description = `NOTA FISCAL Nº ${number}${complement ? ` - ${complement}` : ""}`;
       return { description, what: "NOTA FISCAL", whereWhen: number, source: rule.source, confidence: "alta", exact: false, prefix };
+    }
+
+    // Última tentativa antes de devolver o código cru: o "ONDE" do item pode
+    // ser o final de um desenho de referência, não um lugar em palavras — é a
+    // regra do slide 9 do PPTX da fiscal ("Caixa de Passagem contida no
+    // DE-..."). As regras dedicadas acima (leito, eletroduto, suporte) já
+    // cobrem seus próprios formatos; esta cobre todo o resto da tabela —
+    // estrutura metálica, caixas, canaleta, plataforma, andaime etc. O
+    // trecho antes do DE (ex.: "104-1-1" em CI-104-1-1-130-CHZ-102) é a
+    // localização dentro da área, não faz parte do número do desenho —
+    // por isso a varredura tenta da esquerda para a direita e fica com o
+    // primeiro (mais longo) trecho final que baste como número de DE.
+    let genericDe = "";
+    for (let start = 0; start < rest.length && !genericDe; start += 1) {
+      genericDe = deNumber(rest.slice(start).join("-"));
+    }
+    if (genericDe) {
+      const contido = rule.feminine ? "CONTIDA" : "CONTIDO";
+      const description = `${rule.what} - ${contido} NO ${genericDe}`;
+      return { description, what: rule.what, whereWhen: genericDe, source: rule.source, confidence: "alta", exact: false, prefix };
     }
 
     const description = `${rule.what} - ${identifier}`;

@@ -1832,4 +1832,81 @@ check("um título sem nenhuma base encontrada não é rotulado como base control
   assert.match(trecho, /Titulo atual/i, "a exclusão de documentos sem nenhuma base encontrada precisa continuar existindo");
 });
 
+// ===================== CÓDIGOS "nt-" · REGRA DA FISCAL (PPTX) =====================
+
+check("a caixa de passagem (prefixo CI) tem regra própria, distinta da caixa de inspeção (CX)", () => {
+  const N = createRequire(import.meta.url)("./non_tagged_title_rules.js");
+  assert.equal(N.PREFIX_RULES.CI.what, "CAIXA DE PASSAGEM");
+  assert.equal(N.PREFIX_RULES.CX.what, "CAIXA DE INSPEÇÃO");
+  assert.equal(N.PREFIX_RULES.CI.feminine, true, "CAIXA concorda no feminino (CONTIDA)");
+});
+
+check("quando o ONDE do código nt- é o final de um desenho, o título diz \"contida no DE-...\"", () => {
+  const N = createRequire(import.meta.url)("./non_tagged_title_rules.js");
+  // Exemplo do slide 9 do PPTX da fiscal: o trecho final do código
+  // (130-CHZ-102) não é um lugar em palavras, é o fim do número do desenho
+  // DE-5290.00-22313-130-CHZ-102 que documenta a localização da atividade.
+  const doc = "AB1_RNEST_U36_3.1.1.1_CVL_RIR_nt-CI-104-1-1-130-CHZ-102";
+  const resolved = N.resolve(doc);
+  assert.equal(resolved.description, "CAIXA DE PASSAGEM - CONTIDA NO DE-5290.00-22313-130-CHZ-102");
+  assert.equal(resolved.confidence, "alta");
+
+  // O trecho antes do desenho (104-1-1, a localização dentro da área) não
+  // pode ser confundido com o próprio número do desenho.
+  assert.doesNotMatch(resolved.description, /104-1-1/);
+});
+
+check("a regra do desenho vale para qualquer prefixo da tabela, não só leito/eletroduto/suporte", () => {
+  const N = createRequire(import.meta.url)("./non_tagged_title_rules.js");
+  const casos = [
+    ["C1O_RNEST_U32_5.9.10.1_CVL_LCOMP_nt-CAN-800-CHZ-317", "CANALETA - CONTIDA NO DE-5290.00-22313-800-CHZ-317"],
+    ["C1O_RNEST_U32_5.9.10.1_CVL_LCOMP_nt-PLAT-800-CHZ-317", "PLATAFORMA - CONTIDA NO DE-5290.00-22313-800-CHZ-317"],
+  ];
+  casos.forEach(([doc, esperado]) => {
+    assert.equal(N.resolve(doc).description, esperado, doc);
+  });
+});
+
+check("a regra do desenho não inventa DE quando o final do código não é um número de desenho", () => {
+  const N = createRequire(import.meta.url)("./non_tagged_title_rules.js");
+  // Exemplo do slide 8 do PPTX: "EL11600" e "T32000" são elevação e TAG do
+  // forno, não um número de desenho — não podem virar "CONTIDO NO DE-...".
+  const semDe = N.resolve("C1U_RNEST_U36_3.1.1.1_CVL_RIR_nt-EMT-ESC-MA-EL11600-F-36001");
+  assert.doesNotMatch(semDe.description, /CONTID[OA] NO DE-/);
+  assert.equal(semDe.confidence, "media", "sem um número de desenho reconhecível, a confiança continua média");
+});
+
+check("as 348 conclusões já confirmadas continuam vencendo a regra de prefixo genérica", () => {
+  const N = createRequire(import.meta.url)("./non_tagged_title_rules.js");
+  let comRegraDePrefixo = 0;
+  Object.entries(N.EXACT_DESCRIPTIONS).forEach(([doc, confirmado]) => {
+    const parsed = N.group7(doc);
+    if (!parsed.nonTagged) return;
+    if (!N.familyDescription(parsed.body)) return;
+    comRegraDePrefixo += 1;
+    // resolve() precisa devolver a conclusão já confirmada, não o que a
+    // regra de prefixo produziria por conta própria — mesmo quando as duas
+    // divergem (o que acontece: nem todo CCC é canaleta, por exemplo).
+    assert.equal(N.resolve(doc).description.toUpperCase(), N.normalizeControlledDescription(confirmado).toUpperCase(), doc);
+  });
+  assert.ok(comRegraDePrefixo > 200, "o teste precisa cobrir uma quantidade real de documentos com regra de prefixo");
+});
+
+check("o título completo aplica a regra do desenho no fluxo real de análise", () => {
+  const require2 = createRequire(import.meta.url);
+  const XLSX = require2("./xlsx.full.min.js");
+  globalThis.XLSX = XLSX;
+  const C = require2("./core.js");
+  const A = require2("./audit_core.js");
+  const doc = "AB1_RNEST_U36_3.1.1.1_CVL_RIR_nt-CI-104-1-1-130-CHZ-102";
+  const record = {
+    document: doc, documentKey: C.key(doc), looseDocumentKey: C.looseKey(doc),
+    title: "", revision: "0", status: "EMITIDO", discipline: "CIVIL",
+    sheet: "ET_LD_003", row: 2, source: "LD.xlsx", sourceOrder: 0, sourceTimestamp: 0, ldColumns: [],
+  };
+  const rows = A.auditTitles(C.buildIndex([record], []), { byDocument: new Map(), byTagDiscipline: new Map() }, {});
+  assert.equal(rows[0].proposed, "RELATORIO DE INSPECAO DE RECEBIMENTO - CAIXA DE PASSAGEM - CONTIDA NO DE-5290.00-22313-130-CHZ-102");
+  assert.equal(rows[0].descriptionSource, "Catálogo controlado nt-");
+});
+
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));
