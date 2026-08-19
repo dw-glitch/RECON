@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.50**.
+Versão atual: **1.26.51**.
 
 ## Execução
 
@@ -88,6 +88,19 @@ para aquele documento, a coluna volta a trazer a versão da LD enviada, para nã
 sair em branco. O relatório da análise mostra o valor aproveitado na coluna
 `PRAZO NA LD (COLUNA VERSÃO DA LD)`. A Data Prevista é sempre a data atual da
 geração, sem reaproveitar datas antigas do histórico.
+
+## Gravação da LD corrigida
+
+A cópia da LD revisada é gerada alterando apenas as células de título ou de
+Caminho Databook aprovadas, direto no XML da planilha original — o restante do
+arquivo é preservado byte a byte e conferido por `ld_preservation.js`.
+
+Quando o valor antigo está vazio, a célula não existe no XML e precisa ser
+criada. Ela é inserida **na posição da coluna**, não no fim da linha, e o
+atributo `spans` da linha é ampliado: fora dessa ordem o Excel abre o arquivo
+com o aviso de conteúdo reparado. A suíte de testes verifica a estrutura do
+arquivo gerado pelas mesmas regras que o Excel aplica — ordem de linhas e
+colunas, referências coerentes, escape de XML e contagem da tabela de textos.
 
 ## Bases de referência
 

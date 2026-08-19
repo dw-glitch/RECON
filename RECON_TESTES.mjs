@@ -9,6 +9,9 @@ import vm from "node:vm";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const checks = [];
 function check(name, fn) { fn(); checks.push(name); }
+// A gravação da LD é assíncrona (JSZip): sem esperar, uma falha viraria
+// promessa rejeitada e o teste passaria em silêncio.
+async function checkAsync(name, fn) { await fn(); checks.push(name); }
 
 const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
 const exists = (name) => fs.existsSync(path.join(root, name));
@@ -1652,6 +1655,137 @@ check("a origem da evidência acompanha a fonte que realmente descreveu", () => 
   const posComplementar = cadeia.indexOf('"Complementar da LD"');
   assert.ok(posBase > 0 && posComplementar > 0);
   assert.ok(posBase < posComplementar, "a base controlada é consultada antes da coluna Complementar");
+});
+
+// ===================== GRAVAÇÃO DA LD CORRIGIDA =====================
+
+function colunaDoRef(ref) {
+  const match = String(ref).match(/^([A-Z]+)(\d+)$/);
+  if (!match) return null;
+  return { coluna: match[1].split("").reduce((total, letra) => total * 26 + (letra.charCodeAt(0) - 64), 0), linha: Number(match[2]) };
+}
+
+// Mesmas regras que o Excel recusa e depois "repara" ao abrir o arquivo.
+async function problemasEstruturais(buffer, JSZip) {
+  const problemas = [];
+  const zip = await JSZip.loadAsync(buffer);
+  const nomes = Object.keys(zip.files).filter((nome) => !zip.files[nome].dir);
+  if (!nomes.includes("[Content_Types].xml")) problemas.push("[Content_Types].xml ausente");
+  if (!nomes.includes("xl/workbook.xml")) problemas.push("xl/workbook.xml ausente");
+  for (const nome of nomes.filter((item) => item.endsWith(".xml") || item.endsWith(".rels"))) {
+    const xml = await zip.file(nome).async("string");
+    if (/&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)/.test(xml)) problemas.push(`${nome}: & sem escape`);
+    const abre = (xml.match(/<[a-zA-Z]/g) || []).length;
+    const fecha = (xml.match(/<\/[a-zA-Z]/g) || []).length + (xml.match(/\/>/g) || []).length;
+    if (abre !== fecha) problemas.push(`${nome}: tags desbalanceadas`);
+  }
+  for (const nome of nomes.filter((item) => /^xl\/worksheets\/sheet\d+\.xml$/.test(item))) {
+    const xml = await zip.file(nome).async("string");
+    let ultimaLinha = 0;
+    for (const linha of xml.matchAll(/<row\b([^>]*)>([\s\S]*?)<\/row>/g)) {
+      const numero = Number((linha[1].match(/\br="(\d+)"/) || [])[1]);
+      if (numero && numero <= ultimaLinha) problemas.push(`${nome}: linha ${numero} fora de ordem`);
+      if (numero) ultimaLinha = numero;
+      const refs = [...linha[2].matchAll(/<c\b[^>]*\br="([A-Z]+\d+)"/g)].map((item) => item[1]);
+      let anterior = 0;
+      const colunas = [];
+      for (const ref of refs) {
+        const posicao = colunaDoRef(ref);
+        if (!posicao) { problemas.push(`${nome}: referência inválida ${ref}`); continue; }
+        if (numero && posicao.linha !== numero) problemas.push(`${nome}: célula ${ref} dentro da linha ${numero}`);
+        if (posicao.coluna <= anterior) problemas.push(`${nome}: coluna fora de ordem na linha ${numero} (${refs.join(" ")})`);
+        anterior = posicao.coluna;
+        colunas.push(posicao.coluna);
+      }
+      const spans = linha[1].match(/\bspans="(\d+):(\d+)"/);
+      if (spans && colunas.length) {
+        if (Math.min(...colunas) < Number(spans[1]) || Math.max(...colunas) > Number(spans[2])) {
+          problemas.push(`${nome}: spans não cobre as células da linha ${numero}`);
+        }
+      }
+    }
+  }
+  return problemas;
+}
+
+await checkAsync("a LD corrigida é gravada sem erro e abre íntegra", async () => {
+  const require2 = createRequire(import.meta.url);
+  const XLSX = require2("./xlsx.full.min.js");
+  const JSZip = require2("./jszip.min.js");
+  globalThis.XLSX = XLSX;
+  const Writer = require2("./ld_title_writer.js");
+
+  const cabecalho = ["DOCUMENTO", "REVISÃO", "STATUS", "TÍTULO", "DISCIPLINA", "GRDT", "PROPÓSITO"];
+  const linhas = [cabecalho];
+  for (let i = 1; i <= 12; i += 1) {
+    const documento = `C1O_RNEST_U32_3.1.1.1_TUB_RIR_VM-3200${String(i).padStart(2, "0")}`;
+    // Um terço com título vazio: é o caso em que a célula não existe no XML.
+    linhas.push([documento, "0", "EMITIDO", i % 3 === 0 ? "" : `TITULO ANTIGO ${i}`, "TUBULAÇÃO", "", "PARA CONSTRUÇÃO"]);
+  }
+  const sheet = XLSX.utils.aoa_to_sheet(linhas);
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, sheet, "ET_LD_003");
+  let buffer = XLSX.write(book, { type: "buffer", bookType: "xlsx" });
+
+  // Retira as células de título vazias, como o Excel grava.
+  const entrada = await JSZip.loadAsync(buffer);
+  let xml = await entrada.file("xl/worksheets/sheet1.xml").async("string");
+  xml = xml.replace(/<c r="D\d+"[^>]*\/>/g, "").replace(/<c r="D\d+" t="str"><v><\/v><\/c>/g, "");
+  entrada.file("xl/worksheets/sheet1.xml", xml);
+  buffer = Buffer.from(await entrada.generateAsync({ type: "uint8array" }));
+
+  const arquivo = {
+    name: "LD-5290.00-22313-91A-C1O-003_0001_0.xlsx",
+    arrayBuffer: async () => buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
+  };
+  const aprovados = linhas.slice(1).map((linha, indice) => ({
+    decision: "approved", sheet: "ET_LD_003", row: indice + 2, document: linha[0], current: linha[3],
+    // Um dos títulos carrega caracteres que exigem escape no XML.
+    proposed: indice === 0
+      ? 'RELATORIO DE INSPECAO DE RECEBIMENTO - VALVULA & CONEXAO <X> "Y" - VM-320001'
+      : `RELATORIO DE INSPECAO DE RECEBIMENTO - VALVULA MANUAL - ${linha[0].split("_").pop()}`,
+  }));
+
+  const resultado = await Writer.apply(arquivo, aprovados, XLSX, JSZip);
+  assert.equal(resultado.count, aprovados.length);
+  assert.ok(resultado.preservation.valid, "as partes internas da LD precisam continuar íntegras");
+
+  const problemas = await problemasEstruturais(resultado.buffer, JSZip);
+  assert.deepEqual(problemas, [], `o Excel abriria com aviso de conteúdo reparado: ${problemas.join(" · ")}`);
+
+  const relido = XLSX.read(resultado.buffer, { type: "array" });
+  const folha = relido.Sheets["ET_LD_003"];
+  aprovados.forEach((item) => {
+    const celula = folha[`D${item.row}`];
+    assert.equal(String(celula && celula.v || ""), item.proposed, `título não gravado na linha ${item.row}`);
+  });
+});
+
+check("a célula criada entra em ordem de coluna, não no fim da linha", () => {
+  const Writer = createRequire(import.meta.url)("./ld_title_writer.js");
+  const celulas = '<c r="A2"><v>1</v></c><c r="B2"><v>2</v></c><c r="D2"><v>4</v></c><c r="E2"><v>5</v></c>';
+  const nova = '<c r="C2" t="inlineStr"><is><t>X</t></is></c>';
+  const saida = Writer.insertCellInOrder(celulas, "C2", nova);
+  const ordem = [...saida.matchAll(/<c r="([A-Z]+)2"/g)].map((item) => item[1]);
+  assert.deepEqual(ordem, ["A", "B", "C", "D", "E"], "o Excel exige as células em ordem crescente de coluna");
+  // Coluna depois da última continua no fim.
+  const fim = Writer.insertCellInOrder(celulas, "Z2", '<c r="Z2"/>');
+  assert.deepEqual([...fim.matchAll(/<c r="([A-Z]+)2"/g)].map((item) => item[1]), ["A", "B", "D", "E", "Z"]);
+  // O spans precisa passar a cobrir a coluna criada.
+  assert.match(Writer.widenRowSpans('<row r="2" spans="1:5">', "H2"), /spans="1:8"/);
+  assert.equal(Writer.columnIndexFromRef("AA1"), 27);
+});
+
+check("os gravadores da LD recebem o escopo global em vez de um root solto", () => {
+  // root era parâmetro só da função externa: dentro da fábrica virava variável
+  // livre e a exportação quebrava com "root is not defined" antes de começar.
+  for (const arquivo of ["ld_title_writer.js", "ld_databook_writer.js"]) {
+    const fonte = read(arquivo);
+    const fabrica = fonte.match(/function \((root, )?(Contracts[^)]*)\) \{/);
+    assert.ok(fabrica, `${arquivo}: fábrica não encontrada`);
+    assert.ok(fabrica[1], `${arquivo}: a fábrica precisa receber root`);
+    assert.match(fonte, /const api = factory\(root,/, `${arquivo}: root precisa ser repassado`);
+  }
 });
 
 console.log(JSON.stringify({ version: VERSION, passed: true, checks: checks.length, names: checks }, null, 2));
