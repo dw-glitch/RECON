@@ -1,0 +1,46 @@
+name: Apply PR N-1710 allocation fix
+
+on:
+  push:
+    branches:
+      - fix/pr-n1710-allocation-history
+    paths:
+      - '.github/workflows/apply-pr-n1710-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/pr-n1710-allocation-history
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply fix
+        run: node scripts/apply_pr_n1710_fix.mjs
+      - name: Check JavaScript syntax
+        run: |
+          node --check allocation_core.js
+          node --check allocation_app.js
+          node --check PR_N1710_ALLOCATION_TESTS.mjs
+      - name: Static validation
+        run: python3 validate_static.py
+      - name: Existing regression suite
+        run: node RECON_TESTES.mjs
+      - name: PR N-1710 regression suite
+        run: node PR_N1710_ALLOCATION_TESTS.mjs
+      - name: Diff check
+        run: git diff --check
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add allocation_core.js allocation_app.js PR_N1710_ALLOCATION_TESTS.mjs
+          if ! git diff --cached --quiet; then
+            git commit -m "fix(allocation): support PR N-1710 history and quality path"
+            git push
+          fi
