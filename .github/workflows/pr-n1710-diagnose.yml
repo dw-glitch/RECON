@@ -1,0 +1,20 @@
+name: Diagnose PR N-1710 allocation
+
+on:
+  push:
+    branches:
+      - fix/pr-n1710-allocation-history
+    paths:
+      - '.github/workflows/pr-n1710-diagnose.yml'
+      - 'scripts/pr_n1710_diagnose.mjs'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run diagnostic
+        run: node scripts/pr_n1710_diagnose.mjs
