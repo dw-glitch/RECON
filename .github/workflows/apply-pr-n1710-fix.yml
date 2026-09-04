@@ -6,6 +6,7 @@ on:
       - fix/pr-n1710-allocation-history
     paths:
       - '.github/workflows/apply-pr-n1710-fix.yml'
+      - 'scripts/apply_pr_n1710_fix.mjs'
 
 permissions:
   contents: write
