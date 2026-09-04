@@ -71,7 +71,7 @@ core = replaceOnce(
     // oficial antes de comparar/ordenar.
     const allocationNameMatch = text(sourceName).match(/C1O[-_ ]*ALOC[-_ ]*CM[-_ ]*(\\d{4})[-_ ]*(\\d{4})/i);
     const allocationFromName = allocationNameMatch
-      ? `C1O-ALOC-CM-${allocationNameMatch[1]}-${allocationNameMatch[2]}`
+      ? "C1O-ALOC-CM-" + allocationNameMatch[1] + "-" + allocationNameMatch[2]
       : "";`,
   "nome histórico flexível",
 );
