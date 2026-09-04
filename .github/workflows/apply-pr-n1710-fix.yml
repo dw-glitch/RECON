@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/apply-pr-n1710-fix.yml'
       - 'scripts/apply_pr_n1710_fix.mjs'
+      - 'PR_N1710_ALLOCATION_TESTS.mjs'
 
 permissions:
   contents: write
