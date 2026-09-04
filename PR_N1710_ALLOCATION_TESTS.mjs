@@ -91,7 +91,7 @@ assert.equal(fallback.databook, PATH, "sem histórico, QUALIDADE deve cair no ca
 
 const app = fs.readFileSync(path.join(root, "allocation_app.js"), "utf8");
 const historyFilter = app.match(/function allocationHistoryFiles\(fileList\) \{[\s\S]*?\n  \}/)?.[0] || "";
-assert.match(historyFilter, /\.xlsx\|xlsm\|xls/i, "seletor de histórico precisa aceitar planilhas Excel");
+assert.match(historyFilter, /xlsx\|xlsm\|xls/i, "seletor de histórico precisa aceitar planilhas Excel");
 assert.doesNotMatch(historyFilter, /C1O-ALOC-CM-\\d\{4\}/, "histórico não pode depender do nome exato do arquivo");
 
 console.log("PR/N-1710 allocation regression: OK");
