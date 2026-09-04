@@ -326,6 +326,9 @@
       RIR: "UHDT-D|DATA BOOK C&M|EQP SEGURANÇA|RIR EQP_SEGURANÇA",
       CM: "UHDT-D|DATA BOOK C&M|EQP SEGURANÇA|C&M_EQP. SEGURANÇA",
     }),
+    QUALIDADE: Object.freeze({
+      CM: "UHDT-D|DATA BOOK C&M|GERAL - PROCEDIMENTOS DE EXECUÇÃO|QUALIDADE",
+    }),
     PINTURA: Object.freeze({
       RIR: "UHDT-D|DATA BOOK C&M|PINTURA",
       CM: "UHDT-D|DATA BOOK C&M|PINTURA",
@@ -372,6 +375,7 @@
     if (/INSTR|^INS$/.test(value)) return "INSTRUMENTACAO";
     if (/HVAC|VENTIL|AR CONDICIONADO/.test(value)) return "HVAC";
     if (/SEGUR|^SEG$/.test(value)) return "EQP_SEGURANCA";
+    if (/QUAL|^QUA$/.test(value)) return "QUALIDADE";
     if (/PINT/.test(value)) return "PINTURA";
     return "";
   }
@@ -873,14 +877,20 @@
 
   function parseHistoricalAllocationWorkbook(workbook, XLSX, sourceName) {
     const rows = [];
-    const allocationFromName = text(sourceName).match(/C1O-ALOC-CM-\d{4}-\d{4}/i);
+    // Histórico real pode ter sido renomeado depois do envio. Aceita hífen,
+    // espaço ou underscore entre os blocos e normaliza de volta para o código
+    // oficial antes de comparar/ordenar.
+    const allocationNameMatch = text(sourceName).match(/C1O[-_ ]*ALOC[-_ ]*CM[-_ ]*(\d{4})[-_ ]*(\d{4})/i);
+    const allocationFromName = allocationNameMatch
+      ? "C1O-ALOC-CM-" + allocationNameMatch[1] + "-" + allocationNameMatch[2]
+      : "";
     (workbook.SheetNames || []).forEach((sheetName) => {
       const values = rowsFromSheet(workbook.Sheets[sheetName], XLSX);
       let headerIndex = -1;
       let map = null;
       for (let index = 0; index < Math.min(values.length, 45); index += 1) {
         const candidate = headerMap(values[index]);
-        if (candidate.has("NOMEDOCUMENTO") || candidate.has("DOCUMENTO")) {
+        if (["NOMEDOCUMENTO", "NOME DOCUMENTO", "NOME DO DOCUMENTO", "DOCUMENTO", "CODIGO DO DOCUMENTO", "CÓDIGO DO DOCUMENTO", "CODIGO DOCUMENTO", "CÓDIGO DOCUMENTO"].some((header) => candidate.has(norm(header)))) {
           headerIndex = index;
           map = candidate;
           break;
@@ -889,7 +899,7 @@
       if (headerIndex < 0 || !map) return;
       for (let index = headerIndex + 1; index < values.length; index += 1) {
         const row = values[index] || [];
-        const document = text(rowValue(row, map, ["NomeDocumento", "DOCUMENTO"]));
+        const document = text(rowValue(row, map, ["NomeDocumento", "NOME DOCUMENTO", "NOME DO DOCUMENTO", "DOCUMENTO", "CODIGO DO DOCUMENTO", "CÓDIGO DO DOCUMENTO", "CODIGO DOCUMENTO", "CÓDIGO DOCUMENTO"]));
         if (!document || norm(document) === "FIM") continue;
         const item = {};
         ALLOCATION_HEADERS.forEach((header) => { item[header] = rowValue(row, map, [header]); });
@@ -897,7 +907,7 @@
         Object.assign(item, {
           document,
           documentKey: key(document),
-          allocation: text(rowValue(row, map, ["ALOCAÇÃO"])) || (allocationFromName ? allocationFromName[0].toUpperCase() : ""),
+          allocation: text(rowValue(row, map, ["ALOCAÇÃO"])) || allocationFromName,
           status: text(rowValue(row, map, ["STATUS DA ALOCAÇÃO"])),
           fiscalComment: text(rowValue(row, map, ["Resposta da Fiscal 01", "COMENTÁRIO DA FISCAL", "COMENTARIO DA FISCAL", "OBSERVAÇÃO", "OBSERVACAO"])),
           returnDate: text(rowValue(row, map, ["Retorno da Fiscal 01", "DATA DE RETORNO"])),
@@ -1062,9 +1072,14 @@
       const subjectMatch = setsIntersect(targetSubjects, candidateSubjects);
       const similarity = titleSimilarityFromTokens(targetTitleTokens, titleTokens(candidateEffectiveTitle));
       const kindMatch = Boolean(targetKind && candidateKind && targetKind === candidateKind);
+      // Planilhas oficiais de alocação normalmente não possuem a coluna Título.
+      // Para PR da N-1710, a família já combina categoria PR + código de serviço
+      // (ex.: PR|700). Se o histórico não traz título, não o descarte antes de
+      // avaliar sequência, disciplina e consistência do Caminho Databook.
+      const structuralPrHistory = sourceType === "history" && targetFamily.type === "PR" && !candidateKind;
       if (targetKind && candidateKind && !kindMatch) return;
-      if (targetSubjects.size && !subjectMatch) return;
-      if (!kindMatch && similarity < 0.32) return;
+      if (targetSubjects.size && !subjectMatch && !structuralPrHistory) return;
+      if (!kindMatch && similarity < 0.32 && !structuralPrHistory) return;
       const dedupeKey = `${key(row.document)}|${pathKey(row.databook)}`;
       if (dedupe.has(dedupeKey)) return;
       dedupe.add(dedupeKey);
@@ -1104,6 +1119,10 @@
     const strong = sourceType === "history"
       ? (top.documents.size >= 2 && share >= 0.60 && (!targetKind || kindSupport >= Math.ceil(top.candidates.length * 0.6)))
         || (top.documents.size === 1 && ranked.length === 1 && top.maxScore >= 118)
+        // Um único PR histórico da mesma família é evidência suficiente quando
+        // não existe caminho concorrente: a família PR|serviço é estrutural e
+        // a pontuação ainda exige proximidade/consistência mínima.
+        || (targetFamily.type === "PR" && top.documents.size === 1 && ranked.length === 1 && top.maxScore >= 77)
       : top.documents.size >= 2 && share >= 0.72 && (!targetKind || kindSupport >= Math.ceil(top.candidates.length * 0.7));
     if (!strong) return ranked.length > 1 ? conflictEvidence(sourceType, sourceLabel, alternatives, relatedDocuments) : null;
 

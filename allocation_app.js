@@ -353,8 +353,13 @@
   }
 
   function allocationHistoryFiles(fileList) {
+    // O conteúdo da planilha, e não o nome do arquivo, define se ela é um
+    // histórico válido. Pacotes antigos/renomeados podem usar espaços,
+    // underscores ou descrições adicionais no nome; filtrá-los pelo padrão
+    // C1O-ALOC-CM fazia o RECON ignorar histórico real antes mesmo de ler a
+    // planilha.
     return [...(fileList || [])].filter((file) => !/^~\$/.test(file.name) && Number(file.size) > 0
-      && /C1O-ALOC-CM-\d{4}-\d{4}.*\.(?:xlsx|xlsm|xls)$/i.test(file.name));
+      && /\.(?:xlsx|xlsm|xls)$/i.test(file.name));
   }
 
   function allocationConfirmationFiles(fileList) {
