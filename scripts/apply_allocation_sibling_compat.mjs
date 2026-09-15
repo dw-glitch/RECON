@@ -24,14 +24,20 @@ const after = `    // Compatibilidade legada: se a árvore mestre realmente não
       };
     }
 
+    // Sem qualquer candidato na Base, não bloqueie fontes oficiais posteriores
+    // do próprio documento (base documental/histórico). outputFromRecord ainda
+    // valida a disciplina antes de permitir que esses níveis sejam exportados.
     return {
       ...empty,
-      reason: "REVISAR CAMINHO DE ALOCAÇÃO — EAP " + eap + " sem caminho seguro na Base - Caminho das Pastas.",
-      blockFallback: true,
+      source: "Base - Caminho das Pastas sem cobertura",
+      sourceType: "project-base-missing",
+      confidence: "revisar",
+      reason: "EAP " + eap + " sem candidato na Base - Caminho das Pastas; avaliar fontes oficiais do próprio documento.",
+      blockFallback: false,
     };`;
 const index = source.indexOf(before);
 if (index < 0) throw new Error("Trecho final da resolução EAP não encontrado");
 if (source.indexOf(before, index + before.length) >= 0) throw new Error("Trecho final da resolução EAP duplicado");
 source = source.slice(0, index) + after + source.slice(index + before.length);
 fs.writeFileSync(path, source);
-console.log("Fallback seguro de EAP irmã preservado.");
+console.log("Fallback seguro de EAP irmã e histórico direto preservados.");
