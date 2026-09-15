@@ -79,6 +79,7 @@ const MODULE_URLS = [
   "renamer_core.js",
   "renamer_app.js",
   "document_coding_normative.js",
+  "document_coding_cv_standard.js",
   "document_coding_n1710_profile.js",
   "document_coding_core.js",
   "document_coding_parsers.js",
