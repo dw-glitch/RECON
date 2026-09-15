@@ -4,6 +4,8 @@
   const Storage = root.RECONDocumentCodingStorage;
   const Core = root.RECONDocumentCodingCore;
   const Profile = root.RECONN1710Profile;
+  const CV = root.RECONDocumentCodingCV;
+  const CVApp = root.RECONDocumentCodingCVApp;
   let guardsInstalled = false;
   let reserving = false;
 
@@ -21,9 +23,13 @@
   }
 
   function qualify(api) {
-    if (!Profile) return;
     (api.state.documents || []).forEach((item) => {
-      if (item.analysis) Profile.qualifyGroupSources(item.analysis);
+      if (!item.analysis) return;
+      if (Profile) Profile.qualifyGroupSources(item.analysis);
+      if (CV && item.analysis.ruleId === "et-cv") {
+        item.analysis.cvCompliance = CV.evaluate(item.parsed && item.parsed.text || "", { roleId: item.overrides && item.overrides.cvRole || "" });
+        item.analysis.cvProfile = item.analysis.cvCompliance && item.analysis.cvCompliance.profile && item.analysis.cvCompliance.profile.id || "";
+      }
     });
   }
 
@@ -64,7 +70,11 @@
           item.analysis = Core.analyzeDocument({ filename: item.file.name, text: item.parsed.text, overrides }, api.state.ldIndex, { reserved: [...otherReserved, ...batchReserved] });
           item.analysis.message = `${item.analysis.message || ""} Sequencial ajustado pela reserva concorrente local: ${allocated}.`.trim();
         }
-        Profile && Profile.qualifyGroupSources(item.analysis);
+        if (Profile) Profile.qualifyGroupSources(item.analysis);
+        if (CV && item.analysis.ruleId === "et-cv") {
+          item.analysis.cvCompliance = CV.evaluate(item.parsed && item.parsed.text || "", { roleId: item.overrides && item.overrides.cvRole || "" });
+          item.analysis.cvProfile = item.analysis.cvCompliance && item.analysis.cvCompliance.profile && item.analysis.cvCompliance.profile.id || "";
+        }
         batchReserved.push({ familyKey: item.analysis.familyKey, sequence: Number(item.analysis.sequence), code: item.analysis.code });
         if (!caps.crossDeviceAtomic && item.analysis && !item.analysis.existing && item.analysis.confidence !== Core.CONFIDENCE.CONFLICT) {
           item.analysis.confidence = Core.CONFIDENCE.REVIEW;
@@ -74,6 +84,7 @@
       }
       qualify(api);
       if (typeof api.render === "function") api.render();
+      if (CVApp && typeof CVApp.renderActive === "function") CVApp.renderActive();
     } finally { reserving = false; }
   }
 
@@ -126,7 +137,10 @@
     if (module !== "coding") return;
     const api = root.RECONDocumentCoding;
     if (!api || typeof api.init !== "function") return;
-    Promise.resolve(api.init()).then(() => installGuards(api)).catch(report);
+    Promise.resolve(api.init()).then(() => {
+      if (CVApp && typeof CVApp.install === "function") CVApp.install(api);
+      installGuards(api);
+    }).catch(report);
   }
 
   const view = root.document && root.document.querySelector('[data-module-view="coding"]');
