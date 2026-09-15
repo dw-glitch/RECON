@@ -27,7 +27,7 @@
     tags: ["RECONTagConferenceCore", "RECONTagConference"],
     renamer: ["RECONRenamerCore", "RECONRenamer"],
     bases: ["RECONBasesCore", "RECONBases"],
-    coding: ["RECONDocumentCodingNormative", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCoding"],
+    coding: ["RECONDocumentCodingNormative", "RECONN1710Profile", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCoding", "RECONDocumentCodingLDCore", "RECONDocumentCodingLD"],
   };
 
   const groupRequirements = {
@@ -38,7 +38,7 @@
     tags: ["RECONTagConferenceCore", "RECONTagConference"],
     renamer: ["RECONRenamerCore", "RECONRenamer"],
     bases: ["RECONBasesCore", "RECONBases"],
-    coding: ["RECONDocumentCodingNormative", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCoding"],
+    coding: ["RECONDocumentCodingNormative", "RECONN1710Profile", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCoding", "RECONDocumentCodingLDCore", "RECONDocumentCodingLD"],
     "offline:scon-escopo-titles": ["RECONSconEscopoTitleCatalog"],
   };
 
@@ -52,9 +52,6 @@
     "offline:eap-paths": ["offline", "offline_recon_eap_paths.js"],
     "offline:pdf-worker": ["offline", "offline_recon_pdf_worker.js"],
     "offline:scon-escopo-titles": ["scon_escopo_title_catalog.js"],
-    // bases_* entra em `common` porque a substituição de base precisa estar
-    // resolvida antes de qualquer módulo carregar uma referência — não adianta
-    // descobrir a troca depois que a análise já leu a base incorporada.
     bases: ["xlsx", "bases_core.js", "bases_app.js"],
     common: ["recon_compute_client.js", "recon_pager.js", "core.js", "ld_conflicts.js", "recon_export_guard.js", "ld_compatibility.js", "timeline_core.js", "bases_core.js", "bases_app.js"],
     relations: ["xlsx", "common", "relations_core.js", "relations_app.js"],
@@ -62,10 +59,19 @@
     audit: ["xlsx", "offline:audit", "offline:scon-escopo-titles", "common", "allocation_confirmation_sources.js", "allocation_core.js", "databook_catalog.js", "databook_allocation_sources.js", "non_tagged_title_rules.js", "document_title_standard.js", "global_tag_title_core.js", "scon_catalog_loader.js", "tag_reference_catalog.js", "valve_list_catalog.js", "valve_reparo_catalog.js", "audit_core.js", "ld_preservation.js", "ld_databook_writer.js", "ld_title_writer.js", "audit_app.js"],
     tags: ["xlsx", "bases", "tag_reference_catalog.js", "tag_conference_core.js", "tag_conference_app.js"],
     renamer: ["offline:pdf-worker", "pdf.min.js", "renamer_core.js", "renamer_app.js"],
-    // O módulo de codificação reutiliza as bibliotecas locais já embarcadas
-    // para PDF.js/XLSX/ZIP/Excel, e mantém seu motor normativo em arquivos
-    // separados. O pdf-lib é carregado sob demanda apenas na geração do PDF.
-    coding: ["xlsx", "export", "offline:pdf-worker", "pdf.min.js", "document_coding_normative.js", "document_coding_core.js", "document_coding_parsers.js", "document_coding_storage.js", "document_coding_pdf.js", "document_coding_app.js", "document_coding_bootstrap.js"],
+    coding: [
+      "xlsx", "export", "offline:pdf-worker", "pdf.min.js",
+      "document_coding_normative.js",
+      "document_coding_n1710_profile.js",
+      "document_coding_core.js",
+      "document_coding_parsers.js",
+      "document_coding_storage.js",
+      "document_coding_pdf.js",
+      "document_coding_app.js",
+      "document_coding_ld_core.js",
+      "document_coding_ld_app.js",
+      "document_coding_bootstrap.js",
+    ],
   };
 
   function scriptBasename(value) {
@@ -125,9 +131,7 @@
 
       const onRuntimeError = (event) => {
         if (scriptBasename(event.filename) !== scriptBasename(src)) return;
-        runtimeError = event.error instanceof Error
-          ? event.error
-          : new Error(event.message || `Falha ao executar ${src}`);
+        runtimeError = event.error instanceof Error ? event.error : new Error(event.message || `Falha ao executar ${src}`);
       };
 
       const cleanup = () => root.removeEventListener("error", onRuntimeError);
@@ -161,9 +165,7 @@
 
   function assertGlobals(label, names) {
     const missing = (names || []).filter((name) => root[name] == null);
-    if (missing.length) {
-      throw new Error(`O grupo ${label} não foi inicializado corretamente. Componente(s) ausente(s): ${missing.join(", ")}.`);
-    }
+    if (missing.length) throw new Error(`O grupo ${label} não foi inicializado corretamente. Componente(s) ausente(s): ${missing.join(", ")}.`);
   }
 
   async function ensure(item) {
@@ -177,9 +179,7 @@
 
   function assertModuleReady(module) {
     const missing = (moduleRequirements[module] || []).filter((name) => root[name] == null);
-    if (missing.length) {
-      throw new Error(`O módulo ${module} não foi inicializado corretamente. Componente(s) ausente(s): ${missing.join(", ")}. Recarregue a página e tente novamente.`);
-    }
+    if (missing.length) throw new Error(`O módulo ${module} não foi inicializado corretamente. Componente(s) ausente(s): ${missing.join(", ")}. Recarregue a página e tente novamente.`);
   }
 
   async function ensureModule(module) {
@@ -225,9 +225,7 @@
     updateGlobalBusy();
   });
 
-  root.addEventListener("recon:module", (event) => {
-    ensureModule(event.detail && event.detail.module).catch(() => {});
-  });
+  root.addEventListener("recon:module", (event) => { ensureModule(event.detail && event.detail.module).catch(() => {}); });
 
   root.addEventListener("DOMContentLoaded", () => {
     let initial = "relations";
