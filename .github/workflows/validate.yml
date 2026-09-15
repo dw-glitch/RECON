@@ -43,3 +43,9 @@ jobs:
 
       - name: Run document coding CV contractual regression
         run: node DOCUMENT_CODING_CV_TESTS.mjs
+
+      - name: Run document coding LD parser crash regression
+        run: node DOCUMENT_CODING_LD_PARSER_TESTS.mjs
+
+      - name: Run document coding CV operational standard regression
+        run: node DOCUMENT_CODING_CV_STANDARD_TESTS.mjs
