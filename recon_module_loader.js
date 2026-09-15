@@ -6,7 +6,7 @@
   const moduleState = new Map();
   const busyModules = new Set();
   let compatibilityMode = false;
-  const moduleLabels = { relations: "Relações", allocation: "Alocação", databook: "Databook", titles: "Correção de títulos", tags: "Conferência de TAGs", renamer: "Renomeador", bases: "Bases de referência" };
+  const moduleLabels = { relations: "Relações", allocation: "Alocação", databook: "Databook", titles: "Correção de títulos", tags: "Conferência de TAGs", renamer: "Renomeador", bases: "Bases de referência", coding: "Codificação de Documentos" };
 
   const moduleDeps = {
     relations: ["relations"],
@@ -16,6 +16,7 @@
     tags: ["tags"],
     renamer: ["renamer"],
     bases: ["bases"],
+    coding: ["coding"],
   };
 
   const moduleRequirements = {
@@ -26,6 +27,7 @@
     tags: ["RECONTagConferenceCore", "RECONTagConference"],
     renamer: ["RECONRenamerCore", "RECONRenamer"],
     bases: ["RECONBasesCore", "RECONBases"],
+    coding: ["RECONDocumentCodingNormative", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCoding"],
   };
 
   const groupRequirements = {
@@ -36,6 +38,7 @@
     tags: ["RECONTagConferenceCore", "RECONTagConference"],
     renamer: ["RECONRenamerCore", "RECONRenamer"],
     bases: ["RECONBasesCore", "RECONBases"],
+    coding: ["RECONDocumentCodingNormative", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCoding"],
     "offline:scon-escopo-titles": ["RECONSconEscopoTitleCatalog"],
   };
 
@@ -59,6 +62,10 @@
     audit: ["xlsx", "offline:audit", "offline:scon-escopo-titles", "common", "allocation_confirmation_sources.js", "allocation_core.js", "databook_catalog.js", "databook_allocation_sources.js", "non_tagged_title_rules.js", "document_title_standard.js", "global_tag_title_core.js", "scon_catalog_loader.js", "tag_reference_catalog.js", "valve_list_catalog.js", "valve_reparo_catalog.js", "audit_core.js", "ld_preservation.js", "ld_databook_writer.js", "ld_title_writer.js", "audit_app.js"],
     tags: ["xlsx", "bases", "tag_reference_catalog.js", "tag_conference_core.js", "tag_conference_app.js"],
     renamer: ["offline:pdf-worker", "pdf.min.js", "renamer_core.js", "renamer_app.js"],
+    // O módulo de codificação reutiliza as bibliotecas locais já embarcadas
+    // para PDF.js/XLSX/ZIP/Excel, e mantém seu motor normativo em arquivos
+    // separados. O pdf-lib é carregado sob demanda apenas na geração do PDF.
+    coding: ["xlsx", "export", "offline:pdf-worker", "pdf.min.js", "document_coding_normative.js", "document_coding_core.js", "document_coding_parsers.js", "document_coding_storage.js", "document_coding_pdf.js", "document_coding_app.js"],
   };
 
   function scriptBasename(value) {
