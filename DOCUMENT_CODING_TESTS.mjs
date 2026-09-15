@@ -93,12 +93,12 @@ check("código existente na LD é preservado, inclusive em nova revisão", () =>
   assert.equal(result.confidence, C.CONFIDENCE.CONFIRMED);
 });
 
-check("similaridade ambígua na LD não vira igualdade automática", () => {
+check("correspondência ambígua forte na LD não vira igualdade automática", () => {
   const index = C.buildLdIndex([
-    { DOCUMENTO: "RL-5290.00-22313-98F-C1O-010", TITULO: "RELATÓRIO DE INSPEÇÃO DA BOMBA A" },
-    { DOCUMENTO: "RL-5290.00-22313-98F-C1O-011", TITULO: "RELATÓRIO DE INSPEÇÃO DA BOMBA B" },
+    { DOCUMENTO: "RL-5290.00-22313-98F-C1O-010", TITULO: "RELATÓRIO DE INSPEÇÃO DA BOMBA A", TAG: "32-P-1001" },
+    { DOCUMENTO: "RL-5290.00-22313-98F-C1O-011", TITULO: "RELATÓRIO DE INSPEÇÃO DA BOMBA B", TAG: "32-P-1001" },
   ]);
-  const info = C.matchLdDocument({ title: "RELATÓRIO DE INSPEÇÃO DA BOMBA", category: "RL" }, index);
+  const info = C.matchLdDocument({ title: "RELATÓRIO DE INSPEÇÃO DA BOMBA", tag: "32-P-1001", category: "RL" }, index);
   assert.equal(info.match, null);
   assert.equal(info.level, "ambiguous");
   assert.ok(info.candidates.length >= 2);
