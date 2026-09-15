@@ -1,0 +1,56 @@
+name: Apply global TAG title patch
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/global-tag-title-index
+    paths:
+      - scripts/apply_global_tag_title_index.mjs
+      - global_tag_title_core.js
+      - GLOBAL_TAG_TITLE_TESTS.mjs
+      - .github/workflows/apply-global-tag-title-index.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/global-tag-title-index
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply patch
+        run: node scripts/apply_global_tag_title_index.mjs
+      - name: Validate syntax
+        run: |
+          node --check global_tag_title_core.js
+          node --check audit_core.js
+          node --check audit_app.js
+          node --check recon_module_loader.js
+          node --check recon_compute_worker.js
+      - name: Run global TAG tests
+        run: node GLOBAL_TAG_TITLE_TESTS.mjs
+      - name: Run existing suite
+        run: |
+          python3 validate_static.py
+          node RECON_TESTES.mjs
+          node PR_N1710_ALLOCATION_TESTS.mjs
+          node ALLOCATION_HIERARCHY_TESTS.mjs
+      - name: Check diff
+        run: git diff --check
+      - name: Commit generated patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add audit_core.js audit_app.js recon_module_loader.js recon_compute_worker.js .github/workflows/validate.yml
+          if git diff --cached --quiet; then
+            echo "No generated changes"
+          else
+            git commit -m "feat(titles): search TAG globally across eligible bases"
+            git push
+          fi
