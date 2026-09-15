@@ -21,10 +21,8 @@
       .trim();
   }
 
-  // A chave global aceita apenas normalizações tipográficas seguras. Ela não
-  // faz correspondência parcial, não completa números e não remove caracteres
-  // internos que façam parte da identidade da TAG. O prefixo documental nt-
-  // é removido porque não integra a TAG cadastrada nas bases de referência.
+  // REGRA GLOBAL: nt- é apenas marcador do código documental e NUNCA integra
+  // a chave pesquisada. As bases e o documento passam pela mesma normalização.
   function normalizeTag(value) {
     return fold(value)
       .replace(/^NT\s*[-._/:]*\s*/i, "")
@@ -88,8 +86,6 @@
     if (containsDescription(a, b)) return a;
     if (containsDescription(b, a)) return b;
     if (!descriptionsCompatible(a, b)) return a;
-    // Se os textos são semanticamente muito próximos, manter a forma mais
-    // completa é mais seguro do que gerar um título artificial concatenado.
     const ta = tokens(a);
     const tb = tokens(b);
     const aContainsTokens = [...tb].every((token) => ta.has(token));
@@ -176,6 +172,46 @@
     return (index.byTag.get(key) || []).slice();
   }
 
+  // Um Grupo 7 pode carregar a TAG seguida de um complemento humano, como
+  // nt-NF-228452-Tubos. Não fazemos fuzzy match: geramos segmentos candidatos
+  // e só aceitamos um quando ele existe EXATAMENTE no índice global. O candidato
+  // mais longo é testado primeiro, evitando reduzir uma TAG válida maior.
+  function candidateTagKeys(value) {
+    const clean = fold(value)
+      .replace(/^NT\s*[-._/:]*\s*/i, "")
+      .replace(/\s+/g, "")
+      .trim();
+    const exact = normalizeTag(clean);
+    const result = [];
+    const seen = new Set();
+    const push = (candidate) => {
+      const key = normalizeTag(candidate);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      result.push(key);
+    };
+    push(exact);
+    const parts = clean.split(/[-._/]+/).filter(Boolean);
+    const separators = ["-", "/", "_", "."];
+    for (let length = parts.length - 1; length >= 2; length -= 1) {
+      for (let start = 0; start + length <= parts.length; start += 1) {
+        const slice = parts.slice(start, start + length);
+        separators.forEach((separator) => push(slice.join(separator)));
+      }
+    }
+    return result;
+  }
+
+  function lookupCandidate(index, value) {
+    const fallback = normalizeTag(value);
+    if (!index || !index.byTag) return { lookupTag: fallback, matches: [] };
+    for (const key of candidateTagKeys(value)) {
+      const matches = (index.byTag.get(key) || []).slice();
+      if (matches.length) return { lookupTag: key, matches };
+    }
+    return { lookupTag: fallback, matches: [] };
+  }
+
   function contextScore(item, context) {
     const wanted = context || {};
     let score = 0;
@@ -246,9 +282,6 @@
         supportingSources.add(candidate.sourceLabel);
         return;
       }
-      // Conflitos de fontes muito fracas não devem derrubar uma referência
-      // cadastral forte. Eles continuam rastreados, mas o alerta é reservado
-      // a evidências com peso documental relevante.
       if (candidate.priority >= 60 && selected.priority >= 60) {
         conflicts.push({
           source: candidate.sourceLabel,
@@ -308,6 +341,8 @@
     combineDescriptions,
     buildIndex,
     lookup,
+    candidateTagKeys,
+    lookupCandidate,
     select,
     statusLabel,
   };
