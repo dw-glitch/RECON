@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -94,6 +95,15 @@ test("estrutura de CV inclui formação, registro, experiência e checklist de c
   assert.match(draft, /Carteira de trabalho \/ CTPS/);
   assert.match(draft, /30 dias corridos/);
   assert.match(draft, /aprovação da Fiscalização PETROBRAS/i);
+});
+
+test("perfil de CV está registrado no lazy-loader e no cache offline", () => {
+  const loader = fs.readFileSync(new URL("./recon_module_loader.js", import.meta.url), "utf8");
+  const sw = fs.readFileSync(new URL("./sw.js", import.meta.url), "utf8");
+  for (const file of ["document_coding_cv_profile.js", "document_coding_cv_core.js", "document_coding_cv_app.js"]) {
+    assert.match(loader, new RegExp(file.replace(/\./g, "\\.")), `${file} fora do loader`);
+    assert.match(sw, new RegExp(file.replace(/\./g, "\\.")), `${file} fora do precache`);
+  }
 });
 
 console.log(`\nCV contratual: ${passed} teste(s) aprovados, ${failed} falha(s).`);
