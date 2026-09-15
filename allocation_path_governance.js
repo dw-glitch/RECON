@@ -68,9 +68,18 @@
   }
 
   function recordEvidence(record, output) {
-    const primary = A.databookDisciplineKey ? A.databookDisciplineKey(record || {}) : "";
+    let primary = A.databookDisciplineKey ? A.databookDisciplineKey(record || {}) : "";
     const databook = canonicalDiscipline(output && output.databook);
     const workflow = canonicalDiscipline(output && output.workflow);
+    const document = norm(record && record.document);
+    // Há documentos CVL cujo Grupo 7 chega como nt-EMT-...; o classificador
+    // legado só reconhece EMT quando ele é o primeiro token. Se o próprio
+    // documento contém EMT e o Caminho Data Book confirma ESTRUTURA METÁLICA,
+    // promovemos CIVIL para o sub-ramo específico, sem transformar disciplinas
+    // diferentes em equivalentes.
+    if (primary === "CIVIL" && databook === "ESTRUTURA_METALICA" && /(?:^|[-_])EMT(?:[-_]|$)/.test(document)) {
+      primary = "ESTRUTURA_METALICA";
+    }
     return { primary, databook, workflow };
   }
 
