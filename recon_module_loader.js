@@ -27,7 +27,7 @@
     tags: ["RECONTagConferenceCore", "RECONTagConference"],
     renamer: ["RECONRenamerCore", "RECONRenamer"],
     bases: ["RECONBasesCore", "RECONBases"],
-    coding: ["RECONDocumentCodingNormative", "RECONN1710Profile", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCoding", "RECONDocumentCodingLDCore", "RECONDocumentCodingLD"],
+    coding: ["RECONDocumentCodingNormative", "RECONN1710Profile", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCoding", "RECONDocumentCodingLDCore", "RECONDocumentCodingLD", "RECONDocumentCodingCVProfile", "RECONDocumentCodingCV", "RECONDocumentCodingCVApp"],
   };
 
   const groupRequirements = {
@@ -38,7 +38,7 @@
     tags: ["RECONTagConferenceCore", "RECONTagConference"],
     renamer: ["RECONRenamerCore", "RECONRenamer"],
     bases: ["RECONBasesCore", "RECONBases"],
-    coding: ["RECONDocumentCodingNormative", "RECONN1710Profile", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCoding", "RECONDocumentCodingLDCore", "RECONDocumentCodingLD"],
+    coding: ["RECONDocumentCodingNormative", "RECONN1710Profile", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCoding", "RECONDocumentCodingLDCore", "RECONDocumentCodingLD", "RECONDocumentCodingCVProfile", "RECONDocumentCodingCV", "RECONDocumentCodingCVApp"],
     "offline:scon-escopo-titles": ["RECONSconEscopoTitleCatalog"],
   };
 
@@ -70,6 +70,9 @@
       "document_coding_app.js",
       "document_coding_ld_core.js",
       "document_coding_ld_app.js",
+      "document_coding_cv_profile.js",
+      "document_coding_cv_core.js",
+      "document_coding_cv_app.js",
       "document_coding_bootstrap.js",
     ],
   };
