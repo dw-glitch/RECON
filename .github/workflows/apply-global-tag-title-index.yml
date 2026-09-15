@@ -6,7 +6,7 @@ on:
     branches:
       - feat/global-tag-title-index
     paths:
-      - scripts/apply_global_tag_title_index.mjs
+      - scripts/apply_global_tag_title_index.py
       - global_tag_title_core.js
       - GLOBAL_TAG_TITLE_TESTS.mjs
       - .github/workflows/apply-global-tag-title-index.yml
@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: 22
       - name: Apply patch
-        run: node scripts/apply_global_tag_title_index.mjs
+        run: python3 scripts/apply_global_tag_title_index.py
       - name: Validate syntax
         run: |
           node --check global_tag_title_core.js
