@@ -9,6 +9,7 @@ on:
       - scripts/apply_global_tag_title_index.py
       - scripts/fix_global_tag_patch_source.py
       - scripts/fix_global_tag_candidate_patch_source.py
+      - scripts/apply_global_description_source_fix.py
       - global_tag_title_core.js
       - GLOBAL_TAG_TITLE_TESTS.mjs
       - .github/workflows/apply-global-tag-title-index.yml
@@ -32,6 +33,8 @@ jobs:
         run: python3 scripts/fix_global_tag_candidate_patch_source.py
       - name: Apply patch
         run: python3 scripts/apply_global_tag_title_index.py
+      - name: Preserve source labels
+        run: python3 scripts/apply_global_description_source_fix.py
       - name: Validate syntax
         run: |
           node --check global_tag_title_core.js
