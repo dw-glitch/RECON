@@ -38,6 +38,34 @@
     return rows.length ? rows : (schema && schema.rows || []).filter((entry) => Boolean(parseCv(entry)));
   }
 
+  function findCvPosition(schema, analysis) {
+    const family = cvRows(schema, analysis);
+    if (!family.length) return { label: "Nenhum currículo da mesma família encontrado; inserir na aba CV após confirmação.", before: null, after: null };
+    const targetParsed = Core.parseEtCvCode && Core.parseEtCvCode(analysis && analysis.code);
+    const targetSequence = Number(analysis && analysis.sequence || targetParsed && targetParsed.sequence);
+    if (!Number.isFinite(targetSequence)) {
+      const last = family.slice().sort((a, b) => (a.rowNumber || 0) - (b.rowNumber || 0)).pop();
+      return { label: `junto aos currículos da mesma disciplina; referência: ${last.code} (linha ${last.rowNumber})`, before: last, after: null };
+    }
+    let before = null;
+    let after = null;
+    family.forEach((entry) => {
+      const cv = parseCv(entry);
+      if (!cv) return;
+      const seq = Number(cv.sequence);
+      if (!Number.isFinite(seq)) return;
+      if (seq < targetSequence && (!before || seq > before.seq)) before = { entry, seq };
+      if (seq > targetSequence && (!after || seq < after.seq)) after = { entry, seq };
+    });
+    if (before || after) {
+      const parts = [];
+      if (before) parts.push(`após ${before.entry.code} (linha ${before.entry.rowNumber})`);
+      if (after) parts.push(`antes de ${after.entry.code} (linha ${after.entry.rowNumber})`);
+      return { label: parts.join(" e "), before: before && before.entry, after: after && after.entry };
+    }
+    return { label: "Inserir junto aos currículos da mesma disciplina após confirmação.", before: null, after: null };
+  }
+
   function chooseCvDestination(analysis, schemaIndex) {
     const direct = analysis && (analysis.ldMatch || analysis.matchInfo && analysis.matchInfo.match);
     if (direct && direct.ld && direct.sheet) {
@@ -90,6 +118,7 @@
       result.destination = destination;
       result.schema = schema;
       result.groupKey = `${schema.file}::${schema.sheet}::${schema.signature}`;
+      if (result.status !== "existing") result.position = findCvPosition(schema, analysis);
     }
     return result;
   }
@@ -97,6 +126,7 @@
   return Object.freeze(Object.assign({}, LD, {
     isCvSchema,
     cvRows,
+    findCvPosition,
     chooseCvDestination,
     chooseDestination,
     generateLine,
