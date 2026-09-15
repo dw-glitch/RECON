@@ -42,7 +42,8 @@ const SHELL_URLS = [
 ];
 
 // Código dos módulos e bibliotecas de planilha: sem isto, a casca abre mas
-// nenhum módulo funciona offline. É o que realmente faltava no precache antigo.
+// nenhum módulo funciona offline. Os arquivos do novo módulo seguem o mesmo
+// padrão dos módulos existentes e continuam carregados sob demanda no runtime.
 const MODULE_URLS = [
   "recon-brand.js",
   "core.js",
@@ -77,26 +78,31 @@ const MODULE_URLS = [
   "tag_conference_app.js",
   "renamer_core.js",
   "renamer_app.js",
+  "document_coding_normative.js",
+  "document_coding_n1710_profile.js",
+  "document_coding_core.js",
+  "document_coding_parsers.js",
+  "document_coding_storage.js",
+  "document_coding_pdf.js",
+  "document_coding_app.js",
+  "document_coding_ld_core.js",
+  "document_coding_ld_app.js",
+  "document_coding_cv_profile.js",
+  "document_coding_cv_core.js",
+  "document_coding_cv_app.js",
+  "document_coding_bootstrap.js",
   "exceljs.min.js",
   "jszip.min.js"
 ];
 
 // Catálogos de referência (scon_*, tag_reference_catalog, bases offline) NÃO são
-// precacheados: somam mais de 10 MB e o carregamento já é sob demanda, por
-// disciplina, em scon_catalog_loader.js e offline_resources.js. Eles entram no
-// cache naturalmente na primeira vez que forem usados, via networkFirst.
-
-// Install: cache the shell first, then the module code, tolerating individual failures
+// precacheados: somam vários MB e o carregamento já é sob demanda. Eles entram
+// no cache naturalmente na primeira utilização, via networkFirst.
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then(async (cache) => {
-        // A casca é obrigatória: se algum item falhar, a instalação falha e o
-        // Service Worker antigo continua no ar, em vez de ficar meio instalado.
         await cache.addAll(SHELL_URLS);
-
-        // O código dos módulos é best-effort: um arquivo indisponível não pode
-        // derrubar a instalação inteira nem deixar o app sem offline nenhum.
         const results = await Promise.allSettled(
           MODULE_URLS.map((url) => cache.add(url))
         );
@@ -111,55 +117,38 @@ self.addEventListener("install", (event) => {
   );
 });
 
-// Activate: clean old caches
 self.addEventListener("activate", (event) => {
   const validCaches = [STATIC_CACHE, DATA_CACHE, CACHE_NAME];
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((name) => {
-          if (!validCaches.includes(name)) {
-            return caches.delete(name);
-          }
+          if (!validCaches.includes(name)) return caches.delete(name);
           return undefined;
         })
       );
-    }).then(() => {
-      return self.clients.claim();
-    })
+    }).then(() => self.clients.claim())
   );
 });
 
-// Fetch: network-first for HTML, cache-first for static assets
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
-
-  // Only handle same-origin requests
   if (url.origin !== self.location.origin) return;
-
-  // Skip non-GET requests
   if (request.method !== "GET") return;
 
-  // For JavaScript and CSS assets, prefer the network but fall back to cached copies
   if (url.pathname.endsWith(".js") || url.pathname.endsWith(".css")) {
     event.respondWith(networkFirst(request));
     return;
   }
-
-  // For images and fonts
   if (url.pathname.match(/\.(png|ico|svg|woff2?)$/)) {
     event.respondWith(cacheFirst(request));
     return;
   }
-
-  // For the main document (HTML) - network first
   if (url.pathname === "/" || url.pathname.endsWith("index.html")) {
     event.respondWith(networkFirst(request));
     return;
   }
-
-  // Default: network first with cache fallback
   event.respondWith(networkFirst(request));
 });
 
@@ -192,7 +181,6 @@ async function networkFirst(request) {
   }
 }
 
-// Listen for messages from the app
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
