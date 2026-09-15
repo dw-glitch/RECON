@@ -8,6 +8,7 @@ on:
     paths:
       - scripts/apply_global_tag_title_index.py
       - scripts/fix_global_tag_patch_source.py
+      - scripts/fix_global_tag_candidate_patch_source.py
       - global_tag_title_core.js
       - GLOBAL_TAG_TITLE_TESTS.mjs
       - .github/workflows/apply-global-tag-title-index.yml
@@ -27,6 +28,8 @@ jobs:
           node-version: 22
       - name: Normalize nt prefix rule in patch source
         run: python3 scripts/fix_global_tag_patch_source.py
+      - name: Use exact candidate lookup for document identifiers
+        run: python3 scripts/fix_global_tag_candidate_patch_source.py
       - name: Apply patch
         run: python3 scripts/apply_global_tag_title_index.py
       - name: Validate syntax
@@ -50,7 +53,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add audit_core.js audit_app.js recon_module_loader.js recon_compute_worker.js .github/workflows/validate.yml
+          git add global_tag_title_core.js audit_core.js audit_app.js recon_module_loader.js recon_compute_worker.js .github/workflows/validate.yml
           if git diff --cached --quiet; then
             echo "No generated changes"
           else
