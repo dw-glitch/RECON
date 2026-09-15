@@ -8,7 +8,7 @@ try {
   importScripts(
     "recon_contracts.js", "core.js", "ld_conflicts.js", "allocation_confirmation_sources.js",
     "allocation_core.js", "databook_allocation_sources.js", "non_tagged_title_rules.js",
-    "document_title_standard.js", "audit_core.js", "timeline_core.js", "relations_core.js", "tag_conference_core.js"
+    "document_title_standard.js", "global_tag_title_core.js", "audit_core.js", "timeline_core.js", "relations_core.js", "tag_conference_core.js"
   );
 } catch (error) {
   bootError = String(error && error.message || error || "Falha ao carregar os módulos de análise");
