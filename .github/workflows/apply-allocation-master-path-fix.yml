@@ -43,3 +43,4 @@ jobs:
             git commit -m "fix(allocation): prioritize master hierarchy paths"
             git push
           fi
+# retry: repaired patch syntax
