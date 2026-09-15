@@ -150,7 +150,7 @@ core = replaceOnce(
         source: "Base - Caminho das Pastas",
         sourceType: "project-base",
         confidence: "alta",
-        reason: `Caminho mestre compatível com EAP ${'${eap}'} e disciplina/contexto do documento.`,
+        reason: "Caminho mestre compatível com EAP " + eap + " e disciplina/contexto do documento.",
         blockFallback: false,
         candidateCount: baseCandidates.length,
       };
@@ -163,7 +163,7 @@ core = replaceOnce(
         source: "Base - Caminho das Pastas",
         sourceType: "project-base-ambiguous",
         confidence: "revisar",
-        reason: `REVISAR CAMINHO DE ALOCAÇÃO — não existe um único ramo mestre compatível para EAP ${'${eap}'} / disciplina ${'${discipline}'}.`,
+        reason: "REVISAR CAMINHO DE ALOCAÇÃO — não existe um único ramo mestre compatível para EAP " + eap + " / disciplina " + discipline + ".",
         blockFallback: true,
         candidateCount: baseCandidates.length,
       };
@@ -179,7 +179,7 @@ core = replaceOnce(
           source: "Histórico EAP (Base sem cobertura)",
           sourceType: "history-eap",
           confidence: "média",
-          reason: `EAP ${'${eap}'} não existe na Base - Caminho das Pastas; usado histórico compatível.`,
+          reason: "EAP " + eap + " não existe na Base - Caminho das Pastas; usado histórico compatível.",
           blockFallback: false,
           candidateCount: 0,
         };
@@ -189,7 +189,7 @@ core = replaceOnce(
         source: "Histórico EAP incompatível",
         sourceType: "history-eap-conflict",
         confidence: "revisar",
-        reason: `REVISAR CAMINHO DE ALOCAÇÃO — histórico de EAP ${'${eap}'} conflita com a disciplina ${'${discipline}'}.`,
+        reason: "REVISAR CAMINHO DE ALOCAÇÃO — histórico de EAP " + eap + " conflita com a disciplina " + discipline + ".",
         blockFallback: true,
         candidateCount: 0,
       };
@@ -197,7 +197,7 @@ core = replaceOnce(
 
     return {
       ...empty,
-      reason: `REVISAR CAMINHO DE ALOCAÇÃO — EAP ${'${eap}'} sem caminho seguro na Base - Caminho das Pastas.`,
+      reason: "REVISAR CAMINHO DE ALOCAÇÃO — EAP " + eap + " sem caminho seguro na Base - Caminho das Pastas.",
       blockFallback: true,
     };
   }
@@ -226,7 +226,7 @@ core = replaceOnce(
       levelsSource = \`Base EAP ${'${recordEap(record)}'}\`;
     } else if (base && base.levels && base.levels.some(Boolean)) {`,
 `      levels = eapLevels.slice();
-      levelsSource = eapResolution && eapResolution.source || \`Base EAP ${'${recordEap(record)}'}\`;
+      levelsSource = eapResolution && eapResolution.source || ("Base EAP " + recordEap(record));
     } else if (family.type === "ET" && eapResolution && eapResolution.blockFallback) {
       levels = [];
       levelsSource = eapResolution.reason || "REVISAR CAMINHO DE ALOCAÇÃO";
