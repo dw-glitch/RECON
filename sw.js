@@ -87,6 +87,9 @@ const MODULE_URLS = [
   "document_coding_app.js",
   "document_coding_ld_core.js",
   "document_coding_ld_app.js",
+  "document_coding_cv_profile.js",
+  "document_coding_cv_core.js",
+  "document_coding_cv_app.js",
   "document_coding_bootstrap.js",
   "exceljs.min.js",
   "jszip.min.js"
