@@ -28,3 +28,6 @@ jobs:
 
       - name: Run PR N-1710 allocation regression
         run: node PR_N1710_ALLOCATION_TESTS.mjs
+
+      - name: Run allocation master hierarchy regression
+        run: node ALLOCATION_HIERARCHY_TESTS.mjs

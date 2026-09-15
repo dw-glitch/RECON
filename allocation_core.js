@@ -218,16 +218,103 @@
     return count;
   }
 
+  const PROJECT_LEVEL_INDEX_CACHE = typeof WeakMap === "function" ? new WeakMap() : null;
+
+  function normalizeProjectCode(value) {
+    const raw = text(value);
+    if (!/^\d+(?:\.\d+){0,6}$/.test(raw)) return "";
+    return raw.split(".").map((part) => String(Number(part))).join(".");
+  }
+
+  function projectLevelIndex(entries) {
+    const rows = Array.isArray(entries) ? entries : [];
+    if (PROJECT_LEVEL_INDEX_CACHE && PROJECT_LEVEL_INDEX_CACHE.has(rows)) return PROJECT_LEVEL_INDEX_CACHE.get(rows);
+    const byCode = new Map();
+    rows.forEach((entry) => {
+      const code = normalizeProjectCode(entry && entry.code);
+      if (!code) return;
+      if (!byCode.has(code)) byCode.set(code, []);
+      byCode.get(code).push(entry);
+    });
+    const index = { byCode };
+    if (PROJECT_LEVEL_INDEX_CACHE) PROJECT_LEVEL_INDEX_CACHE.set(rows, index);
+    return index;
+  }
+
+  function projectLevelCandidates(entries, eapValue) {
+    const eap = normalizeEap(eapValue);
+    if (!eap) return [];
+    const index = projectLevelIndex(entries);
+    const parts = eap.split(".");
+    const candidates = [];
+    for (let depth = 1; depth <= parts.length; depth += 1) {
+      const code = parts.slice(0, depth).join(".");
+      (index.byCode.get(code) || []).forEach((entry) => candidates.push(entry));
+    }
+    return candidates;
+  }
+
+  function disciplineKeysCompatible(left, right) {
+    if (!left || !right) return true;
+    if (left === right) return true;
+    const civilMetal = new Set(["CIVIL", "ESTRUTURA_METALICA"]);
+    return civilMetal.has(left) && civilMetal.has(right);
+  }
+
+  function projectPathDisciplineKey(levels) {
+    const values = Array.isArray(levels) ? levels : [];
+    for (let index = values.length - 1; index >= 0; index -= 1) {
+      const discipline = databookDisciplineKey({ discipline: values[index] });
+      if (discipline) return discipline;
+    }
+    return "";
+  }
+
+  function recordDisciplineEvidence(record) {
+    const item = record || {};
+    const workflow = text(item.workflow || recordValue(item, ["WORKFLOW", "QUEM?"]));
+    const databook = text(recordValue(item, ["CAMINHO DATABOOK", "CAMINHO DATA BOOK"]));
+    const evidence = [
+      databookDisciplineKey(item),
+      databookDisciplineKey({ discipline: workflow }),
+      databookDisciplineKey({ discipline: databook }),
+    ].filter(Boolean);
+    return [...new Set(evidence)];
+  }
+
+  function levelsCompatibleWithRecord(levels, record) {
+    const pathDiscipline = projectPathDisciplineKey(levels);
+    if (!pathDiscipline) return true;
+    const evidence = recordDisciplineEvidence(record);
+    return !evidence.length || evidence.every((discipline) => disciplineKeysCompatible(discipline, pathDiscipline));
+  }
+
   function levelsFromEapBase(entries, eapValue, record) {
     const eap = normalizeEap(eapValue);
     if (!eap) return [];
-    const candidates = (entries || []).filter((entry) => eap === entry.code || eap.startsWith(`${entry.code}.`));
+    let candidates = projectLevelCandidates(entries, eap).filter((entry) => levelsCompatibleWithRecord(entry.levels, record));
     if (!candidates.length) return [];
-    const deepest = Math.max(...candidates.map((entry) => entry.code.split(".").length));
-    const best = candidates.filter((entry) => entry.code.split(".").length === deepest);
-    if (best.length === 1) return best[0].levels.slice();
-    const byDiscipline = disambiguateByDiscipline(best, record);
-    return byDiscipline ? byDiscipline.levels.slice() : commonLevels(best);
+
+    // Disciplina/contexto estrutural vem antes da profundidade. Isso impede um
+    // ramo elétrico mais profundo de vencer um ramo de tubulação compatível.
+    const wanted = databookDisciplineKey(record);
+    if (wanted) {
+      const explicit = candidates.filter((entry) => {
+        const pathDiscipline = projectPathDisciplineKey(entry.levels);
+        return pathDiscipline && disciplineKeysCompatible(wanted, pathDiscipline);
+      });
+      if (explicit.length) candidates = explicit;
+    }
+
+    const deepest = Math.max(...candidates.map((entry) => normalizeProjectCode(entry.code).split(".").length));
+    const best = candidates.filter((entry) => normalizeProjectCode(entry.code).split(".").length === deepest);
+    const uniquePaths = new Map();
+    best.forEach((entry) => {
+      const signature = levelKey(entry.levels);
+      if (signature && !uniquePaths.has(signature)) uniquePaths.set(signature, entry);
+    });
+    if (uniquePaths.size !== 1) return [];
+    return [...uniquePaths.values()][0].levels.slice();
   }
 
   // Nas alocações oficiais, N2 e N3 dependem só dos dois primeiros campos da
@@ -248,14 +335,99 @@
     return siblings.length ? commonLevels(siblings) : [];
   }
 
-  function levelsForEap(control, record) {
+  function levelResolutionForEap(control, record) {
     const eap = recordEap(record);
-    if (!eap || !control) return [];
+    const empty = { levels: [], source: "", sourceType: "none", confidence: "nenhuma", reason: "", blockFallback: false, candidateCount: 0 };
+    if (!eap || !control) return empty;
+
+    // A árvore mestre sempre tem precedência sobre histórico. Histórico antigo
+    // pode conter exatamente o erro que estamos tentando corrigir (TUB -> ELÉTRICA).
+    const baseEntries = control.projectLevelBase || [];
+    const baseCandidates = projectLevelCandidates(baseEntries, eap);
+    const fromBase = levelsFromEapBase(baseEntries, eap, record);
+    if (fromBase.some(Boolean)) {
+      return {
+        levels: fromBase,
+        source: "Base - Caminho das Pastas",
+        sourceType: "project-base",
+        confidence: "alta",
+        reason: "Caminho mestre compatível com EAP " + eap + " e disciplina/contexto do documento.",
+        blockFallback: false,
+        candidateCount: baseCandidates.length,
+      };
+    }
+
+    const discipline = recordDisciplineEvidence(record).join("/") || "não identificada";
+    if (baseCandidates.length) {
+      return {
+        levels: [],
+        source: "Base - Caminho das Pastas",
+        sourceType: "project-base-ambiguous",
+        confidence: "revisar",
+        reason: "REVISAR CAMINHO DE ALOCAÇÃO — não existe um único ramo mestre compatível para EAP " + eap + " / disciplina " + discipline + ".",
+        blockFallback: true,
+        candidateCount: baseCandidates.length,
+      };
+    }
+
+    // Somente quando a Base não cobre o EAP é permitido consultar o histórico,
+    // e ainda assim o caminho histórico precisa ser estruturalmente compatível.
     const exact = control.levelsByEap && control.levelsByEap.get(eap);
-    if (exact && exact.some(Boolean)) return exact.slice();
-    const fromBase = levelsFromEapBase(control.projectLevelBase || [], eap, record);
-    if (fromBase.some(Boolean)) return fromBase;
-    return levelsFromSiblingEaps(control.levelsByEap, eap);
+    if (exact && exact.some(Boolean)) {
+      if (levelsCompatibleWithRecord(exact, record)) {
+        return {
+          levels: exact.slice(),
+          source: "Histórico EAP (Base sem cobertura)",
+          sourceType: "history-eap",
+          confidence: "média",
+          reason: "EAP " + eap + " não existe na Base - Caminho das Pastas; usado histórico compatível.",
+          blockFallback: false,
+          candidateCount: 0,
+        };
+      }
+      return {
+        levels: [],
+        source: "Histórico EAP incompatível",
+        sourceType: "history-eap-conflict",
+        confidence: "revisar",
+        reason: "REVISAR CAMINHO DE ALOCAÇÃO — histórico de EAP " + eap + " conflita com a disciplina " + discipline + ".",
+        blockFallback: true,
+        candidateCount: 0,
+      };
+    }
+
+    // Compatibilidade legada: se a árvore mestre realmente não cobre o EAP e
+    // também não há EAP exata no histórico, uma EAP irmã do mesmo subgrupo pode
+    // fornecer apenas os níveis que são comuns a todos os irmãos. Esse fallback
+    // nunca roda quando a Base - Caminho das Pastas possui candidatos.
+    const sibling = levelsFromSiblingEaps(control.levelsByEap, eap);
+    if (sibling.some(Boolean) && levelsCompatibleWithRecord(sibling, record)) {
+      return {
+        levels: sibling.slice(),
+        source: "Histórico de EAP irmã (Base sem cobertura)",
+        sourceType: "history-sibling",
+        confidence: "baixa",
+        reason: "EAP " + eap + " não existe na Base; preservados somente níveis comuns de EAPs irmãs compatíveis.",
+        blockFallback: false,
+        candidateCount: 0,
+      };
+    }
+
+    // Sem qualquer candidato na Base, não bloqueie fontes oficiais posteriores
+    // do próprio documento (base documental/histórico). outputFromRecord ainda
+    // valida a disciplina antes de permitir que esses níveis sejam exportados.
+    return {
+      ...empty,
+      source: "Base - Caminho das Pastas sem cobertura",
+      sourceType: "project-base-missing",
+      confidence: "revisar",
+      reason: "EAP " + eap + " sem candidato na Base - Caminho das Pastas; avaliar fontes oficiais do próprio documento.",
+      blockFallback: false,
+    };
+  }
+
+  function levelsForEap(control, record) {
+    return levelResolutionForEap(control, record).levels.slice();
   }
 
   function documentSequence(value) {
@@ -1378,12 +1550,16 @@
         };
 
     const family = documentFamily(record.document);
-    const eapLevels = family.type === "ET" ? levelsForEap(control, record) : [];
+    const eapResolution = family.type === "ET" ? levelResolutionForEap(control, record) : null;
+    const eapLevels = eapResolution ? eapResolution.levels : [];
     let levels = [];
     let levelsSource = "";
     if (family.type === "ET" && eapLevels.some(Boolean)) {
       levels = eapLevels.slice();
-      levelsSource = `Base EAP ${recordEap(record)}`;
+      levelsSource = eapResolution && eapResolution.source || ("Base EAP " + recordEap(record));
+    } else if (family.type === "ET" && eapResolution && eapResolution.blockFallback) {
+      levels = [];
+      levelsSource = eapResolution.reason || "REVISAR CAMINHO DE ALOCAÇÃO";
     } else if (base && base.levels && base.levels.some(Boolean)) {
       levels = base.levels.slice();
       levelsSource = "Base do documento";
@@ -1395,9 +1571,13 @@
       levels = inference.levels.slice();
       levelsSource = inference.source;
     }
-    if (!levels.length) {
+    if (!levels.length && !(family.type === "ET" && eapResolution && eapResolution.blockFallback)) {
       levels = levelsForDatabook(control && control.levelsByDatabook, databook);
       if (levels.some(Boolean)) levelsSource = "Histórico do caminho";
+    }
+    if (family.type === "ET" && levels.some(Boolean) && !levelsCompatibleWithRecord(levels, record)) {
+      levels = [];
+      levelsSource = "REVISAR CAMINHO DE ALOCAÇÃO — os níveis encontrados conflitam com a disciplina/contexto do documento.";
     }
     while (levels.length < 10) levels.push("");
     const sourceAction = recordValue(record, ["ESCOPO", "AÇÃO", "ACAO"]) || text(history && history["Ação"]) || "INCLUSÃO";
@@ -1789,8 +1969,13 @@
       const allocationReason = [diagnosis.explanation, resolutionReason].filter(Boolean).join(" ");
       const rawLdDatabook = recordValue(record, ["CAMINHO DATABOOK", "CAMINHO DATA BOOK"]);
       const exactDatabook = completeDatabook(rawLdDatabook) ? rawLdDatabook : history && completeDatabook(history.databook) ? history.databook : "";
-      const eapLevels = levelsForEap(control, record);
-      const exactLevels = eapLevels.some(Boolean) ? eapLevels : base && base.levels && base.levels.some(Boolean) ? base.levels : history && history.levels && history.levels.some(Boolean) ? history.levels : levelsForDatabook(control.levelsByDatabook, exactDatabook);
+      const eapResolution = levelResolutionForEap(control, record);
+      const eapLevels = eapResolution.levels;
+      const exactLevels = eapLevels.some(Boolean) ? eapLevels
+        : eapResolution.blockFallback ? []
+          : base && base.levels && base.levels.some(Boolean) ? base.levels
+            : history && history.levels && history.levels.some(Boolean) ? history.levels
+              : levelsForDatabook(control.levelsByDatabook, exactDatabook);
       const inference = !exactDatabook || !exactLevels.some(Boolean) ? inferDatabookEvidence(record, evidenceContext, index) : null;
       const output = outputFromRecord(record, history, base, control, allocationDate, inference);
       const ldVersion = recordVersion(record, control.latestLdVersion);
@@ -1798,6 +1983,7 @@
       if (!output.workflow && !isAsBuiltPurpose(output.purpose)) warnings.push("Workflow vazio");
       if (!output.databook) warnings.push("Caminho Data Book vazio");
       if (!output.levels.slice(0, 6).some(Boolean)) warnings.push("Níveis N1 a N6 vazios");
+      if (/^REVISAR CAMINHO DE ALOCAÇÃO/.test(norm(output.levelsSource))) warnings.push(output.levelsSource);
       if (!ldVersion) warnings.push("Versão da LD vazia");
       if (output.databook && output.databookEvidence && /^history$|^ld$|^catalog$/.test(output.databookEvidence.sourceType)) warnings.push(`Databook por ${output.databookEvidence.source}`);
       if (output.databookEvidence && output.databookEvidence.sourceType === "discipline-catalog") warnings.push(`Databook pela pasta da disciplina: ${output.databookEvidence.source}`);
@@ -1966,7 +2152,10 @@
     recordEap,
     levelsFromEapBase,
     parseProjectLevelBase,
+    levelResolutionForEap,
     levelsForEap,
+    projectPathDisciplineKey,
+    levelsCompatibleWithRecord,
     titleKind,
     effectiveTitle,
     databookDisciplineKey,
