@@ -1,6 +1,47 @@
 (function () {
   "use strict";
 
+  function installDocumentCodingModule() {
+    if (document.querySelector('[data-module="coding"]')) return;
+
+    const preferences = document.getElementById("recon-preferences-open");
+    if (preferences && preferences.parentNode) {
+      const button = document.createElement("button");
+      button.className = "module-link";
+      button.dataset.module = "coding";
+      button.type = "button";
+      button.title = "Codificação de Documentos — gerar código, capa Petrobras e PDF final";
+      button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM15 3v5h4M9 12h6M9 16h4"></path><path d="M4 8h4M4 12h4"></path></svg><span><strong>Codificar documentos</strong><small>Código, capa e PDF final</small></span>';
+      preferences.parentNode.insertBefore(button, preferences);
+    }
+
+    const taskGrid = document.querySelector(".p1-task-grid");
+    if (taskGrid && !taskGrid.querySelector('[data-p1-open="coding"]')) {
+      const task = document.createElement("button");
+      task.dataset.p1Open = "coding";
+      task.type = "button";
+      task.innerHTML = '<span><strong>Codificar documentos técnicos</strong><small>Leia PDF/DOCX, confira norma e LD, gere a capa Petrobras e o PDF final.</small><em>Normas + LD + rastreabilidade</em></span>';
+      taskGrid.appendChild(task);
+    }
+
+    const main = document.getElementById("app-main");
+    if (main && !document.querySelector('[data-module-view="coding"]')) {
+      const section = document.createElement("section");
+      section.className = "module-view coding-module";
+      section.dataset.moduleView = "coding";
+      section.id = "module-coding";
+      section.hidden = true;
+      section.setAttribute("aria-labelledby", "recon-module-title-coding");
+      section.innerHTML = '<header class="module-heading"><div><span>CODIFICAÇÃO</span><h2 id="recon-module-title-coding">Codificação de Documentos</h2></div><p>Interpretação documental, regras Petrobras, sequência real das LDs, capa oficial e PDF final auditável.</p></header><div class="workspace module-workspace" id="module-coding-body"><section class="card"><p>Carregando motor de codificação…</p></section></div>';
+      main.appendChild(section);
+    }
+  }
+
+  // A interface do módulo é criada antes de capturarmos links e views. Isso
+  // mantém index.html enxuto e deixa o carregador lazy responsável pelo código
+  // pesado apenas quando o usuário realmente abrir Codificação de Documentos.
+  installDocumentCodingModule();
+
   const links = [...document.querySelectorAll(".module-link[data-module]")];
   const views = [...document.querySelectorAll("[data-module-view]")];
   const KEY = "recon.active.module.v1";
@@ -41,7 +82,7 @@
       view.hidden = !active;
       view.classList.toggle("active", active);
     });
-    document.body.classList.toggle("recon-without-ld", wanted === "renamer" || wanted === "allocation" || wanted === "tags" || wanted === "bases");
+    document.body.classList.toggle("recon-without-ld", wanted === "renamer" || wanted === "allocation" || wanted === "tags" || wanted === "bases" || wanted === "coding");
     try { window.sessionStorage.setItem(KEY, wanted); } catch (_) { /* conveniência */ }
     writeHash(wanted);
     window.dispatchEvent(new CustomEvent("recon:module", { detail: { module: wanted } }));
