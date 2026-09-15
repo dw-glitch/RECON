@@ -65,7 +65,7 @@
     // O módulo de codificação reutiliza as bibliotecas locais já embarcadas
     // para PDF.js/XLSX/ZIP/Excel, e mantém seu motor normativo em arquivos
     // separados. O pdf-lib é carregado sob demanda apenas na geração do PDF.
-    coding: ["xlsx", "export", "offline:pdf-worker", "pdf.min.js", "document_coding_normative.js", "document_coding_core.js", "document_coding_parsers.js", "document_coding_storage.js", "document_coding_pdf.js", "document_coding_app.js"],
+    coding: ["xlsx", "export", "offline:pdf-worker", "pdf.min.js", "document_coding_normative.js", "document_coding_core.js", "document_coding_parsers.js", "document_coding_storage.js", "document_coding_pdf.js", "document_coding_app.js", "document_coding_bootstrap.js"],
   };
 
   function scriptBasename(value) {
