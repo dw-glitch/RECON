@@ -55,13 +55,13 @@ jobs:
           node ALLOCATION_HIERARCHY_TESTS.mjs
       - name: Check diff
         run: git diff --check
-      - name: Commit generated patch
+      - name: Commit generated code
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add global_tag_title_core.js audit_core.js audit_app.js recon_module_loader.js recon_compute_worker.js .github/workflows/validate.yml
+          git add audit_core.js audit_app.js recon_module_loader.js recon_compute_worker.js
           if git diff --cached --quiet; then
-            echo "No generated changes"
+            echo "No generated code changes"
           else
             git commit -m "feat(titles): search TAG globally across eligible bases"
             git push
