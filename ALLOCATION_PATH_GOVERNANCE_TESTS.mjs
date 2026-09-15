@@ -43,6 +43,10 @@ function output(workflow, databook, levels) {
   return { workflow, databook, levels: levels.slice() };
 }
 
+function assertPath(actualLevels, expectedEntry, message) {
+  assert.equal(G.levelSignature(actualLevels), G.levelSignature(expectedEntry.levels), message);
+}
+
 const tubDocuments = [
   "C1O_RNEST_U32_10.2.1.2_TUB_RIR_nt-NF-228452-Tubos",
   "C1O_RNEST_U32_10.2.1.2_TUB_RIR_nt-NF-4682-Conexoes",
@@ -56,7 +60,7 @@ for (const document of tubDocuments) {
   const resolution = G.resolveProjectPath(control, item, current);
   assert.equal(resolution.status, "resolved", `${document} precisa resolver um ramo único`);
   assert.equal(resolution.confidence, "alta", `${document} precisa ter confiança alta`);
-  assert.deepEqual(resolution.levels, G.buildIndex(paths).bySignature.get(G.levelSignature(tubPath.levels)).levels);
+  assertPath(resolution.levels, tubPath, `${document} precisa usar o ramo TUB da própria Base`);
   assert.notEqual(G.levelSignature(resolution.levels), G.levelSignature(electricPath.levels), `${document} não pode receber ELÉTRICA`);
 }
 
@@ -64,28 +68,28 @@ for (const document of tubDocuments) {
   const item = record("C1O_RNEST_U32_10.2.1.2_ELE_RIR_nt-NF-95169-Conexoes", "ELE", "RNEST UHDTD U-32 C&M/ELETRICA", "UHDT-D|DATA BOOK C&M|ELÉTRICA|RIR ELÉTRICA");
   const resolution = G.resolveProjectPath(control, item, output(item.workflow, item.databook, tubPath.levels));
   assert.equal(resolution.status, "resolved");
-  assert.deepEqual(resolution.levels, electricPath.levels, "ELÉTRICA deve permanecer no ramo ELÉTRICA da própria Base");
+  assertPath(resolution.levels, electricPath, "ELÉTRICA deve permanecer no ramo ELÉTRICA da própria Base");
 }
 
 {
   const item = record("C1O_RNEST_U32_10.2.1.2_INS_RIR_nt-NF-115326", "INS", "RNEST UHDTD U-32 C&M/INSTRUMENTACAO", "UHDT-D|DATA BOOK C&M|INSTRUMENTAÇÃO|RIR_INSTRUMENTAÇÃO");
   const resolution = G.resolveProjectPath(control, item, output(item.workflow, item.databook, electricPath.levels));
   assert.equal(resolution.status, "resolved");
-  assert.deepEqual(resolution.levels, instrumentPath.levels, "Instrumentação deve permanecer no ramo da própria Base");
+  assertPath(resolution.levels, instrumentPath, "Instrumentação deve permanecer no ramo da própria Base");
 }
 
 {
   const item = record("C1O_RNEST_U32_3.6.9.1_EST_RIR_nt-NF-0007-Parafusos", "ESTATICOS", "RNEST UHDTD U-32 C&M/ESTATICOS", "UHDT-D|DATA BOOK C&M|EQP ESTÁTICO|RIR|EQP ESTÁTICOS DIVERSOS");
   const resolution = G.resolveProjectPath(control, item, output(item.workflow, item.databook, staticPath.levels));
   assert.equal(resolution.status, "resolved");
-  assert.deepEqual(resolution.levels, staticPath.levels, "Estáticos não pode ser afetado pela correção de TUB");
+  assertPath(resolution.levels, staticPath, "Estáticos não pode ser afetado pela correção de TUB");
 }
 
 {
   const item = record("C1O_RNEST_U32_3.9.2.1_CVL_RIR_nt-EMT-NF-0378-Acessorios", "CIVIL", "RNEST UHDTD U-32 C&M/CIVIL", "UHDT-D|DATA BOOK C&M|CIVIL|RIR ESTRUTURA METÁLICA");
   const resolution = G.resolveProjectPath(control, item, output(item.workflow, item.databook, structurePath.levels));
   assert.equal(resolution.status, "resolved");
-  assert.deepEqual(resolution.levels, structurePath.levels, "CVL/EMT deve continuar no ramo específico de estrutura metálica");
+  assertPath(resolution.levels, structurePath, "CVL/EMT deve continuar no ramo específico de estrutura metálica");
 }
 
 {
