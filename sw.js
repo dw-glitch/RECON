@@ -83,6 +83,7 @@ const MODULE_URLS = [
   "document_coding_storage.js",
   "document_coding_pdf.js",
   "document_coding_app.js",
+  "document_coding_bootstrap.js",
   "exceljs.min.js",
   "jszip.min.js"
 ];
