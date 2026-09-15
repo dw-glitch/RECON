@@ -63,6 +63,7 @@ const MODULE_URLS = [
   "relations_app.js",
   "allocation_confirmation_sources.js",
   "allocation_core.js",
+  "allocation_path_governance.js",
   "allocation_batches.js",
   "allocation_workbook.js",
   "allocation_title_quality.js",
