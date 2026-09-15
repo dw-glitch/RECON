@@ -21,7 +21,9 @@ jobs:
         with:
           node-version: 22
       - name: Apply structural hierarchy fix
-        run: node scripts/apply_allocation_master_path_fix.mjs
+        run: |
+          node scripts/apply_allocation_master_path_fix.mjs
+          node scripts/apply_allocation_sibling_compat.mjs
       - name: Check JavaScript syntax
         run: |
           node --check allocation_core.js
@@ -43,4 +45,4 @@ jobs:
             git commit -m "fix(allocation): prioritize master hierarchy paths"
             git push
           fi
-# retry: repaired patch syntax
+# retry: preserve legacy sibling fallback only when master base has no candidate
