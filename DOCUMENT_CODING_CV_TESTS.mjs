@@ -74,6 +74,13 @@ test("inspetor de END carrega certificações e regra adicional para acesso por 
   assert.ok(supplements.includes("MD-5290.00-22313-950-1LV-007"));
 });
 
+test("arquivo de inspeção de válvulas está registrado como fonte complementar contratual", () => {
+  const valve = Profile.SUPPLEMENTAL_SOURCES.find((source) => source.id === "ET-5290.00-2000-971-PEI-005");
+  assert.ok(valve);
+  assert.equal(valve.revision, "C");
+  assert.match(valve.scope, /válvulas/i);
+});
+
 test("função pode ser inferida quando o cargo está explícito no CV", () => {
   const inferred = CV.inferRole("CURRICULUM VITAE\nCargo proposto: Gerente da Qualidade\nEngenharia Mecânica\nISO 9001");
   assert.ok(inferred.role);
