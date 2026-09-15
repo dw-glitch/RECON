@@ -37,15 +37,47 @@
     return values.size === 1 ? [...values.values()][0] : "";
   }
 
+  const TITLE_STOP = new Set(["CURRICULO", "CURRICULUM", "VITAE", "RNEST", "TREM", "PRODUCAO", "ENGENHARIA"]);
+  function titleTokens(value) {
+    return new Set(norm(value).replace(/[^A-Z0-9]+/g, " ").split(/\s+/).filter((token) => token.length >= 4 && !TITLE_STOP.has(token)));
+  }
+  function titleSimilarity(a, b) {
+    const A = titleTokens(a);
+    const B = titleTokens(b);
+    if (!A.size || !B.size) return 0;
+    let common = 0;
+    A.forEach((token) => { if (B.has(token)) common += 1; });
+    return common / Math.max(1, Math.min(A.size, B.size));
+  }
+
+  function inferDisciplineByTitle(parsedRows, title) {
+    if (!text(title)) return { discipline: "", score: 0, evidenceTitle: "" };
+    const bestByDiscipline = new Map();
+    parsedRows.forEach((row) => {
+      if (!row.title) return;
+      const score = titleSimilarity(title, row.title);
+      const current = bestByDiscipline.get(row.discipline);
+      if (!current || score > current.score) bestByDiscipline.set(row.discipline, { discipline: row.discipline, score, evidenceTitle: row.title });
+    });
+    const ranked = [...bestByDiscipline.values()].sort((a, b) => b.score - a.score);
+    const first = ranked[0];
+    const second = ranked[1];
+    if (!first || first.score < 0.55) return { discipline: "", score: first && first.score || 0, evidenceTitle: first && first.evidenceTitle || "" };
+    if (second && first.score - second.score < 0.15) return { discipline: "", score: first.score, evidenceTitle: first.evidenceTitle };
+    return first;
+  }
+
   function inferCvDefaults(ldIndex, data) {
     const parsed = [];
     (ldIndex && ldIndex.rows || []).forEach((entry) => {
       const cv = parseEtCvCode(entry && entry.code);
-      if (cv) parsed.push(cv);
+      if (cv) parsed.push(Object.assign({}, cv, { title: text(entry.title || entry.raw && (entry.raw.TÍTULO || entry.raw.TITULO)) }));
     });
     if (!parsed.length) return { defaults: {}, evidence: "", candidates: 0 };
 
-    const discipline = text(data && data.discipline);
+    const explicitDiscipline = text(data && data.discipline);
+    const inferredDiscipline = explicitDiscipline ? { discipline: explicitDiscipline, score: 1, evidenceTitle: "" } : inferDisciplineByTitle(parsed, data && data.title);
+    const discipline = explicitDiscipline || inferredDiscipline.discipline;
     const sameDiscipline = discipline ? parsed.filter((row) => norm(row.discipline) === norm(discipline)) : parsed;
     const sourceRows = sameDiscipline.length ? sameDiscipline : parsed;
     const contract = uniqueValue(sourceRows, "contract") || uniqueValue(parsed, "contract");
@@ -53,10 +85,16 @@
     const defaults = { documentType: "CV" };
     if (contract) defaults.contract = contract;
     if (emitter) defaults.emitter = emitter;
+    if (!explicitDiscipline && inferredDiscipline.discipline) defaults.discipline = inferredDiscipline.discipline;
+    const evidenceParts = [];
+    if (contract || emitter) evidenceParts.push(`${sourceRows.length} currículo(s) compatível(is) na LD`);
+    if (!explicitDiscipline && inferredDiscipline.discipline) evidenceParts.push(`disciplina ${inferredDiscipline.discipline} inferida por título semelhante “${inferredDiscipline.evidenceTitle}”`);
+    else if (discipline) evidenceParts.push(`disciplina ${discipline}`);
     return {
       defaults,
       candidates: sourceRows.length,
-      evidence: contract || emitter ? `LD carregada — ${sourceRows.length} currículo(s) compatível(is)${discipline ? ` da disciplina ${discipline}` : ""}` : "",
+      disciplineConfidence: inferredDiscipline.score,
+      evidence: evidenceParts.join("; "),
     };
   }
 
@@ -76,13 +114,15 @@
       result.data.cvOperationalEvidence = inferred.evidence;
     }
     if (result && inferred.evidence && !result.existing) {
-      result.message = `${result.message || ""} Padrão de CV confirmado pela ${inferred.evidence}.`.trim();
+      result.message = `${result.message || ""} Padrão de CV confirmado pela LD: ${inferred.evidence}.`.trim();
     }
     return result;
   }
 
   return Object.freeze(Object.assign({}, Core, {
     parseEtCvCode,
+    titleSimilarity,
+    inferDisciplineByTitle,
     inferCvDefaults,
     analyzeDocument,
   }));
