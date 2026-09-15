@@ -45,4 +45,4 @@ jobs:
             git commit -m "fix(allocation): prioritize master hierarchy paths"
             git push
           fi
-# retry: preserve legacy sibling fallback only when master base has no candidate
+# retry: direct document history remains available only when the master base has no candidate
