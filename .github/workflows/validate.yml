@@ -37,3 +37,6 @@ jobs:
 
       - name: Run document coding regression
         run: node DOCUMENT_CODING_TESTS.mjs
+
+      - name: Run document coding LD lines and performance regression
+        run: node DOCUMENT_CODING_LD_TESTS.mjs
