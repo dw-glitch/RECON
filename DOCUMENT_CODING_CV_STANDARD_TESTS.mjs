@@ -23,17 +23,17 @@ function test(name, fn) {
   catch (error) { failed += 1; console.error(`✗ ${name}`); console.error(error.stack || error); }
 }
 
-function normalizedCv(code, discipline, rowNumber) {
+function normalizedCv(code, discipline, rowNumber, title = `Curriculo - ${discipline}`) {
   return {
     code,
-    title: `Curriculo - ${discipline}`,
+    title,
     discipline,
     ld: "LD-5290.00-22313-91A-C1O-001_0001_E.xlsx",
     sheet: "CV",
     rowNumber,
     raw: {
       DOCUMENTO: code,
-      TÍTULO: `Curriculo - ${discipline}`,
+      TÍTULO: title,
       DISCIPLINA: discipline,
       REVISÃO: "0",
     },
@@ -58,16 +58,16 @@ test("sequencial de currículo reinicia por disciplina conforme a LD real", () =
   assert.ok(std.examples.includes("5900.0130870.25.2-C1O-CV-GER-0001"));
 });
 
-test("motor infere contrato/emissor da aba CV e não mistura sequencial de CRS com GER", () => {
+test("motor infere disciplina, contrato e emissor pelos CVs reais da LD sem misturar famílias", () => {
   const ldIndex = Core.buildLdIndex([
-    normalizedCv("5900.0130870.25.2-C1O-CV-CRS-0009", "CRS", 7),
-    normalizedCv("5900.0130870.25.2-C1O-CV-GER-0001", "GER", 8),
-    normalizedCv("5900.0130870.25.2-C1O-CV-GER-0002", "GER", 9),
-    normalizedCv("5900.0130870.25.2-C1O-CV-GER-0003", "GER", 10),
+    normalizedCv("5900.0130870.25.2-C1O-CV-CRS-0009", "CRS", 7, "Curriculo - CRS - Analista de Responsabilidade Social"),
+    normalizedCv("5900.0130870.25.2-C1O-CV-GER-0001", "GER", 8, "Curriculo - Gerência - Gerente do Contrato"),
+    normalizedCv("5900.0130870.25.2-C1O-CV-GER-0002", "GER", 9, "Curriculo - Gerência - Gerente do Projeto de Engenharia"),
+    normalizedCv("5900.0130870.25.2-C1O-CV-GER-0003", "GER", 10, "Curriculo - Gerência - Gerente de Construção e Montagem"),
   ]);
   const result = Core.analyzeDocument({
     filename: "Curriculo_Gerente_Contrato.docx",
-    text: "CURRICULO\nGER\nGerente do Contrato\nFormação em Engenharia",
+    text: "CURRICULO\nGerente do Contrato\nFormação em Engenharia",
   }, ldIndex, {});
   assert.equal(result.ruleId, "et-cv");
   assert.equal(result.data.contract, "5900.0130870.25.2");
