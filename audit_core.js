@@ -6,10 +6,11 @@
   const S = root.RECONDatabookAllocationSources || (typeof module === "object" && module.exports ? require("./databook_allocation_sources.js") : null);
   const N = root.RECONNonTaggedTitles || (typeof module === "object" && module.exports ? require("./non_tagged_title_rules.js") : null);
   const T = root.RECONDocumentTitleStandard || (typeof module === "object" && module.exports ? require("./document_title_standard.js") : null);
-  const api = factory(C, A, R, F, S, N, T);
+  const G = root.RECONGlobalTagTitleCore || (typeof module === "object" && module.exports ? require("./global_tag_title_core.js") : null);
+  const api = factory(C, A, R, F, S, N, T, G);
   if (typeof module === "object" && module.exports) module.exports = api;
   root.RECONAuditCore = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function (C, A, R, F, S, N, T) {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (C, A, R, F, S, N, T, G) {
   "use strict";
 
   function text(value) {
@@ -2552,10 +2553,158 @@
     return tagMatch ? sconReferenceFromTagMatch(tagMatch, groupTag) : null;
   }
 
+
+  const GLOBAL_TAG_FIELD_ALIASES = new Set([
+    "TAG", "TAG EQUIPAMENTO", "TAG DO EQUIPAMENTO", "IDENTIFICACAO", "IDENTIFICADOR",
+    "NUMERO DO EQUIPAMENTO", "TAG SCON", "SCON TAG",
+  ].map(norm));
+  const GLOBAL_DESCRIPTION_FIELD_ALIASES = new Set([
+    "COMPLEMENTO DO TITULO", "TITULO", "TITULO DO DOCUMENTO", "DESCRICAO", "DESCRICAO COMPLETA",
+    "NOME DO EQUIPAMENTO", "EQUIPAMENTO", "DENOMINACAO", "SERVICO", "ESCOPO",
+  ].map(norm));
+
+  function globalSemanticValues(entry, wanted) {
+    if (!entry || typeof entry !== "object") return [];
+    return Object.entries(entry)
+      .filter(([field, value]) => wanted.has(norm(field)) && text(value))
+      .map(([, value]) => text(value));
+  }
+
+  function globalGenericTags(entry) {
+    const documentTag = extractTagFromDocument(entry && entry.document);
+    const values = [entry && entry.tag, entry && entry.sconTag, entry && entry.equipmentTag, entry && entry.identifier, ...globalSemanticValues(entry, GLOBAL_TAG_FIELD_ALIASES), documentTag].filter(Boolean);
+    return [...new Map(values.map((value) => [G ? G.normalizeTag(value) : norm(value), value]).filter(([key]) => key)).values()];
+  }
+
+  function globalGenericDescription(entry) {
+    if (!entry) return "";
+    const direct = [entry.titleComplement, entry.description, entry.title, entry.referenceDescription, entry.equipmentName, entry.equipment, entry.service, entry.scope];
+    for (const value of [...direct, ...globalSemanticValues(entry, GLOBAL_DESCRIPTION_FIELD_ALIASES)]) {
+      const candidate = referenceDescriptionCandidate(value) || usableDescription(value);
+      if (candidate) return candidate;
+    }
+    return "";
+  }
+
+  function globalCatalogEntries(source) {
+    if (!source) return [];
+    if (Array.isArray(source.entries)) return source.entries;
+    const catalog = source.catalog || source;
+    if (Array.isArray(catalog.entries)) return catalog.entries;
+    if (!Array.isArray(catalog.rows) || !Array.isArray(catalog.columns)) return [];
+    return catalog.rows.map((row) => Object.fromEntries(catalog.columns.map((column, index) => [column, row && row[index]])));
+  }
+
+  function globalTagSourceSpecs(index, references) {
+    if (!G) return [];
+    const refs = references || {};
+    const specs = [];
+    const add = (spec) => { if (spec && Array.isArray(spec.entries) && spec.entries.length) specs.push(spec); };
+
+    add({
+      id: "scon", label: "SCON TAG SGP", kind: "official-catalog", priority: 100, confidence: "alta", entries: refs.scon && refs.scon.entries || [],
+      tags: (entry) => [entry.sconTag, extractTagFromDocument(entry.document), ...((entry.tagAliases || []).map((item) => item.value))].filter(Boolean),
+      description: (entry) => usableDescription(entry.titleComplement), document: (entry) => entry.document,
+      documentKey: (entry) => entry.documentKey, discipline: (entry) => entry.discipline,
+      eap: (entry) => documentEapFromGroup4(entry.document), row: (entry) => entry.row,
+    });
+    add({
+      id: "appendix", label: "Apêndice 3 Rev.B", kind: "official-catalog", priority: 92, confidence: "alta", entries: refs.tagReference && refs.tagReference.entries || [],
+      tags: (entry) => [entry.tag], description: (entry) => usableDescription(entry.description || entry.title),
+      document: (entry) => entry.document, discipline: (entry) => entry.discipline, row: (entry) => entry.row,
+    });
+    add({
+      id: "scon-scope", label: "SCON ESCOPO", kind: "official-scope", priority: 86, confidence: "alta", entries: refs.sconEscopo && refs.sconEscopo.entries || [],
+      tags: (entry) => [entry.tag], description: (entry) => usableDescription(entry.subjectTitle || entry.cleanTitle || entry.title || entry.description),
+      document: (entry) => entry.document, discipline: (entry) => entry.discipline, eap: (entry) => entry.eap, row: (entry) => entry.row,
+    });
+    add({
+      id: "valve-list", label: "LI de válvulas", kind: "specialized-catalog", priority: 82, confidence: "alta", entries: refs.valveList && (refs.valveList.activeEntries || refs.valveList.entries) || [],
+      tags: (entry) => [entry.tag], description: (entry) => usableDescription(entry.description),
+      document: (entry) => entry.document, discipline: (entry) => entry.discipline, row: (entry) => entry.page || entry.row,
+    });
+    add({
+      id: "valve-repair", label: "Mapa de VMs Reparo/Medição", kind: "specialized-map", priority: 78, confidence: "media", entries: refs.valveReparo && refs.valveReparo.entries || [],
+      tags: (entry) => [entry.tag], description: (entry) => usableDescription(entry.description),
+      document: (entry) => entry.document, discipline: (entry) => entry.discipline, row: (entry) => entry.row,
+    });
+    add({
+      id: "controlled-titles", label: "Bases controladas de títulos", kind: "controlled-reference", priority: 74, confidence: "media", entries: refs.entries || [],
+      tags: globalGenericTags, description: globalGenericDescription, document: (entry) => entry.document,
+      documentKey: (entry) => entry.documentKey, discipline: (entry) => entry.discipline,
+      eap: (entry) => entry.eap || documentEapFromGroup4(entry.document), row: (entry) => entry.row,
+      confidenceFor: (entry) => entry.confidence || (entry.verifiedCatalog ? "alta" : "media"),
+    });
+
+    const historyEntries = [];
+    (index && index.documents || []).forEach((match) => {
+      const group = match.group || {};
+      (group.history || []).forEach((entry) => historyEntries.push(entry));
+    });
+    add({
+      id: "ld-history", label: "Histórico da LD", kind: "history", priority: 45, confidence: "baixa", entries: historyEntries,
+      tags: globalGenericTags, description: (entry) => usableDescription(entry && entry.title), document: (entry) => entry.document,
+      documentKey: (entry) => entry.documentKey, discipline: (entry) => entry.discipline,
+      eap: (entry) => entry.eap || documentEapFromGroup4(entry.document), row: (entry) => entry.row,
+    });
+
+    (refs.globalSources || []).forEach((source, position) => add({
+      id: source.id || `dynamic-${position + 1}`,
+      label: source.label || source.name || source.id || `Base compatível ${position + 1}`,
+      kind: source.kind || "dynamic-compatible", priority: Number(source.priority) || 65,
+      confidence: source.confidence || "media", entries: globalCatalogEntries(source),
+      tags: globalGenericTags, description: globalGenericDescription, document: (entry) => entry.document,
+      documentKey: (entry) => entry.documentKey, discipline: (entry) => entry.discipline,
+      eap: (entry) => entry.eap || documentEapFromGroup4(entry.document), row: (entry) => entry.row,
+      column: (entry) => entry.column || entry.sourceColumn,
+      confidenceFor: (entry) => entry.confidence || source.confidence || "media",
+    }));
+    return specs;
+  }
+
+  function buildGlobalTagIndex(index, references) {
+    return G ? G.buildIndex(globalTagSourceSpecs(index, references)) : null;
+  }
+
+  function globalTagReferenceFor(record, globalIndex, tagEvidence) {
+    if (!G || !globalIndex) return null;
+    const group7 = tagEvidence && tagEvidence.group7 || reportGroup7Info(record && record.document);
+    // REGRA ABSOLUTA: nt- é apenas marcador documental. Nunca participa da
+    // chave de pesquisa. G.normalizeTag remove nt- de documento e de bases.
+    const normalizedGroupLookup = sconEscopoLookupTag(record, tagEvidence);
+    const groupIdentifierWithoutNt = group7 && (group7.lookupIdentifier || cleanSpaces(group7.identifier).replace(/^NT[-./_]+/i, "")) || "";
+    const lookupTag = tagEvidence && tagEvidence.tag
+      || group7 && group7.validTag && group7.tag
+      || normalizedGroupLookup && normalizedGroupLookup.tag
+      || groupIdentifierWithoutNt
+      || extractTagFromDocument(record && record.document)
+      || tagEvidence && tagEvidence.possibleTag
+      || "";
+    if (!lookupTag) return { status: "not_applicable", statusLabel: G.statusLabel("not_applicable"), lookupTag: "", matches: [], matchedTags: [], sources: [], description: "", trusted: false };
+    const resolvedLookup = G.lookupCandidate(globalIndex, lookupTag);
+    const matches = resolvedLookup.matches;
+    const selected = G.select(matches, {
+      discipline: record && record.discipline || "",
+      eap: documentEapFromGroup4(record && record.document),
+      documentKey: record && record.documentKey || "",
+    });
+    const matchedTags = [...new Map(matches.map((item) => [G.normalizeTag(item.tag), item.tag]).filter(([key]) => key)).values()];
+    const supporting = selected.supportingSources && selected.supportingSources.length ? selected.supportingSources : selected.sources || [];
+    return {
+      ...selected,
+      lookupTag: resolvedLookup.lookupTag || G.normalizeTag(lookupTag),
+      matchedTags,
+      sourceLabel: supporting.join(" + ") || selected.primarySource || "",
+      statusLabel: G.statusLabel(selected.status),
+      trusted: selected.status === "reference_found" && Boolean(selected.description),
+    };
+  }
+
   function auditTitles(index, references, options) {
     const documentKeys = options && options.documentKeys instanceof Set ? options.documentKeys : null;
     const sourceRecords = documentKeys ? currentTitleRecords(index).filter((record) => documentKeys.has(record.documentKey)) : currentTitleRecords(index);
     const previousTitleIndex = buildPreviousTitleIndex(index);
+    const globalTagIndex = buildGlobalTagIndex(index, references);
     return sourceRecords.map((record) => {
       if (record._ldConflict) return conflictAuditResult(record, "title");
       const reference = referenceFor(record, references);
@@ -2573,6 +2722,7 @@
       const drawing = isDrawingRecord(record, prefix, inferredType);
       const type = prefix || inferredType;
       const tagEvidence = resolveTagEvidence(record, reference);
+      const globalTagReference = globalTagReferenceFor(record, globalTagIndex, tagEvidence);
       const possibleIdentifier = tagEvidence.possibleTag;
       const valveReference = valveReferenceFor(record, references, tagEvidence);
       const sconReference = sconReferenceFor(record, references);
@@ -2599,6 +2749,7 @@
       const matchedExternalTags = [...new Map([
         ...((sconEscopoReference && sconEscopoReference.matchedAliases) || []),
         ...((tagReference && tagReference.matchedAliases) || []),
+        ...((globalTagReference && globalTagReference.matchedTags) || []),
       ].filter(Boolean).map((value) => [normalizedTagKey(value), value])).values()];
       const singleExternalTag = matchedExternalTags.length === 1 ? matchedExternalTags[0] : "";
       const tag = tagEvidence.tag || singleExternalTag;
@@ -2607,9 +2758,10 @@
         valveReference && valveReference.trusted
         || sconEscopoReference && sconEscopoReference.trusted
         || tagReference && tagReference.trusted
+        || globalTagReference && globalTagReference.trusted
       );
       const nonTaggedRule = externalTagDescriptionFound ? null : resolvedNonTaggedRule;
-      const titleTagConfirmed = Boolean(tagEvidence.confirmed || singleExternalTag);
+      const titleTagConfirmed = Boolean(tagEvidence.confirmed || singleExternalTag || globalTagReference && globalTagReference.matches && globalTagReference.matches.length);
       const explicitTitle = extractTagFromTitle(record.title);
       // Quando o Grupo 7 é válido, o nome do documento é a fonte soberana da
       // TAG usada no título. As bases externas servem para descrever o item,
@@ -2636,6 +2788,8 @@
       const trustedSconEscopo = Boolean(sconEscopoTitle && sconEscopoReference && sconEscopoReference.trusted);
       const appendixTitle = tagReference && tagReference.trusted ? usableDescription(tagReference.description || tagReference.title) : "";
       const trustedAppendix = Boolean(appendixTitle && tagReference && tagReference.trusted);
+      const globalTagTitle = globalTagReference && globalTagReference.trusted ? usableDescription(globalTagReference.description) : "";
+      const trustedGlobalTag = Boolean(globalTagTitle && globalTagReference && globalTagReference.trusted);
       // No modo automático, uma TAG VM consulta primeiro a LI de válvulas. A
       // SCON assume apenas quando a LI não contém uma linha ativa. Para as
       // demais TAGs, SCON e Apêndice continuam podendo se complementar. O SCON
@@ -2659,11 +2813,15 @@
       const trustedDescription = Boolean(referenceDescription && reference && !reference.manualReview && !reference.ambiguousDescription);
       const trustedNonTagged = Boolean(nonTaggedRule && nonTaggedRule.description && (nonTaggedRule.exact || nonTaggedRule.confidence === "alta"));
       const sconCombinesWithAppendix = Boolean(!manualValve && sconInDescription && appendixInDescription);
-      const strongTagDescription = valveInDescription
+      const specializedTagDescription = valveInDescription
         ? valveTitle
         : sconInDescription
           ? combineTitleDescriptions(sconTitleForDescription, sconCombinesWithAppendix ? appendixTitle : "")
           : appendixInDescription ? appendixTitle : "";
+      const globalTagInDescription = Boolean(trustedGlobalTag && titleSourceMode === "auto");
+      const strongTagDescription = globalTagInDescription
+        ? (specializedTagDescription ? G.combineDescriptions(specializedTagDescription, globalTagTitle) : globalTagTitle)
+        : specializedTagDescription;
       const sconEscopoInDescription = Boolean(
         trustedSconEscopo
         && sconEscopoDescriptionAllowed
@@ -2671,6 +2829,7 @@
         && !trustedDescription
       );
       const externalTagDescription = strongTagDescription || (sconEscopoInDescription ? sconEscopoTitle : "");
+      const globalTagUsed = Boolean(globalTagInDescription && globalTagTitle && (!specializedTagDescription || G.normalizeDescription(externalTagDescription) === G.normalizeDescription(globalTagTitle) || G.normalizeDescription(externalTagDescription).includes(G.normalizeDescription(globalTagTitle))));
       const sconCombinedDescription = strongTagDescription;
       const externalTagDrivesDescription = Boolean(
         externalTagDescription
@@ -2794,6 +2953,8 @@
             ? sconCombinesWithAppendix
               ? "A descrição combinada do SCON TAG SGP e do Apêndice 3 Rev.B não aparece completa no título"
               : "O terceiro campo da DESCRIÇÃO do SCON TAG SGP não aparece no título"
+            : globalTagUsed
+              ? `A descrição localizada pela busca global da TAG${globalTagReference && globalTagReference.sourceLabel ? ` (${globalTagReference.sourceLabel})` : ""} não aparece no título atual`
             : externalTagDrivesDescription
               ? sconEscopoInDescription && appendixInDescription
                 ? "As descrições localizadas no SCON ESCOPO e no Apêndice 3 Rev.B não aparecem no título atual"
@@ -2837,6 +2998,10 @@
                 : hasExternal && titleTagConfirmed ? "alta" : hasExternal || (titleTagConfirmed && type) ? "media" : "baixa";
           if (!proposed || norm(proposed) === norm(current)) { proposed = ""; confidence = "nenhuma"; }
         }
+      }
+      if (globalTagReference && globalTagReference.conflict && issue !== "ok") {
+        classification = classification === "confirmed_error" ? "suggestion" : classification;
+        if (!/conflito/i.test(reason)) reason += "; a mesma TAG possui descrições conflitantes entre bases e a fonte mais confiável foi priorizada";
       }
       if (issue !== "ok" && !proposed) reason += "; sem informação suficiente para sugerir com segurança";
       const referenceEvidence = reference
@@ -2907,6 +3072,10 @@
               ? "Base controlada de títulos"
               : explicitComplementary
                 ? "Complementar da LD"
+                : globalTagUsed
+                  ? globalTagReference && globalTagReference.primarySource === "SCON ESCOPO"
+                    ? "SCON ESCOPO · busca global pela mesma TAG"
+                    : `Busca global por TAG · ${globalTagReference && globalTagReference.sourceLabel || "fonte compatível"}`
                 : externalTagDrivesDescription
                   ? sconEscopoInDescription && appendixInDescription
                     ? "SCON ESCOPO + Apêndice 3 Rev.B"
@@ -2973,6 +3142,19 @@
         appendixSourceFile: tagReference && tagReference.sourceFile || "",
         appendixSourceSheet: tagReference && tagReference.sourceSheet || "",
         appendixSourceRows: tagReference && (tagReference.sourceRows || [tagReference.row]).filter(Boolean) || [],
+        globalTagStatus: globalTagReference && globalTagReference.status || "not_applicable",
+        globalTagStatusLabel: globalTagReference && globalTagReference.statusLabel || "TAG NÃO APLICÁVEL",
+        globalTagLookup: globalTagReference && globalTagReference.lookupTag || "",
+        globalTagFound: Boolean(globalTagReference && globalTagReference.matches && globalTagReference.matches.length),
+        globalTagUsed,
+        globalTagTitle,
+        globalTagSource: globalTagReference && globalTagReference.sourceLabel || "",
+        globalTagSources: globalTagReference && globalTagReference.sources || [],
+        globalTagPrimarySource: globalTagReference && globalTagReference.primarySource || "",
+        globalTagConflict: Boolean(globalTagReference && globalTagReference.conflict),
+        globalTagConflicts: globalTagReference && globalTagReference.conflicts || [],
+        globalTagTrace: globalTagReference && globalTagReference.trace || [],
+        globalTagIndexSourceCount: globalTagIndex && globalTagIndex.sourceCount || 0,
         nonTaggedRule,
         nonTaggedIdentifier: nonTaggedRule && nonTaggedRule.identifier || "",
         nonTaggedWhat: nonTaggedRule && nonTaggedRule.what || "",
@@ -3095,6 +3277,8 @@
     stripNormativeTitlePrefix,
     buildTitle,
     upperCaseTitle,
+    buildGlobalTagIndex,
+    globalTagReferenceFor,
     auditTitles,
     summarize,
   };

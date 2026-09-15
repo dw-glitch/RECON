@@ -387,6 +387,17 @@
     return { entries, byDocument, byTagDiscipline };
   }
 
+  function compatibleGlobalSourcesFromBases() {
+    const bases = window.RECONBases;
+    if (!bases || typeof bases.list !== "function" || typeof bases.catalog !== "function") return [];
+    const handled = new Set(["scon-tag-sgp", "scon-escopo", "tag-appendix"]);
+    return (bases.list() || []).filter((item) => item && !handled.has(item.id)).map((item) => {
+      const catalog = bases.catalog(item.id);
+      if (!catalog) return null;
+      return { id: `base:${item.id}`, label: item.label || item.id, kind: "recon-base", priority: 65, confidence: "media", catalog };
+    }).filter(Boolean);
+  }
+
   function mergedTitleReferences() {
     const merged = mergeIndexedReferences(state.titleReferences, state.titleSupplementalReferences);
     merged.scon = state.sconTitleReferences || null;
@@ -394,6 +405,7 @@
     merged.tagReference = state.tagReferenceTitleReferences || null;
     merged.valveList = state.valveListTitleReferences || null;
     merged.valveReparo = state.valveReparoTitleReferences || null;
+    merged.globalSources = compatibleGlobalSourcesFromBases();
     return merged;
   }
 
@@ -431,6 +443,7 @@
     if (!row) return "without_evidence";
     if (row.issue === "ok") return "already_correct";
     if (row.learnedTitle) return "learned_memory";
+    if (row.globalTagUsed) return "global_tag";
     if (/^LI de válvulas/i.test(row.descriptionSource || "")) return "valve_list";
     if (/^Mapa de VMs Reparo\/Medição/i.test(row.descriptionSource || "")) return "valve_reparo";
     if (/^SCON TAG SGP \+ Apêndice/i.test(row.descriptionSource || "")) return "scon_appendix";
@@ -632,6 +645,7 @@
     const category = titleSourceCategory(row);
     const sourceLabel = {
       learned_memory: "Memória de correções (sua edição anterior)",
+      global_tag: row.globalTagSource ? `Busca global por TAG · ${row.globalTagSource}` : "Busca global por TAG",
       valve_list: "LI de válvulas Rev. C · TAG exata",
       valve_reparo: "Mapa de VMs Reparo/Medição · TAG exata",
       scon_appendix: "SCON TAG SGP + Apêndice 3 Rev.B",
@@ -685,6 +699,7 @@
       row.sconTitleComplement ? `SCON TAG SGP${sconMatchDetail}: ${cleanTitleReportValue(row.sconTitleComplement)}` : "",
       row.sconEscopoTitle ? `SCON ESCOPO${sconEscopoMatchDetail}: ${cleanTitleReportValue(row.sconEscopoTitle)}` : "",
       row.appendixTitle ? `Apêndice 3 Rev.B (${(row.appendixMatchedTags || []).join(", ") || row.tag || "TAG"}): ${cleanTitleReportValue(row.appendixTitle)}` : "",
+      row.globalTagTitle ? `Busca global por TAG (${row.globalTagSource || row.globalTagPrimarySource || "fonte compatível"}): ${cleanTitleReportValue(row.globalTagTitle)}${row.globalTagConflict ? " · CONFLITO ENTRE BASES IDENTIFICADO" : ""}` : row.globalTagStatusLabel ? row.globalTagStatusLabel : "",
     ].filter(Boolean);
     const rawDescription = row.nonTaggedRule
       ? `O QUÊ: ${row.nonTaggedWhat || "não identificado"} · ONDE/QUANDO: ${row.nonTaggedWhereWhen || "não identificado"}`
@@ -1055,6 +1070,7 @@
       row.sconTitleComplement ? `Descrição cadastrada no SCON: ${row.sconTitleComplement}` : "",
       row.sconEscopoTitle ? `Descrição no escopo do projeto: ${row.sconEscopoTitle}` : "",
       row.appendixTitle ? `Descrição cadastrada no Apêndice 3: ${row.appendixTitle}` : "",
+      row.globalTagTitle ? `Melhor referência global da mesma TAG (${row.globalTagSource || row.globalTagPrimarySource || "base compatível"}): ${row.globalTagTitle}${row.globalTagConflict ? " — existem descrições conflitantes em outras bases" : ""}` : row.globalTagStatusLabel || "",
     ].filter(Boolean);
     if (!row.sconTitleComplement && row.sconCandidateTitles && row.sconCandidateTitles.length) {
       references.push(`Outras descrições encontradas no SCON, para conferência: ${row.sconCandidateTitles.join(" · ")}`);
@@ -1081,6 +1097,9 @@
     const frase = {
       already_correct: "O título já está de acordo com as bases consultadas.",
       learned_memory: "Baseado em uma correção que você mesmo já aprovou antes, para o mesmo padrão de título.",
+      global_tag: row.globalTagConflict
+        ? `A TAG foi pesquisada globalmente. A fonte prioritária foi ${row.globalTagPrimarySource || row.globalTagSource || "uma base controlada"}, mas existem descrições conflitantes em outras bases; confira antes de aprovar.`
+        : `A TAG foi pesquisada globalmente em todas as bases elegíveis e a sugestão usa ${row.globalTagSource || row.globalTagPrimarySource || "a melhor referência disponível"}.`,
       valve_list: "Encontrado na Lista de Válvulas (LI de válvulas Rev. C), pela TAG do documento.",
       valve_reparo: "Não encontrado ativo na LI de válvulas; encontrado no Mapa de VMs Reparo/Medição, pela TAG do documento.",
       scon_appendix: "Encontrado no SCON e no Apêndice 3, que se completam.",
