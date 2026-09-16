@@ -52,3 +52,6 @@ jobs:
 
       - name: Run document coding consolidated PDF regression
         run: node DOCUMENT_CODING_BUNDLE_TESTS.mjs
+
+      - name: Run document coding PDF encryption and safety regression
+        run: node DOCUMENT_CODING_PDF_SAFETY_TESTS.mjs
