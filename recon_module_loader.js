@@ -27,7 +27,7 @@
     tags: ["RECONTagConferenceCore", "RECONTagConference"],
     renamer: ["RECONRenamerCore", "RECONRenamer"],
     bases: ["RECONBasesCore", "RECONBases"],
-    coding: ["RECONDocumentCodingNormative", "RECONN1710Profile", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCoding", "RECONDocumentCodingLDCore", "RECONDocumentCodingLD", "RECONDocumentCodingCVProfile", "RECONDocumentCodingCV", "RECONDocumentCodingCVApp"],
+    coding: ["RECONDocumentCodingNormative", "RECONN1710Profile", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCodingPDFRuntime", "RECONDocumentCodingBundleCore", "RECONDocumentCoding", "RECONDocumentCodingLDCore", "RECONDocumentCodingLD", "RECONDocumentCodingCVProfile", "RECONDocumentCodingCV", "RECONDocumentCodingCVApp"],
   };
 
   const groupRequirements = {
@@ -38,7 +38,7 @@
     tags: ["RECONTagConferenceCore", "RECONTagConference"],
     renamer: ["RECONRenamerCore", "RECONRenamer"],
     bases: ["RECONBasesCore", "RECONBases"],
-    coding: ["RECONDocumentCodingNormative", "RECONN1710Profile", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCoding", "RECONDocumentCodingLDCore", "RECONDocumentCodingLD", "RECONDocumentCodingCVProfile", "RECONDocumentCodingCV", "RECONDocumentCodingCVApp"],
+    coding: ["RECONDocumentCodingNormative", "RECONN1710Profile", "RECONDocumentCodingCore", "RECONDocumentCodingParsers", "RECONDocumentCodingStorage", "RECONDocumentCodingPDF", "RECONDocumentCodingPDFRuntime", "RECONDocumentCodingBundleCore", "RECONDocumentCoding", "RECONDocumentCodingLDCore", "RECONDocumentCodingLD", "RECONDocumentCodingCVProfile", "RECONDocumentCodingCV", "RECONDocumentCodingCVApp"],
     "offline:scon-escopo-titles": ["RECONSconEscopoTitleCatalog"],
   };
 
@@ -60,15 +60,17 @@
     tags: ["xlsx", "bases", "tag_reference_catalog.js", "tag_conference_core.js", "tag_conference_app.js"],
     renamer: ["offline:pdf-worker", "pdf.min.js", "renamer_core.js", "renamer_app.js"],
     coding: [
-      "xlsx", "export", "offline:pdf-worker", "pdf.min.js",
+      "xlsx", "export", "offline:pdf-worker", "pdf.min.js", "document_coding_pdf_runtime.js",
       "document_coding_normative.js",
       "document_coding_cv_standard.js",
       "document_coding_n1710_profile.js",
       "document_coding_core.js",
       "document_coding_cv_core_standard.js",
+      "document_coding_bundle_core.js",
       "document_coding_parsers.js",
       "document_coding_storage.js",
       "document_coding_pdf.js",
+      "document_coding_pdf_bundle.js",
       "document_coding_app.js",
       "document_coding_ld_core.js",
       "document_coding_cv_ld_standard.js",
@@ -76,6 +78,7 @@
       "document_coding_cv_profile.js",
       "document_coding_cv_core.js",
       "document_coding_cv_app.js",
+      "document_coding_bundle_runtime_app.js",
       "document_coding_bootstrap.js",
     ],
   };

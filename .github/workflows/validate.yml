@@ -49,3 +49,6 @@ jobs:
 
       - name: Run document coding CV operational standard regression
         run: node DOCUMENT_CODING_CV_STANDARD_TESTS.mjs
+
+      - name: Run document coding consolidated PDF regression
+        run: node DOCUMENT_CODING_BUNDLE_TESTS.mjs
