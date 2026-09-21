@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 "use strict";
 
-const assert = require("node:assert/strict");
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 const TitleR = require("./document_title_standard_r.js");
 const Norms = require("./allocation_normative_rules.js");
 const Governance = require("./allocation_governance.js");
