@@ -21,7 +21,7 @@
 
   const moduleRequirements = {
     relations: ["TriagemCore", "CorporateRelationsCore", "RECONRelations"],
-    allocation: ["TriagemCore", "RECONAllocationNorms", "RECONAllocationGovernance", "RECONAllocationGovernanceUI", "AllocationCore", "RECONAllocation"],
+    allocation: ["TriagemCore", "RECONDocumentTitleStandardR", "RECONAllocationNorms", "RECONAllocationGovernance", "RECONAllocationGovernanceUI", "AllocationCore", "RECONAllocation"],
     databook: ["TriagemCore", "RECONAuditCore", "RECONAudits"],
     titles: ["TriagemCore", "RECONAuditCore", "RECONAudits"],
     tags: ["RECONTagConferenceCore", "RECONTagConference"],
