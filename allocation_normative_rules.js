@@ -1,5 +1,5 @@
 (function (root, factory) {
-  const standard = root.RECONDocumentTitleStandard ||
+  const standard = root.RECONDocumentTitleStandardR ||
     (typeof module === "object" && module.exports ? require("./document_title_standard_r.js") : null);
   const catalogs = root.RECONAllocationNormCatalogs ||
     (typeof module === "object" && module.exports ? require("./allocation_normative_catalogs.js") : null);
