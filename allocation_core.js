@@ -3,10 +3,11 @@
   const conflicts = root.LDConflictCore || (typeof module === "object" && module.exports ? require("./ld_conflicts.js") : null);
   const confirmations = root.RECONAllocationConfirmations || (typeof module === "object" && module.exports ? require("./allocation_confirmation_sources.js") : null);
   const nonTagged = root.RECONNonTaggedTitles || (typeof module === "object" && module.exports ? require("./non_tagged_title_rules.js") : null);
-  const api = factory(core, conflicts, confirmations, nonTagged);
+  const governance = root.RECONAllocationGovernance || (typeof module === "object" && module.exports ? require("./allocation_governance.js") : null);
+  const api = factory(core, conflicts, confirmations, nonTagged, governance);
   if (typeof module === "object" && module.exports) module.exports = api;
   root.AllocationCore = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function (C, F, P, NT) {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (C, F, P, NT, G) {
   "use strict";
 
   const READY = "pronto";
@@ -2059,7 +2060,8 @@
       results.push({ ...common, decision: REVIEW, selected: false, reason, allocationReason: reason, reallocationRequired: false });
     });
 
-    return { results, duplicateCount, index };
+    const governedResults = G && typeof G.applyResults === "function" ? G.applyResults(results) : results;
+    return { results: governedResults, duplicateCount, index };
   }
 
   function centralSheetLabel(result) {

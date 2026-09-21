@@ -11,6 +11,8 @@
   const P = window.RECONAllocationConfirmations;
   const B = window.RECONAllocationBatches;
   const W = window.AllocationWorkbook;
+  const G = window.RECONAllocationGovernance;
+  const GUI = window.RECONAllocationGovernanceUI;
   const Q = window.ReconAllocationTitleQuality;
   const TaskCenter = window.QualityTaskCenter;
   const workspaceTasks = new Map();
@@ -512,7 +514,13 @@
     return parsed;
   }
 
+  function governanceView(result) {
+    return GUI && typeof GUI.view === "function" ? GUI.view(result) : null;
+  }
+
   function allocationStatusLabel(result) {
+    const governance = governanceView(result);
+    if (governance && governance.blocked) return "Bloqueado";
     if (result.decision === A.READY && result.reallocationRequired) return "Nova alocação";
     if (result.decision === A.READY) return "Pronto";
     if (result.decision === A.SKIP) return "Já alocado";
@@ -520,6 +528,8 @@
   }
 
   function allocationStatusClass(result) {
+    const governance = governanceView(result);
+    if (governance && governance.blocked) return "review blocked";
     if (result.decision === A.READY) return "ready";
     if (result.decision === A.SKIP) return "skip";
     return "review";
@@ -545,8 +555,9 @@
   function resultCounts() {
     return state.results.reduce((counts, result) => {
       counts.total += 1;
+      const governance = governanceView(result);
       if (result.decision === A.READY) counts.ready += 1;
-      else if (result.decision === A.SKIP) counts.skip += 1;
+      else if (result.decision === A.SKIP && !(governance && governance.blocked)) counts.skip += 1;
       else counts.review += 1;
       return counts;
     }, { total: 0, ready: 0, skip: 0, review: 0 });
@@ -612,6 +623,8 @@
   function clearColumnFilters(){state.columnFilters={};if(els.columnFilterRow)els.columnFilterRow.querySelectorAll("input").forEach(input=>{input.value="";});if(els.clearColumnFilters)els.clearColumnFilters.hidden=true;renderResults();}
 
   function allocationDecisionKind(result) {
+    const governance = governanceView(result);
+    if (governance && governance.blocked) return "review";
     if (result.decision === A.READY && result.reallocationRequired) return "reallocation";
     if (result.decision === A.READY) return "ready";
     if (result.decision === A.SKIP) return "skip";
@@ -690,15 +703,17 @@
       const history = allocationHistoryText(result);
       const decisionKind = allocationDecisionKind(result);
       const warnings = (result.warnings || []).join(" · ");
+      const governance = governanceView(result);
       const workflowDisplay = output.workflow || (A.isAsBuiltPurpose(output.purpose) ? "Não se aplica — Conforme Construído" : "Definir");
-      const selectionLabel = canSelect ? `Selecionar ${result.document} para a alocação` : `${result.document} não possui dados suficientes para gerar a linha de alocação`;
+      const selectionLabel = canSelect ? `Selecionar ${result.document} para a alocação` : `${result.document} está bloqueado para a geração da alocação`;
+      const governanceBadge = governance ? `<small class="${governance.blocked ? "evidence-warning" : ""}" title="${escapeHtml(governance.summary || governance.label)}">Norma: ${escapeHtml(governance.label)}${governance.confidence ? ` · ${escapeHtml(governance.confidence)}` : ""}</small>` : "";
       return `<tr class="allocation-result-row decision-${decisionKind} ${selected ? "selected" : ""} ${manualOverride ? "manual-override" : ""}" data-allocation-document="${escapeHtml(A.key(result.document))}">
-        <td><div class="allocation-situation decision-first"><input class="allocation-check" type="checkbox" aria-label="${escapeHtml(selectionLabel)}" title="${escapeHtml(selectionLabel)}" ${selected ? "checked" : ""} ${canSelect ? "" : "disabled"}><span class="allocation-status ${allocationStatusClass(result)}">${allocationStatusLabel(result)}</span>${result.reallocationRequired ? '<small>Após recusa</small>' : ''}${manualOverride ? '<span class="allocation-manual-pill">Inclusão manual</span>' : ''}</div></td>
+        <td><div class="allocation-situation decision-first"><input class="allocation-check" type="checkbox" aria-label="${escapeHtml(selectionLabel)}" title="${escapeHtml(selectionLabel)}" ${selected ? "checked" : ""} ${canSelect ? "" : "disabled"}><span class="allocation-status ${allocationStatusClass(result)}">${allocationStatusLabel(result)}</span>${result.reallocationRequired ? '<small>Após recusa</small>' : ''}${governanceBadge}${manualOverride ? '<span class="allocation-manual-pill">Inclusão manual</span>' : ''}</div></td>
         <td><div class="allocation-document-card"><strong title="${escapeHtml(result.document)}">${escapeHtml(result.document)}</strong><span>${escapeHtml(result.ldSource || record.source || "LD não identificada")} · ${escapeHtml(result.sheet || "Aba não informada")} · versão ${escapeHtml(version || "não informada")}</span>${result.ldSources && result.ldSources.length > 1 ? `<small class="evidence-warning">Encontrado em ${escapeHtml(result.ldSources.join(" · "))}</small>` : ""}${result.conflictLd && result.conflictLd !== "NÃO" ? `<small class="evidence-warning">Conflito na LD: ${escapeHtml(result.conflictLd)}</small>` : ""}</div></td>
         <td><div class="allocation-evidence-stack">${evidenceLine("Diagnóstico", result.allocationDiagnosis || result.allocationDiagnosisDetail || "Sem diagnóstico")}${evidenceLine("Resultado", result.confirmationOutcome || "Sem confirmação externa", result.reallocationRequired ? "warning" : "")}${evidenceLine("Fonte", result.confirmationSource || "LD / controle")}${evidenceLine("Fiscal", result.confirmationComment || result.fiscalComment || "Sem comentário")}${evidenceLine("Alocação anterior", result.previousAllocation)}</div></td>
         <td><div class="allocation-evidence-stack">${evidenceLine("SIGEM", result.postingStatus || result.sigemStatus || "Sem evidência na LD")}${evidenceLine("GRDT", result.grdt || record.grdt)}${evidenceLine("Data efetiva", formatDateBR(result.effectiveDate || record.effectiveDate))}${evidenceLine("Revisão", record.revision || result.revision)}</div></td>
         <td>${databookCell(result, output, evidence, inferred)}</td>
-        <td><div class="allocation-reason-card"><strong>${escapeHtml(result.allocationDiagnosisDetail || result.allocationReason || result.reason || "Sem motivo registrado")}</strong><details><summary>Ver evidências completas</summary>${evidenceLine("Motivo completo", result.allocationReason)}${evidenceLine("Histórico", history)}${evidenceLine("Workflow", workflowDisplay)}${evidenceLine("Propósito", output.purpose)}${evidenceLine("Ação", output.action)}${evidenceLine("Alertas", warnings, warnings ? "warning" : "")}</details></div></td>
+        <td><div class="allocation-reason-card"><strong>${escapeHtml(result.allocationDiagnosisDetail || result.allocationReason || result.reason || "Sem motivo registrado")}</strong><details><summary>Ver evidências completas</summary>${evidenceLine("Motivo completo", result.allocationReason)}${evidenceLine("Pré-conferência normativa", governance && (governance.summary || governance.label))}${evidenceLine("Regras aplicadas", governance && governance.ruleRefs && governance.ruleRefs.join(" · "))}${evidenceLine("Histórico", history)}${evidenceLine("Workflow", workflowDisplay)}${evidenceLine("Propósito", output.purpose)}${evidenceLine("Ação", output.action)}${evidenceLine("Alertas", warnings, warnings ? "warning" : "")}</details></div></td>
         <td><div class="allocation-output-card">${evidenceLine("Workflow", workflowDisplay)}${evidenceLine("Ação", output.action || "—")}${evidenceLine("Propósito", output.purpose || "—")}${evidenceLine("Data prevista", formatDateBR(output.plannedDate) || "—")}</div></td>
       </tr>`;
     }).join("");
@@ -946,7 +961,10 @@
       };
       result.output.levelsSource = "Ajuste nesta análise";
       result.warnings = (result.warnings || []).filter((warning) => !/Caminho Data Book vazio|Níveis N1 a N6 vazios|Databook por/i.test(warning));
-      result.reason = result.warnings.length ? result.warnings.join(" · ") : "Dados prontos para a alocação.";
+      result.reason = result.warnings.length ? result.warnings.join(" · ") : "Dados revisados para a alocação.";
+      if (G && typeof G.applyToResult === "function") Object.assign(result, G.applyToResult(result));
+      state.selected.delete(A.key(result.document));
+      result.manualOverride = false;
     });
     renderResults();
     closeDatabookAssistant();
@@ -1136,6 +1154,7 @@
     await ensureExportLibraries();
     const results = selectedResults();
     if (!results.length) throw new Error("Nenhum documento está selecionado para a alocação.");
+    if (G && typeof G.assertExportable === "function") G.assertExportable(results);
     const plan = batchPlan(results);
     if (!plan.valid) throw new Error(plan.errors[0] || "Não foi possível montar o agrupamento escolhido.");
     const groups = [];

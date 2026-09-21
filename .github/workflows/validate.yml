@@ -32,6 +32,9 @@ jobs:
       - name: Run allocation master hierarchy regression
         run: node ALLOCATION_HIERARCHY_TESTS.mjs
 
+      - name: Run normative allocation governance regression
+        run: node RECON_NORMATIVE_TESTS.mjs
+
       - name: Run global TAG title regression
         run: node GLOBAL_TAG_TITLE_TESTS.mjs
 

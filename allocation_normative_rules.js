@@ -1,5 +1,5 @@
 (function (root, factory) {
-  const standard = root.RECONDocumentTitleStandard ||
+  const standard = root.RECONDocumentTitleStandardR ||
     (typeof module === "object" && module.exports ? require("./document_title_standard_r.js") : null);
   const catalogs = root.RECONAllocationNormCatalogs ||
     (typeof module === "object" && module.exports ? require("./allocation_normative_catalogs.js") : null);
@@ -146,7 +146,7 @@
   function databookEvidence(result) {
     const output = (result && result.output) || {};
     const evidence = output.databookEvidence || (result && result.databookInference) || {};
-    return { path: text(output.databook), sourceType: text(evidence.sourceType), source: text(evidence.source), confidence: text(evidence.confidence) };
+    return { path: text(output.databook), sourceType: text(evidence.sourceType), source: text(evidence.source), confidence: text(evidence.confidence), conflict: Boolean(evidence.conflict) };
   }
   function hasConflict(result) {
     const haystack = [result && result.reason, result && result.allocationReason, ...((result && result.warnings) || [])].map(text).join(" ");
@@ -157,7 +157,7 @@
     const document = text(result && result.document);
     const validation = validateDocument(document);
     const evidence = databookEvidence(result);
-    const conflicts = hasConflict(result);
+    const conflicts = hasConflict(result) || evidence.conflict;
     const fallbackUsed = evidence.sourceType === "discipline-fallback";
     const manual = evidence.sourceType === "manual";
     const errors = validation.errors.slice();
@@ -171,7 +171,7 @@
     let confidence = "alta";
     if (errors.length) confidence = "baixa";
     else if (conflicts || fallbackUsed || manual || validation.kind === "unknown") confidence = "media";
-    else if (!["ld", "history", "catalog", "discipline-catalog"].includes(evidence.sourceType) && !text(result && result.previousAllocation)) confidence = "media";
+    else if (!["ld", "ld-exact", "history", "history-exact", "catalog", "discipline-catalog"].includes(evidence.sourceType) && !text(result && result.previousAllocation)) confidence = "media";
 
     const label = confidence === "alta" ? "Alta confiança" : confidence === "media" ? "Alocação provável — revisar." : "Alocação não determinada com segurança.";
     return {

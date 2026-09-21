@@ -1,10 +1,11 @@
 (function (root, factory) {
   const allocation = root.AllocationCore || (typeof module === "object" && module.exports ? require("./allocation_core.js") : null);
   const core = root.TriagemCore || (typeof module === "object" && module.exports ? require("./core.js") : null);
-  const api = factory(allocation, core);
+  const governance = root.RECONAllocationGovernance || (typeof module === "object" && module.exports ? require("./allocation_governance.js") : null);
+  const api = factory(allocation, core, governance);
   if (typeof module === "object" && module.exports) module.exports = api;
   root.AllocationWorkbook = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function (A, C) {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (A, C, G) {
   "use strict";
 
   const MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -191,6 +192,7 @@
   }
 
   async function buildAllocation(results, ExcelJS, meta) {
+    if (G && typeof G.assertExportable === "function") G.assertExportable(results || []);
     const template = typeof globalThis !== "undefined" ? globalThis.RECONAllocationTemplate : null;
     const Zip = typeof globalThis !== "undefined" ? globalThis.JSZip : null;
     if (!template || !template.base64) throw new Error("Modelo oficial de alocação não foi carregado.");
@@ -229,6 +231,7 @@
   }
 
   async function buildControlLines(results, meta, ExcelJS) {
+    if (G && typeof G.assertExportable === "function") G.assertExportable(results || []);
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "RECON";
     workbook.created = new Date();

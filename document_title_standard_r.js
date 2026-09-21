@@ -3,7 +3,7 @@
     (typeof module === "object" && module.exports ? require("./document_title_standard.js") : null);
   const api = factory(base);
   if (typeof module === "object" && module.exports) module.exports = api;
-  root.RECONDocumentTitleStandard = api;
+  root.RECONDocumentTitleStandardR = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function (Base) {
   "use strict";
   if (!Base) throw new Error("document_title_standard.js deve ser carregado antes da camada Rev. R.");
