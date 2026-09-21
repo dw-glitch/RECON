@@ -116,7 +116,7 @@ check("Documento já alocado preserva o SKIP operacional", () => {
   assert.equal(result.normativeGovernance.blocked, false);
 });
 
-check("Somente READY governado pode ser selecionado/exportado", () => {
+check("READY exporta automaticamente; REVIEW exige confirmação humana explícita", () => {
   const ready = Governance.applyToResult(readyFixture());
   assert.equal(Governance.canSelect(ready), true);
   assert.doesNotThrow(() => Governance.assertExportable([ready]));
@@ -124,8 +124,10 @@ check("Somente READY governado pode ser selecionado/exportado", () => {
     ...readyFixture(),
     output: { databook: "N1 | N2 | N3", databookEvidence: { sourceType: "discipline-fallback", source: "geral" } },
   });
-  assert.equal(Governance.canSelect(review), false);
+  assert.equal(Governance.canSelect(review), true);
   assert.throws(() => Governance.assertExportable([review]));
+  review.manualOverride = true;
+  assert.doesNotThrow(() => Governance.assertExportable([review]));
 });
 
 check("Governança em lote mantém um resultado por entrada", () => {
