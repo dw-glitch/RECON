@@ -162,24 +162,33 @@
   }
 
   function canSelect(result) {
+    const governance = result && result.normativeGovernance;
     return Boolean(
       result &&
       result.document &&
       result.record &&
       result.output &&
-      result.decision === READY &&
-      result.normativeGovernance &&
-      result.normativeGovernance.exportAllowed === true
+      governance &&
+      !governance.blocked &&
+      governance.kind !== "already-allocated" &&
+      (governance.state === "ready" || governance.state === "review")
     );
+  }
+
+  function isExportApproved(result) {
+    const governance = result && result.normativeGovernance;
+    if (!canSelect(result) || !governance) return false;
+    if (governance.state === "ready" && governance.exportAllowed === true) return true;
+    return governance.state === "review" && result.manualOverride === true;
   }
 
   function assertExportable(results) {
     const list = results || [];
     if (!list.length) throw new Error("Nenhum documento está pronto para exportação.");
-    const blocked = list.filter((result) => !canSelect(result));
+    const blocked = list.filter((result) => !isExportApproved(result));
     if (blocked.length) {
       const sample = blocked.slice(0, 3).map((result) => text(result.document) || "(sem documento)").join(", ");
-      throw new Error(`A pré-conferência normativa bloqueou ${blocked.length} item(ns) da exportação: ${sample}. Revise os itens marcados como Revisar/Bloqueado.`);
+      throw new Error(`A pré-conferência normativa ainda exige revisão humana em ${blocked.length} item(ns): ${sample}. Confirme manualmente somente os itens revisados; itens Bloqueados não podem ser exportados.`);
     }
     return true;
   }
@@ -191,6 +200,7 @@
     applyToResult,
     applyResults,
     canSelect,
+    isExportApproved,
     assertExportable,
   });
 });
