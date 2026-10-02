@@ -11,6 +11,7 @@
   const escapeHtml = (input) => String(input == null ? "" : input).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 
   const moduleNames = {
+    matrix: "Conferir matriz documental por disciplina",
     relations: "Gerar relação de documentos",
     allocation: "Gerar alocação documental",
     tags: "Conferir TAGs antes da LD",
@@ -95,7 +96,7 @@
           : ldLoaded() ? label("#relations-ld-meta") : "Nenhuma LD selecionada";
     }
     if (els.contextSheet) els.contextSheet.textContent = currentSheet(module);
-    if (els.changeLd) els.changeLd.hidden = module === "renamer" || module === "allocation" || module === "tags";
+    if (els.changeLd) els.changeLd.hidden = module === "matrix" || module === "renamer" || module === "allocation" || module === "tags";
     els.sourceCard?.classList.toggle("p1-loaded", ldLoaded());
   }
 

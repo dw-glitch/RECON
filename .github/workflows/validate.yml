@@ -55,3 +55,6 @@ jobs:
 
       - name: Run document coding PDF encryption and safety regression
         run: node DOCUMENT_CODING_PDF_SAFETY_TESTS.mjs
+
+      - name: Run discipline document matrix regression
+        run: node DISCIPLINE_DOCUMENT_MATRIX_TESTS.cjs

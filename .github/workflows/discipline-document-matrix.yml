@@ -1,0 +1,26 @@
+name: Discipline document matrix Chromium
+on: [push, pull_request]
+jobs:
+  matrix-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Chromium
+        run: |
+          npm install --no-save --package-lock=false playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Validate matrix in Chromium
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 > "$RUNNER_TEMP/matrix-server.log" 2>&1 &
+          QA_SERVER_PID=$!
+          trap 'kill "$QA_SERVER_PID"' EXIT
+          node scripts/validar-discipline-matrix-browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: discipline-matrix-chromium
+          path: artifacts/discipline-matrix/
+          if-no-files-found: warn

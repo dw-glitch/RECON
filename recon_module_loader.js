@@ -6,9 +6,10 @@
   const moduleState = new Map();
   const busyModules = new Set();
   let compatibilityMode = false;
-  const moduleLabels = { relations: "Relações", allocation: "Alocação", databook: "Databook", titles: "Correção de títulos", tags: "Conferência de TAGs", renamer: "Renomeador", bases: "Bases de referência", coding: "Codificação de Documentos" };
+  const moduleLabels = { matrix: "Matriz documental", relations: "Relações", allocation: "Alocação", databook: "Databook", titles: "Correção de títulos", tags: "Conferência de TAGs", renamer: "Renomeador", bases: "Bases de referência", coding: "Codificação de Documentos" };
 
   const moduleDeps = {
+    matrix: ["matrix"],
     relations: ["relations"],
     allocation: ["allocation"],
     databook: ["relations", "audit"],
@@ -20,6 +21,7 @@
   };
 
   const moduleRequirements = {
+    matrix: ["DisciplineDocumentMatrix", "DisciplineDocumentMatrixUi"],
     relations: ["TriagemCore", "CorporateRelationsCore", "RECONRelations"],
     allocation: ["TriagemCore", "AllocationCore", "RECONAllocation"],
     databook: ["TriagemCore", "RECONAuditCore", "RECONAudits"],
@@ -43,6 +45,7 @@
   };
 
   const groups = {
+    matrix: ["xlsx", "discipline_document_catalog.js", "discipline_document_matrix.js", "discipline_document_matrix_ui.js"],
     shell: ["output_audit.js", "recon-brand.js", "recon_contracts.js"],
     xlsx: ["file_access.js", "xlsx.full.min.js", "recon_workbook_worker_client.js"],
     export: ["exceljs.min.js", "jszip.min.js"],
