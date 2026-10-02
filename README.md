@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.56**.
+Versão atual: **1.26.57**.
 
 ## Execução
 
@@ -160,3 +160,7 @@ Para rodar localmente:
 python3 validate_static.py
 node RECON_TESTES.mjs
 ```
+
+## Matriz documental por disciplina
+
+Abra **Matriz documental** no menu lateral (ou `#matrix`). Selecione a disciplina e a fase, anexe as fontes do projeto e confira as famílias documentais. Ausências são alertas consultivos, sem alterar a alocação. O JSON pode ser consultado no GRCON; o CSV apresenta a matriz e evidências. Cobertura e limites: [documentação da matriz](docs/discipline-document-matrix.md).
