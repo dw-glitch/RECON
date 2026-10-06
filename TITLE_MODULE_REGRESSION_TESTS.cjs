@@ -30,9 +30,9 @@ const Writer = require("./ld_title_writer.js");
   assert.match(serviceWorker, /"title_codes_csv\.js"/);
   for (const id of ["title-reference", "title-reference-meta"]) assert.ok(html.includes(`id="${id}"`), id);
   for (const option of ["wrong_tag", "document_type", "global_tag"]) assert.ok(html.includes(`<option value="${option}">`), option);
-  assert.match(html, /1\.26\.58/);
-  assert.match(serviceWorker, /const VERSION = "1\.26\.58"/);
-  assert.match(readme, /Versão atual: \*\*1\.26\.58\*\*/);
+  assert.match(html, /1\.26\.59/);
+  assert.match(serviceWorker, /const VERSION = "1\.26\.59"/);
+  assert.match(readme, /Versão atual: \*\*1\.26\.59\*\*/);
 
   const norm = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
   const clean = (value) => String(value || "").trim().replace(/\.(?:pdf|xlsx?)$/i, "");

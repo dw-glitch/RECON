@@ -1,0 +1,56 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname);
+const Codes = require(path.join(root, 'title_codes_csv.js'));
+const { parseMatrix } = Codes;
+const parse = (text) => [...new Set(Codes.parse(text, { clean: (value) => String(value || '').trim(), norm: (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim() }))];
+const read = (name) => fs.readFileSync(path.join(root, name), 'utf8');
+function check(condition, message) { assert.ok(condition, message); }
+const codeA = 'C1O_RNEST_U32_3.8.5.1_TUB_REP_VM-320003';
+const codeB = 'C1O_RNEST_U32_6.23.4.1_EST_PPT_P-B-32009A';
+assert.deepEqual(parse(`DOCUMENTO,TÍTULO,REVISÃO\n${codeA},"RELATÓRIO, COMPLETO",0\n${codeB},"CERTIFICADO DE TESTE",A`), [codeA, codeB]);
+assert.deepEqual(parse(`CÓDIGO DO DOCUMENTO;TÍTULO;OBSERVAÇÃO\n"${codeA}";"RELATÓRIO; INSPEÇÃO";"teste"\n"${codeB}";"OUTRO";x`), [codeA, codeB]);
+assert.deepEqual(parse(`TÍTULO\tDOCUMENTO\tREVISÃO\nTESTE\t${codeA}\t0`), [codeA]);
+assert.deepEqual(parse(`DOCUMENTO,TÍTULO\n${codeA},TESTE\n${codeA},TESTE`), [codeA]);
+assert.deepEqual(parseMatrix([['Título', 'Revisão', 'DOCUMENTO'], ['Relatório', '0', codeA]]), [codeA]);
+assert.deepEqual(parseMatrix([[codeA, 'TÍTULO'], [codeB, 'REVISÃO']]), [codeA, codeB]);
+const loader = read('recon_module_loader.js');
+const worker = read('recon_compute_worker.js');
+const html = read('index.html');
+const ui = read('audit_app.js');
+const sw = read('sw.js');
+const audit = loader.match(/audit: \[[^\]]*"audit_app\.js"\]/);
+check(audit, 'Carregador de auditorias ausente');
+const before = audit[0];
+check(before.indexOf('"document_title_standard.js"') < before.indexOf('"document_title_standard_r.js"'), 'Rev R deve carregar após Rev P');
+check(before.indexOf('"document_title_standard_r.js"') < before.indexOf('"audit_core.js"'), 'Rev R deve carregar antes de audit_core');
+check(before.indexOf('"title_codes_csv.js"') < before.indexOf('"audit_app.js"'), 'CSV deve carregar antes de audit_app');
+check(worker.indexOf('"document_title_standard.js"') < worker.indexOf('"document_title_standard_r.js"'), 'Worker não carrega Rev R');
+check(worker.indexOf('"document_title_standard_r.js"') < worker.indexOf('"audit_core.js"'), 'Worker deve carregar Rev R antes de core');
+check(worker.indexOf('"non_tagged_title_rules.js"') < worker.indexOf('"allocation_core.js"'), 'Ordem das regras nt- no Worker');
+check(ui.includes('RECONTitleCodesCsv.parse(') && ui.includes('RECONTitleCodesCsv.parseMatrix('), 'Leitor CSV e Excel ainda desconectado');
+check(/id="title-reference"/.test(html) && /id="title-reference-meta"/.test(html), 'Campos referência complementar ausentes');
+for (const issue of ['wrong_tag', 'document_type']) check(html.includes(`value="${issue}"`), `Filtro de situação ausente: ${issue}`);
+check(html.includes('value="global_tag"'), 'Filtro de busca global por TAG ausente');
+check(sw.includes('"document_title_standard_r.js"') && sw.includes('"title_codes_csv.js"'), 'Cache da Rev R ou CSV ausente');
+check(html.includes('1.26.59') && sw.includes('1.26.59'), 'Versão de cache do aplicativo não foi atualizada');
+// Rev R is loaded into the global factory before audit_core on browser and worker.
+require(path.join(root, 'document_title_standard.js'));
+require(path.join(root, 'document_title_standard_r.js'));
+const standard = globalThis.RECONDocumentTitleStandard;
+assert.equal(standard.STANDARD.revision, 'R');
+for (const type of ['MTAM', 'MTEC', 'RCCM', 'RIRFE']) {
+  const result = standard.reportTitlesFor(type);
+  check(result.length > 0, `Rev R sem título para ${type}`);
+}
+const writer = require(path.join(root, 'ld_title_writer.js'));
+const sheetXml = '<worksheet><sheetData><row r="2" spans="1:2"><c r="A2" t="inlineStr"><is><t>DOC</t></is></c><c r="D2" t="inlineStr"><is><t>STATUS</t></is></c></row></sheetData></worksheet>';
+const inserted = writer.patchCellXml(sheetXml, 'C2', 2, 'TÍTULO CORRIGIDO');
+check(inserted.indexOf('r="A2"') < inserted.indexOf('r="C2"') && inserted.indexOf('r="C2"') < inserted.indexOf('r="D2"'), 'Novo título fora de ordem de coluna');
+check(inserted.includes('spans="1:3"'), 'Spans da linha não foi corrigido');
+check(inserted.includes('TÍTULO CORRIGIDO') && inserted.includes('STATUS'), 'Célula adjacente alterada');
+const updated = writer.patchCellXml(inserted, 'C2', 2, 'TÍTULO FINAL & VALIDO');
+check(updated.includes('TÍTULO FINAL &amp; VALIDO') && !updated.includes('TÍTULO CORRIGIDO'), 'XML do título não foi substituído corretamente');
+console.log('RECON Corrigir títulos: CSV, XLSX, filtros, Rev R, Worker, cache e XML da LD PASSARAM.');

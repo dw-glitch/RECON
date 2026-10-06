@@ -35,6 +35,9 @@ jobs:
       - name: Run global TAG title regression
         run: node GLOBAL_TAG_TITLE_TESTS.mjs
 
+      - name: Run title module import and loading regression
+        run: node TITLE_FIX_TESTS.cjs
+
       - name: Run title module recovery regression
         run: node TITLE_MODULE_REGRESSION_TESTS.cjs
 
