@@ -57,7 +57,7 @@ const Writer = require("./ld_title_writer.js");
   ]);
   sheet["D2"] = { t: "n", f: "1+2", v: 3 };
   XLSX.utils.book_append_sheet(wb, sheet, "ET");
-  const original = Uint8Array.from(XLSX.write(wb, { type:"array", bookType:"xlsx" }));
+  const original = Uint8Array.from(XLSX.write(wb, { type:"buffer", bookType:"xlsx" }));
   const file = { name:"LD-TESTE.xlsx", arrayBuffer:async()=>original.buffer.slice(original.byteOffset,original.byteOffset + original.byteLength) };
   const decisions = [
     {decision:"approved",sheet:"ET",row:2,document:a,current:"TÍTULO ANTIGO",proposed:"RELATÓRIO CORRIGIDO"},
