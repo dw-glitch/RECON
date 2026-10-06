@@ -30,7 +30,7 @@ async function main() {
       [other,"TÍTULO QUE DEVE PERMANECER", "0", "CIVIL"]
     ]);
     XLSX.utils.book_append_sheet(wb,sheet,"ET");
-    const buffer = XLSX.write(wb,{type:"buffer",bookType:"xlsx"});
+    const buffer = Buffer.from(XLSX.write(wb,{type:"buffer",bookType:"xlsx"}));
     await page.locator("#relations-ld").setInputFiles({name:"LD-TITULOS-TESTE.xlsx",mimeType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",buffer});
     await page.waitForFunction(() => !document.querySelector("#title-analyze")?.disabled, null, {timeout:90000});
     await page.locator('input[name="title-scope-mode"][value="specific"]').check();
