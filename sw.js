@@ -53,6 +53,7 @@ const MODULE_URLS = [
   "ld_preservation.js",
   "ld_databook_writer.js",
   "ld_title_writer.js",
+  "title_codes_csv.js",
   "recon_export_guard.js",
   "timeline_core.js",
   "offline_resources.js",
