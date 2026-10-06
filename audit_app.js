@@ -225,21 +225,16 @@
     try {
       const extension = String(file.name || "").split(".").pop().toLowerCase();
       if (extension === "txt" || extension === "csv") {
-        state.titleCodeFileEntries = splitRequestedCodes(await file.text());
+        const content = await file.text();
+        state.titleCodeFileEntries = extension === "csv"
+          ? window.RECONTitleCodeCsv.parse(content)
+          : splitRequestedCodes(content);
       } else {
         const workbook = await readWorkbook(file);
         const values = [];
         workbook.SheetNames.forEach((sheetName) => {
           const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, raw: false, defval: "" });
-          matrix.forEach((row) => {
-            const cells = Array.isArray(row) ? row : [];
-            const resolved = cells.map(cleanRequestedCode).filter(Boolean).find((candidate) => matchRequestedCode(candidate).length === 1);
-            if (resolved) values.push(resolved);
-            else if (cells.length) {
-              const first = cleanRequestedCode(cells[0]);
-              if (first && !/^(DOCUMENTO|CODIGO|CÓDIGO|TITULO|TÍTULO)$/i.test(first)) values.push(first);
-            }
-          });
+          values.push(...window.RECONTitleCodeCsv.parseMatrix(matrix));
         });
         state.titleCodeFileEntries = splitRequestedCodes(values.join("\n"));
       }
@@ -1014,7 +1009,10 @@
       state.titleSupplementalReferences = parsed;
       els.titleReferenceMeta.textContent = file.name;
       updateTitleReferenceStatus();
-      showToast("Base adicional de títulos carregada sem substituir as fontes controladas.", "success");
+      state.titleRows = []; state.titleSelected.clear();
+      if (els.titleResults) els.titleResults.hidden = true;
+      updateReady();
+      showToast("Base adicional de títulos carregada sem substituir as fontes controladas. Analise novamente.", "success");
     } catch (error) { els.titleReference.value = ""; showToast(error.message, "error"); }
   }
 
@@ -1028,7 +1026,10 @@
       state.sconTitleReferences = scon;
       if (els.titleSconReferenceMeta) els.titleSconReferenceMeta.textContent = `${file.name} · ${scon.entries.length.toLocaleString("pt-BR")} códigos`;
       updateTitleReferenceStatus();
-      showToast("Base SCON atualizada. O RECON usará o terceiro campo da coluna DESCRIÇÃO.", "success");
+      state.titleRows = []; state.titleSelected.clear();
+      if (els.titleResults) els.titleResults.hidden = true;
+      updateReady();
+      showToast("Base SCON atualizada. Analise novamente os títulos com o terceiro campo da coluna DESCRIÇÃO.", "success");
     } catch (error) {
       if (els.titleSconReference) els.titleSconReference.value = "";
       showToast(error.message || "Não foi possível carregar a base SCON.", "error");
@@ -1296,7 +1297,6 @@
 
   async function applyTitlesToLd(options) {
     const inPlace = Boolean(options && options.inPlace);
-    await ensureExportLibraries();
     const approved = state.titleRows.filter((row) => row.decision === "approved" && row.proposed);
     if (!approved.length) { showToast("Aprove ao menos um título antes de gerar a LD revisada.", "error"); return; }
     const button = inPlace ? els.titleApplyLdInplace : els.titleApplyLd;
@@ -1304,6 +1304,8 @@
     const originalLabel = button ? button.textContent : "";
     if (button) { button.disabled = true; button.textContent = inPlace ? "Salvando…" : "Gerando cópia…"; }
     try {
+      await ensureExportLibraries();
+      if (!TitleWriter) throw new Error("O gravador de títulos não está disponível. Atualize o RECON e tente novamente.");
       const plan = await TitleWriter.planChanges(state.file, approved, XLSX, JSZip);
       const guard = ExportGuard ? ExportGuard.validatePlan(plan) : (Contracts ? Contracts.validateChangeSet(plan.changes) : { valid: true, errors: [] });
       if (!guard.valid) throw new Error(guard.errors.join(" "));

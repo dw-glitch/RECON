@@ -2,7 +2,7 @@
 
 Relações e conformidade documental da Qualidade.
 
-Versão atual: **1.26.57**.
+Versão atual: **1.26.58**.
 
 ## Execução
 
@@ -44,7 +44,7 @@ Quando o trecho final do código é o fim do número de um desenho de referênci
 DE-5290.00-22313-...", em vez de tentar decodificar esse trecho como um lugar
 em palavras — essa é a regra do desenho descrita no PPTX da fiscal. Uma
 conclusão já confirmada manualmente sempre tem prioridade sobre a regra de
-prefixo. O RECON usa a ET-5290.00-22000-912-1LV-001 Rev. P como
+prefixo. O RECON usa a ET-5290.00-22000-912-1LV-001 Rev. R como
 norma vigente, consulta a Tabela 13 pelo Grupo 6 dos relatórios e compara o
 padrão com títulos anteriores da própria LD antes de montar a recomendação.
 A TAG usada na busca vem do Grupo 7 do nome do documento. Para válvulas manuais,
@@ -159,6 +159,7 @@ Para rodar localmente:
 ```bash
 python3 validate_static.py
 node RECON_TESTES.mjs
+node TITLE_FIX_TESTS.cjs
 ```
 
 ## Matriz documental por disciplina
