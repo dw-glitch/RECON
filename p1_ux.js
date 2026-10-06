@@ -344,6 +344,12 @@
     }));
     els.changeLd?.addEventListener("click", () => $("#relations-ld")?.click());
     window.addEventListener("recon:module", updateAll);
+    window.addEventListener("hashchange", () => {
+      const module = String(window.location.hash || "").slice(1).toLowerCase();
+      if (!document.querySelector(`.module-link[data-module="${module}"]`)) return;
+      document.body.classList.remove("p1-home-mode");
+      updateAll();
+    });
   }
 
   function installEvents() {
@@ -380,7 +386,10 @@
     installConfirmations();
     installEvents();
     installStateEvents();
-    showHome();
+    // Não encobrir um deep-link #titles (ou de outros módulos) com a tela inicial.
+    // O recon_app registra o hash explícito antes de gravar o módulo padrão #relations.
+    if (window.RECON?.explicitInitialModule) openTask(window.RECON.explicitInitialModule);
+    else showHome();
     updateAll();
     document.documentElement.dataset.p1Ux = "enabled";
   }
