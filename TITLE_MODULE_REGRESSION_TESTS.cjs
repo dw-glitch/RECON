@@ -18,7 +18,7 @@ const Writer = require("./ld_title_writer.js");
     const result = Standard.resolve(`C1O_RNEST_U32_3.8.5.1_CVL_${group6}_TESTE-001`);
     assert.equal(result.code, group6, `Grupo 6 ${group6}`);
     assert.ok(result.title, `Título da Rev. R para ${group6}`);
-    assert.match(result.source, /Rev\\. R/);
+    assert.match(result.source, /Rev\. R/);
   }
   for (const source of [loader, worker]) {
     const standard = source.indexOf('"document_title_standard.js"');
@@ -26,27 +26,27 @@ const Writer = require("./ld_title_writer.js");
     const audit = source.indexOf('"audit_core.js"');
     assert.ok(standard >= 0 && revR > standard && audit > revR, "Ordem da Rev. R antes de audit_core.js");
   }
-  assert.match(serviceWorker, /"document_title_standard_r\\.js"/);
-  assert.match(serviceWorker, /"title_codes_csv\\.js"/);
+  assert.match(serviceWorker, /"document_title_standard_r\.js"/);
+  assert.match(serviceWorker, /"title_codes_csv\.js"/);
   for (const id of ["title-reference", "title-reference-meta"]) assert.ok(html.includes(`id="${id}"`), id);
   for (const option of ["wrong_tag", "document_type", "global_tag"]) assert.ok(html.includes(`<option value="${option}">`), option);
-  assert.match(html, /1\\.26\\.58/);
-  assert.match(serviceWorker, /const VERSION = "1\\.26\\.58"/);
-  assert.match(readme, /Versão atual: \\*\\*1\\.26\\.58\\*\\*/);
+  assert.match(html, /1\.26\.58/);
+  assert.match(serviceWorker, /const VERSION = "1\.26\.58"/);
+  assert.match(readme, /Versão atual: \*\*1\.26\.58\*\*/);
 
-  const norm = (value) => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toUpperCase().replace(/\\s+/g, " ").trim();
-  const clean = (value) => String(value || "").trim().replace(/\\.(?:pdf|xlsx?)$/i, "");
+  const norm = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+  const clean = (value) => String(value || "").trim().replace(/\.(?:pdf|xlsx?)$/i, "");
   const parse = (content) => Codes.parse(content, { clean, norm });
   const a = "C1O_RNEST_U32_3.8.5.1_TUB_RIR_VM-320003";
   const b = "C1O_RNEST_U32_6.23.4.1_EST_PPT_P-B-32009A";
-  assert.deepEqual(parse(`DOCUMENTO;TÍTULO;REVISÃO\\n${a};"RELATÓRIO, COM VÍRGULA";0\\n${b};"TÍTULO; COM PONTO E VÍRGULA";A`), [a,b], "CSV ponto e vírgula");
-  assert.deepEqual(parse(`"CÓDIGO DO DOCUMENTO","TÍTULO","REVISÃO"\\n"${a}","DESCRIÇÃO COM , VÍRGULAS","0"`), [a], "CSV vírgula");
-  assert.deepEqual(parse(`sep=;\\nDOCUMENTO;TÍTULO\\n${b};"texto com ""aspas"""`), [b], "sep=;");
-  assert.deepEqual(parse(`DOCUMENTO\\tTÍTULO\\n${a}\\tTEXTO`), [a], "TSV");
-  assert.deepEqual(parse(`\\uFEFFDOCUMENTO;TÍTULO\\r\\n${a};TESTE`), [a], "BOM");
-  assert.deepEqual(parse(`${a}\\n${b}`), [a,b], "lista de códigos sem cabeçalho");
-  assert.throws(() => parse('TÍTULO;REVISÃO\\nTEXTO;0'), /coluna DOCUMENTO/);
-  assert.throws(() => parse('DOCUMENTO,TÍTULO\\n"não fechado'), /aspas não fechadas/);
+  assert.deepEqual(parse(`DOCUMENTO;TÍTULO;REVISÃO\n${a};"RELATÓRIO, COM VÍRGULA";0\n${b};"TÍTULO; COM PONTO E VÍRGULA";A`), [a,b], "CSV ponto e vírgula");
+  assert.deepEqual(parse(`"CÓDIGO DO DOCUMENTO","TÍTULO","REVISÃO"\n"${a}","DESCRIÇÃO COM , VÍRGULAS","0"`), [a], "CSV vírgula");
+  assert.deepEqual(parse(`sep=;\nDOCUMENTO;TÍTULO\n${b};"texto com ""aspas"""`), [b], "sep=;");
+  assert.deepEqual(parse(`DOCUMENTO\tTÍTULO\n${a}\tTEXTO`), [a], "TSV");
+  assert.deepEqual(parse(`\uFEFFDOCUMENTO;TÍTULO\r\n${a};TESTE`), [a], "BOM");
+  assert.deepEqual(parse(`${a}\n${b}`), [a,b], "lista de códigos sem cabeçalho");
+  assert.throws(() => parse('TÍTULO;REVISÃO\nTEXTO;0'), /coluna DOCUMENTO/);
+  assert.throws(() => parse('DOCUMENTO,TÍTULO\n"não fechado'), /aspas não fechadas/);
 
   const wb = XLSX.utils.book_new();
   const sheet = XLSX.utils.aoa_to_sheet([
