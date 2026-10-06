@@ -224,8 +224,10 @@
     }
     try {
       const extension = String(file.name || "").split(".").pop().toLowerCase();
-      if (extension === "txt" || extension === "csv") {
+      if (extension === "txt") {
         state.titleCodeFileEntries = splitRequestedCodes(await file.text());
+      } else if (extension === "csv") {
+        state.titleCodeFileEntries = splitRequestedCodes(window.RECONTitleCodesCsv.parse(await file.text(), { clean: cleanRequestedCode, norm: Q.norm }).join("\n"));
       } else {
         const workbook = await readWorkbook(file);
         const values = [];
@@ -805,6 +807,10 @@
 
   async function analyzeTitles() {
     if (state.busyKinds.has("title") || !state.index) return;
+    if (!window.RECONDocumentTitleStandard || window.RECONDocumentTitleStandard.STANDARD?.revision !== "R") {
+      showToast("O padrão de títulos Rev. R não foi carregado. Recarregue o RECON e tente novamente.", "error");
+      return;
+    }
     let requestedKeys = null;
     if (titleScopeSpecific()) {
       const scope = resolveTitleScope();
@@ -855,7 +861,7 @@
       if (Tasks) Tasks.finish(taskId, `${state.titleRows.length.toLocaleString("pt-BR")} títulos analisados${suffix}`);
     } catch (error) {
       console.error("RECON: falha na análise de títulos", error);
-      hideProgress("title"); showToast("Não foi possível concluir a análise dos títulos. Confira a LD e tente novamente.", "error");
+      hideProgress("title"); showToast(`Não foi possível concluir a análise dos títulos: ${error.message || "verifique a LD carregada"}`, "error");
       if (Tasks) Tasks.fail(taskId, error);
     } finally { state.busyKinds.delete("title"); updateReady(); }
   }
@@ -1296,7 +1302,6 @@
 
   async function applyTitlesToLd(options) {
     const inPlace = Boolean(options && options.inPlace);
-    await ensureExportLibraries();
     const approved = state.titleRows.filter((row) => row.decision === "approved" && row.proposed);
     if (!approved.length) { showToast("Aprove ao menos um título antes de gerar a LD revisada.", "error"); return; }
     const button = inPlace ? els.titleApplyLdInplace : els.titleApplyLd;
@@ -1304,6 +1309,10 @@
     const originalLabel = button ? button.textContent : "";
     if (button) { button.disabled = true; button.textContent = inPlace ? "Salvando…" : "Gerando cópia…"; }
     try {
+      await ensureExportLibraries();
+      if (!TitleWriter || typeof TitleWriter.planChanges !== "function" || typeof TitleWriter.apply !== "function") {
+        throw new Error("O gravador de títulos não foi carregado. Reabra o módulo e tente novamente.");
+      }
       const plan = await TitleWriter.planChanges(state.file, approved, XLSX, JSZip);
       const guard = ExportGuard ? ExportGuard.validatePlan(plan) : (Contracts ? Contracts.validateChangeSet(plan.changes) : { valid: true, errors: [] });
       if (!guard.valid) throw new Error(guard.errors.join(" "));

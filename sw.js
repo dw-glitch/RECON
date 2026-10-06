@@ -1,6 +1,6 @@
 // RECON Service Worker v1.26.57
 // Provides offline support, caching, and PWA installation capabilities
-const VERSION = "1.26.57";
+const VERSION = "1.26.58";
 const CACHE_NAME = `recon-cache-v${VERSION}`;
 const STATIC_CACHE = `recon-static-v${VERSION}`;
 const DATA_CACHE = `recon-data-v${VERSION}`;
@@ -53,6 +53,7 @@ const MODULE_URLS = [
   "ld_preservation.js",
   "ld_databook_writer.js",
   "ld_title_writer.js",
+  "title_codes_csv.js",
   "recon_export_guard.js",
   "timeline_core.js",
   "offline_resources.js",
@@ -73,6 +74,7 @@ const MODULE_URLS = [
   "databook_allocation_sources.js",
   "non_tagged_title_rules.js",
   "document_title_standard.js",
+  "document_title_standard_r.js",
   "audit_core.js",
   "audit_app.js",
   "tag_conference_core.js",
