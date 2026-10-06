@@ -7,8 +7,8 @@ let bootError = null;
 try {
   importScripts(
     "recon_contracts.js", "core.js", "ld_conflicts.js", "allocation_confirmation_sources.js",
-    "allocation_core.js", "databook_allocation_sources.js", "non_tagged_title_rules.js",
-    "document_title_standard.js", "global_tag_title_core.js", "audit_core.js", "timeline_core.js", "relations_core.js", "tag_conference_core.js"
+    "non_tagged_title_rules.js", "allocation_core.js", "databook_allocation_sources.js",
+    "document_title_standard.js", "document_title_standard_r.js", "global_tag_title_core.js", "audit_core.js", "timeline_core.js", "relations_core.js", "tag_conference_core.js"
   );
 } catch (error) {
   bootError = String(error && error.message || error || "Falha ao carregar os módulos de análise");
@@ -52,7 +52,10 @@ self.onmessage = (event) => {
   }
 
   try {
-    if (type === "audit-titles") return respond(id, self.RECONAuditCore.auditTitles(payload.index, payload.references, payload.options || null));
+    if (type === "audit-titles") {
+      if (self.RECONDocumentTitleStandard.STANDARD?.revision !== "R") throw new Error("A revisão R do padrão de títulos não foi carregada no Worker.");
+      return respond(id, self.RECONAuditCore.auditTitles(payload.index, payload.references, payload.options || null));
+    }
     if (type === "audit-databook") return respond(id, self.RECONAuditCore.auditDatabook(payload.index, payload.catalog || [], payload.sourceIndex || null));
     if (type === "allocation-analyze") return respond(id, self.AllocationCore.analyze(payload.entries || [], payload.records || [], payload.control || null, payload.options || {}));
     if (type === "relations-catalog") return respond(id, self.CorporateRelationsCore.rowsFromIndex(payload.index || null, payload.options || {}));
