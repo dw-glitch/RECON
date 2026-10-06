@@ -97,7 +97,8 @@
   });
 
   // Precedência: hash da URL > último módulo da sessão > relações.
-  let initial = moduleFromHash();
+  const explicitInitialModule = moduleFromHash();
+  let initial = explicitInitialModule;
   if (!initial) {
     try { initial = known(window.sessionStorage.getItem(KEY)) || "relations"; } catch (_) { initial = "relations"; }
   }
@@ -153,5 +154,5 @@
     reportFailure(event.reason);
   });
 
-  window.RECON = { activate, reportFailure };
+  window.RECON = { activate, reportFailure, explicitInitialModule };
 })();
