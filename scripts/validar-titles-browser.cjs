@@ -34,7 +34,7 @@ async function main() {
     await page.locator("#relations-ld").setInputFiles({name:"LD-TITULOS-TESTE.xlsx",mimeType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",buffer});
     await page.waitForFunction(() => !document.querySelector("#title-analyze")?.disabled, null, {timeout:90000});
     await page.locator('input[name="title-scope-mode"][value="specific"]').check();
-    await page.locator("#title-code-file").setInputFiles({name:"codigos.csv",mimeType:"text/csv",buffer:Buffer.from('DOCUMENTO;TÍTULO\\n'+code+';"RELATÓRIO, COM VÍRGULA"'.replace(/\\n/g,"\n"),"utf8")});
+    await page.locator("#title-code-file").setInputFiles({name:"codigos.csv",mimeType:"text/csv",buffer:Buffer.from("DOCUMENTO;TÍTULO\n" + code + ';"RELATÓRIO, COM VÍRGULA"',"utf8")});
     await page.waitForFunction(() => (document.querySelector("#title-code-file-meta")?.textContent || "").includes("1 código"),null,{timeout:20000});
     await page.locator("#title-code-prepare").click();
     assert.match(await page.locator("#title-code-meta").innerText(),/1 localizado/);
