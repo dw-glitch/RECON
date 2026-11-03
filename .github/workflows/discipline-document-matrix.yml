@@ -1,5 +1,7 @@
 name: Discipline document matrix Chromium
-on: [push, pull_request]
+# Gatilhos automaticos desativados para nao consumir minutos pagos do GitHub Actions; rode manualmente em Actions > Run workflow.
+on:
+  workflow_dispatch:
 jobs:
   matrix-browser:
     runs-on: ubuntu-latest

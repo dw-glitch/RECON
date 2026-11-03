@@ -1,5 +1,7 @@
 name: Title correction Chromium
-on: [push, pull_request]
+# Gatilhos automaticos desativados para nao consumir minutos pagos do GitHub Actions; rode manualmente em Actions > Run workflow.
+on:
+  workflow_dispatch:
 jobs:
   titles-browser:
     runs-on: ubuntu-latest
