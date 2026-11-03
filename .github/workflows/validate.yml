@@ -1,8 +1,9 @@
 name: Validate static app
 
+# Gatilhos automaticos (pull_request/push/schedule) desativados para nao consumir minutos pagos do GitHub Actions.
+# Execute manualmente em Actions > Run workflow quando precisar. A publicacao e feita pelo Cloudflare Workers Builds.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   validate:
